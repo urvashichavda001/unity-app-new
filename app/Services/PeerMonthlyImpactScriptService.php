@@ -240,28 +240,25 @@ class PeerMonthlyImpactScriptService
         $label = self::CHECKLIST_DEFINITIONS['qualified_referrals_given'];
         $relatedItems = collect();
 
-        $referralItems = $this->referralTableRelatedItems($userId, $start, $end);
-        Log::info('peer_monthly_script.referral_source_count', [
-            'user_id' => $userId,
-            'source' => 'referrals',
-            'count' => $referralItems->count(),
-        ]);
+        $referralItems = $this->safeChecklistSource(
+            'referrals',
+            $userId,
+            fn (): Collection => $this->referralTableRelatedItems($userId, $start, $end)
+        );
         $relatedItems = $relatedItems->merge($referralItems);
 
-        $historyItems = $this->referralHistoryRelatedItems($userId, $start, $end);
-        Log::info('peer_monthly_script.referral_source_count', [
-            'user_id' => $userId,
-            'source' => 'life_impact_histories',
-            'count' => $historyItems->count(),
-        ]);
+        $historyItems = $this->safeChecklistSource(
+            'life_impact_histories',
+            $userId,
+            fn (): Collection => $this->referralHistoryRelatedItems($userId, $start, $end)
+        );
         $relatedItems = $relatedItems->merge($historyItems);
 
-        $activityItems = $this->referralActivityRelatedItems($userId, $start, $end);
-        Log::info('peer_monthly_script.referral_source_count', [
-            'user_id' => $userId,
-            'source' => 'activities',
-            'count' => $activityItems->count(),
-        ]);
+        $activityItems = $this->safeChecklistSource(
+            'activities',
+            $userId,
+            fn (): Collection => $this->referralActivityRelatedItems($userId, $start, $end)
+        );
         $relatedItems = $relatedItems->merge($activityItems);
 
         return $this->checklistItem(
@@ -301,40 +298,47 @@ class PeerMonthlyImpactScriptService
 
     private function mergeHistoryChecklistItems(array $items, string $userId, Carbon $start, Carbon $end): array
     {
-        if (! Schema::hasTable('life_impact_histories')) {
-            return $items;
-        }
-
-        $table = (new LifeImpactHistory())->getTable();
-        $query = LifeImpactHistory::query()->where('user_id', $userId);
-        $this->applyHistoryCountableFilters($query, $table);
-        $this->applyDateRange($query, $table, ['created_at'], $start, $end);
-
-        $histories = $query->orderByDesc('created_at')->get();
-        $relatedUsers = $this->historyRelatedUsers($histories);
-
-        Log::info('peer_monthly_script.impact_history_source_count', [
-            'user_id' => $userId,
-            'source' => 'life_impact_histories',
-            'count' => $histories->count(),
-        ]);
-
-        foreach (self::HISTORY_ACTION_ALIASES as $checklistKey => $aliases) {
-            $matches = $histories->filter(fn (LifeImpactHistory $history): bool => $this->historyMatches($history, $aliases));
-            if ($matches->isEmpty()) {
-                continue;
+        try {
+            if (! Schema::hasTable('life_impact_histories')) {
+                return $items;
             }
 
-            $existingRelatedItems = collect($items[$checklistKey]['related_items'] ?? []);
-            $historyRelatedItems = $matches
-                ->map(fn (LifeImpactHistory $history): array => $this->historyRelatedItem($checklistKey, $history, $relatedUsers))
-                ->values();
+            $table = (new LifeImpactHistory())->getTable();
+            $query = LifeImpactHistory::query()->where('user_id', $userId);
+            $this->applyHistoryCountableFilters($query, $table);
+            $this->applyDateRange($query, $table, ['created_at'], $start, $end);
 
-            $items[$checklistKey] = $this->checklistItem(
-                $checklistKey,
-                self::CHECKLIST_DEFINITIONS[$checklistKey],
-                $existingRelatedItems->merge($historyRelatedItems)->values()->all()
-            );
+            $histories = $query->orderByDesc('created_at')->get();
+            $relatedUsers = $this->historyRelatedUsers($histories);
+
+            Log::info('peer_monthly_script.impact_history_source_count', [
+                'user_id' => $userId,
+                'source' => 'life_impact_histories',
+                'count' => $histories->count(),
+            ]);
+
+            foreach (self::HISTORY_ACTION_ALIASES as $checklistKey => $aliases) {
+                $matches = $histories->filter(fn (LifeImpactHistory $history): bool => $this->historyMatches($history, $aliases));
+                if ($matches->isEmpty()) {
+                    continue;
+                }
+
+                $existingRelatedItems = collect($items[$checklistKey]['related_items'] ?? []);
+                $historyRelatedItems = $matches
+                    ->map(fn (LifeImpactHistory $history): array => $this->historyRelatedItem($checklistKey, $history, $relatedUsers))
+                    ->values();
+
+                $items[$checklistKey] = $this->checklistItem(
+                    $checklistKey,
+                    self::CHECKLIST_DEFINITIONS[$checklistKey],
+                    $existingRelatedItems->merge($historyRelatedItems)->values()->all()
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('peer_monthly_script.impact_history_source_failed', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return $items;
@@ -413,40 +417,47 @@ class PeerMonthlyImpactScriptService
 
     private function mergeActivityChecklistItems(array $items, string $userId, Carbon $start, Carbon $end): array
     {
-        if (! Schema::hasTable('activities')) {
+        try {
+            if (! Schema::hasTable('activities')) {
+                Log::info('peer_monthly_script.activity_source_count', [
+                    'user_id' => $userId,
+                    'source' => 'activities',
+                    'count' => 0,
+                    'reason' => 'missing_table',
+                ]);
+
+                return $items;
+            }
+
+            $totalActivityMatches = 0;
+
+            foreach (self::HISTORY_ACTION_ALIASES as $checklistKey => $aliases) {
+                $activityItems = $this->activityRelatedItemsForKey($checklistKey, $aliases, $userId, $start, $end);
+                $totalActivityMatches += $activityItems->count();
+
+                if ($activityItems->isEmpty()) {
+                    continue;
+                }
+
+                $existingRelatedItems = collect($items[$checklistKey]['related_items'] ?? []);
+                $items[$checklistKey] = $this->checklistItem(
+                    $checklistKey,
+                    self::CHECKLIST_DEFINITIONS[$checklistKey],
+                    $this->uniqueRelatedItems($existingRelatedItems->merge($activityItems))->values()->all()
+                );
+            }
+
             Log::info('peer_monthly_script.activity_source_count', [
                 'user_id' => $userId,
                 'source' => 'activities',
-                'count' => 0,
-                'reason' => 'missing_table',
+                'count' => $totalActivityMatches,
             ]);
-
-            return $items;
+        } catch (\Throwable $e) {
+            Log::warning('peer_monthly_script.activity_source_failed', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
         }
-
-        $totalActivityMatches = 0;
-
-        foreach (self::HISTORY_ACTION_ALIASES as $checklistKey => $aliases) {
-            $activityItems = $this->activityRelatedItemsForKey($checklistKey, $aliases, $userId, $start, $end);
-            $totalActivityMatches += $activityItems->count();
-
-            if ($activityItems->isEmpty()) {
-                continue;
-            }
-
-            $existingRelatedItems = collect($items[$checklistKey]['related_items'] ?? []);
-            $items[$checklistKey] = $this->checklistItem(
-                $checklistKey,
-                self::CHECKLIST_DEFINITIONS[$checklistKey],
-                $this->uniqueRelatedItems($existingRelatedItems->merge($activityItems))->values()->all()
-            );
-        }
-
-        Log::info('peer_monthly_script.activity_source_count', [
-            'user_id' => $userId,
-            'source' => 'activities',
-            'count' => $totalActivityMatches,
-        ]);
 
         return $items;
     }
@@ -977,6 +988,29 @@ class PeerMonthlyImpactScriptService
         ];
     }
 
+    private function safeChecklistSource(string $source, string $userId, callable $callback): Collection
+    {
+        try {
+            $items = $callback();
+
+            Log::info('peer_monthly_script.referral_source_count', [
+                'user_id' => $userId,
+                'source' => $source,
+                'count' => $items->count(),
+            ]);
+
+            return $items;
+        } catch (\Throwable $e) {
+            Log::warning('peer_monthly_script.referral_source_failed', [
+                'user_id' => $userId,
+                'source' => $source,
+                'error' => $e->getMessage(),
+            ]);
+
+            return collect();
+        }
+    }
+
     private function firstExistingColumn(string $table, array $columns): ?string
     {
         foreach ($columns as $column) {
@@ -991,6 +1025,12 @@ class PeerMonthlyImpactScriptService
     private function applyStatusFilter($query, string $table): void
     {
         if (! Schema::hasColumn($table, 'status')) {
+            return;
+        }
+
+        if ($table === 'activities') {
+            $query->where('status', 'approved');
+
             return;
         }
 
