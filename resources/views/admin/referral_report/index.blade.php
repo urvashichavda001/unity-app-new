@@ -120,9 +120,9 @@
                     <tr>
                         <td>
                             <div class="fw-semibold text-dark">{{ $record->referrer_name ?: 'Deleted / Unknown User' }}</div>
-                            <div class="text-muted small">{{ $record->referrer_email ?: 'No email' }}</div>
+                            <div class="text-muted small">{{ $record->referrer_company ?: '—' }}</div>
+                            <div class="text-muted small">{{ $record->referrer_city ?? '—' }}</div>
                             <div class="text-muted small">{{ $record->referrer_phone ?: 'No phone' }}</div>
-                            <div class="text-muted small">{{ $record->referrer_company ?: 'No company' }}</div>
                         </td>
                         <td>
                             <span class="badge bg-light text-dark border text-wrap">{{ $record->referral_codes ?: '—' }}</span>
