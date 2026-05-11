@@ -39,6 +39,27 @@ class ProfileController extends BaseApiController
 
         if (array_key_exists('social_links', $data)) {
             $data['social_links'] = $data['social_links'] ?? [];
+
+            $socialLinkColumnMap = [
+                'linkedin' => 'linkedin_profile',
+                'facebook' => 'facebook_profile',
+                'instagram' => 'instagram_handle',
+                'website' => 'other_website',
+            ];
+
+            foreach ($socialLinkColumnMap as $legacyKey => $column) {
+                if (array_key_exists($legacyKey, $data['social_links']) && ! array_key_exists($column, $data)) {
+                    $data[$column] = $data['social_links'][$legacyKey];
+                }
+            }
+        }
+
+        if (array_key_exists('city_of_residence', $data) && ! array_key_exists('city', $data)) {
+            $data['city'] = $data['city_of_residence'];
+        }
+
+        if (array_key_exists('city', $data) && ! array_key_exists('city_of_residence', $data)) {
+            $data['city_of_residence'] = $data['city'];
         }
 
         if (array_key_exists('about', $data)) {
