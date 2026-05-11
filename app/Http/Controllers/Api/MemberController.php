@@ -122,7 +122,12 @@ class MemberController extends BaseApiController
 
     public function show(Request $request, string $id, PeerBlockService $peerBlockService)
     {
-        $user = User::with(['city', 'activeCircle.cityRef'])->find($id);
+        $user = User::with([
+            'city',
+            'activeCircle.cityRef',
+            'mainBusinessCategory:id,name',
+            'businessCategory:id,name',
+        ])->find($id);
 
         if (! $user) {
             return $this->error('Member not found', 404);
@@ -138,7 +143,12 @@ class MemberController extends BaseApiController
 
     public function publicProfileBySlug(Request $request, string $slug, PeerBlockService $peerBlockService)
     {
-        $user = User::with(['city', 'activeCircle.cityRef'])
+        $user = User::with([
+                'city',
+                'activeCircle.cityRef',
+                'mainBusinessCategory:id,name',
+                'businessCategory:id,name',
+            ])
             ->where('public_profile_slug', $slug)
             ->first();
 

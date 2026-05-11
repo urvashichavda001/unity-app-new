@@ -225,9 +225,11 @@ class UsersController extends Controller
             abort(403);
         }
 
-        $user = User::query()->findOrFail($userId);
+        $user = User::query()
+            ->with(['mainBusinessCategory:id,name', 'businessCategory:id,name'])
+            ->findOrFail($userId);
         $this->expireTrialUserForAdminPanel($user);
-        $user->refresh()->load(['city', 'roles']);
+        $user->refresh()->load(['city', 'roles', 'mainBusinessCategory:id,name', 'businessCategory:id,name']);
         $cities = City::query()->orderBy('name')->get();
         $adminRoleKeys = ['global_admin', 'industry_director', 'ded', 'circle_leader'];
         $roles = Role::query()
@@ -1180,6 +1182,8 @@ class UsersController extends Controller
                 'members_introduced_count',
                 'target_regions',
                 'target_business_categories',
+                'main_business_category_id',
+                'business_category_id',
                 'hobbies_interests',
                 'leadership_roles',
                 'is_sponsored_member',
@@ -1224,6 +1228,8 @@ class UsersController extends Controller
             ])
             ->with([
                 'city',
+                'mainBusinessCategory:id,name',
+                'businessCategory:id,name',
                 'circleMembers' => function ($circleMembersQuery) use ($joinedStatus) {
                     $circleMembersQuery
                         ->where('status', $joinedStatus)
