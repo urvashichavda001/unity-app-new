@@ -54,6 +54,7 @@
         ['label' => 'Testimonials', 'route' => 'admin.activities.testimonials.index'],
         ['label' => 'Requirements', 'route' => 'admin.activities.requirements.index'],
         ['label' => 'Referrals', 'route' => 'admin.activities.referrals.index'],
+        ['label' => 'Referral Report', 'route' => 'admin.referral-report.index'],
         ['label' => 'P2P Meetings', 'route' => 'admin.activities.p2p-meetings.index'],
         ['label' => 'Business Deals', 'route' => 'admin.activities.business-deals.index'],
         ['label' => 'Become A Leader', 'route' => 'admin.activities.become-a-leader.index'],
@@ -62,7 +63,7 @@
         ['label' => 'Register A Visitor', 'route' => 'admin.activities.register-visitor.index'],
     ] : [];
 
-    $activityActive = request()->routeIs('admin.activities.*') || request()->routeIs('admin.collaborations.*');
+    $activityActive = request()->routeIs('admin.activities.*') || request()->routeIs('admin.collaborations.*') || request()->routeIs('admin.referral-report.*');
     $activityExpanded = $activityActive || ! $isGlobalAdmin;
 
     $postsMenu = $isGlobalAdmin ? [
@@ -127,7 +128,7 @@
                         <ul class="nav flex-column ms-3">
                             @foreach ($activityMenu as $item)
                                 <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs($item['route']) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                                    <a class="nav-link {{ request()->routeIs($item['route']) || ($item['route'] === 'admin.referral-report.index' && request()->routeIs('admin.referral-report.*')) ? 'active' : '' }}" href="{{ route($item['route']) }}">
                                         {{ $item['label'] }}
                                     </a>
                                 </li>
@@ -147,7 +148,7 @@
                         <ul class="nav flex-column ms-3">
                             @foreach ($postsMenu as $item)
                                 <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs($item['route']) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                                    <a class="nav-link {{ request()->routeIs($item['route']) || ($item['route'] === 'admin.referral-report.index' && request()->routeIs('admin.referral-report.*')) ? 'active' : '' }}" href="{{ route($item['route']) }}">
                                         {{ $item['label'] }}
                                     </a>
                                 </li>
@@ -166,7 +167,7 @@
                     <ul class="nav flex-column ms-3">
                         @foreach ($pendingRequestsMenu as $item)
                             <li class="nav-item">
-                                <a class="nav-link {{ request()->routeIs($item['route']) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                                <a class="nav-link {{ request()->routeIs($item['route']) || ($item['route'] === 'admin.referral-report.index' && request()->routeIs('admin.referral-report.*')) ? 'active' : '' }}" href="{{ route($item['route']) }}">
                                     {{ $item['label'] }}
                                 </a>
                             </li>
@@ -184,7 +185,7 @@
                     <ul class="nav flex-column ms-3">
                         @foreach ($leadsMenu as $item)
                             <li class="nav-item">
-                                <a class="nav-link {{ request()->routeIs($item['route']) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                                <a class="nav-link {{ request()->routeIs($item['route']) || ($item['route'] === 'admin.referral-report.index' && request()->routeIs('admin.referral-report.*')) ? 'active' : '' }}" href="{{ route($item['route']) }}">
                                     {{ $item['label'] }}
                                 </a>
                             </li>
