@@ -597,9 +597,7 @@ class AuthController extends BaseApiController
                 'name' => (string) $businessCategory->name,
             ]
             : null;
-        $payload['city_of_residence'] = Schema::hasColumn('users', 'city_of_residence')
-            ? ($user->city_of_residence ?? null)
-            : null;
+        $payload['city_of_residence'] = $user->getAttribute('city_of_residence');
         $payload['referred_by'] = $referrer
             ? [
                 'id' => (string) $referrer->id,

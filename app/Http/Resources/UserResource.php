@@ -45,6 +45,7 @@ class UserResource extends JsonResource
             'email'               => $this->email,
             'phone'               => $this->phone,
             'city'                => $resolvedCity ? new CityResource($resolvedCity) : null,
+            'city_of_residence'   => $this->city_of_residence,
             'membership_status'   => $membershipStatus,
             'membership_expiry'   => $this->membership_ends_at,
             'membership_status_label' => match ($membershipStatus) {
