@@ -17,17 +17,87 @@
         </div>
     </div>
 
-    <form id="referralReportFilters" method="GET" action="{{ route('admin.referral-report.index') }}"></form>
-
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div class="d-flex gap-2 align-items-center">
-            <label for="perPage" class="small text-muted mb-0">Show</label>
-            <select id="perPage" name="per_page" form="referralReportFilters" class="form-select form-select-sm" style="width: 90px;">
-                @foreach ([10, 20, 50, 100] as $size)
-                    <option value="{{ $size }}" @selected(($filters['per_page'] ?? 20) == $size)>{{ $size }}</option>
-                @endforeach
-            </select>
+    <form id="referralReportFilters" method="GET" action="{{ route('admin.referral-report.index') }}" class="border rounded-4 bg-light-subtle p-3 mb-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-6 col-xl-3">
+                <label class="form-label small text-muted mb-1">Referrer Search</label>
+                <input
+                    type="text"
+                    name="q"
+                    value="{{ $filters['q'] ?? '' }}"
+                    class="form-control form-control-sm"
+                    placeholder="Name, email, phone, code"
+                >
+            </div>
+            <div class="col-12 col-md-6 col-xl-2">
+                <label class="form-label small text-muted mb-1">Referral Code</label>
+                <input
+                    type="text"
+                    name="referral_code"
+                    value="{{ $filters['referral_code'] ?? '' }}"
+                    class="form-control form-control-sm"
+                    placeholder="Referral Code"
+                >
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+                <label class="form-label small text-muted mb-1">Referred User</label>
+                <input
+                    type="text"
+                    name="referred_q"
+                    value="{{ $filters['referred_q'] ?? '' }}"
+                    class="form-control form-control-sm"
+                    placeholder="Search referred user"
+                >
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label small text-muted mb-1">From Date</label>
+                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="form-label small text-muted mb-1">To Date</label>
+                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-12 col-md-4 col-xl-2">
+                <label class="form-label small text-muted mb-1">Status</label>
+                <select name="reward_status" class="form-select form-select-sm" @disabled(! $hasRewardStatus)>
+                    <option value="">All Statuses</option>
+                    @foreach (['granted' => 'Granted', 'pending' => 'Pending', 'failed' => 'Failed'] as $value => $label)
+                        <option value="{{ $value }}" @selected(($filters['reward_status'] ?? '') === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-12 col-md-4 col-xl-2">
+                <label class="form-label small text-muted mb-1">Sort</label>
+                <select name="sort" class="form-select form-select-sm">
+                    <option value="last_referral_date" @selected(($filters['sort'] ?? '') === 'last_referral_date')>Last Referral</option>
+                    <option value="total_referred_users" @selected(($filters['sort'] ?? '') === 'total_referred_users')>Total Users</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-4 col-xl-2">
+                <label class="form-label small text-muted mb-1">Direction</label>
+                <select name="direction" class="form-select form-select-sm">
+                    <option value="desc" @selected(($filters['direction'] ?? 'desc') === 'desc')>Descending</option>
+                    <option value="asc" @selected(($filters['direction'] ?? 'desc') === 'asc')>Ascending</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3 col-xl-1">
+                <label for="perPage" class="form-label small text-muted mb-1">Show</label>
+                <select id="perPage" name="per_page" class="form-select form-select-sm">
+                    @foreach ([10, 20, 50, 100] as $size)
+                        <option value="{{ $size }}" @selected(($filters['per_page'] ?? 20) == $size)>{{ $size }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-12 col-md-9 col-xl-3">
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                    <a href="{{ route('admin.referral-report.index') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
+                </div>
+            </div>
         </div>
+    </form>
+
+    <div class="d-flex justify-content-end align-items-center mb-3">
         <div class="small text-muted">
             @if($records->total() > 0)
                 Records {{ $records->firstItem() }} to {{ $records->lastItem() }} of {{ $records->total() }}
@@ -48,58 +118,6 @@
                     <th class="text-center">Coins Granted</th>
                     <th>Last Referral Date</th>
                     <th class="text-end">Action</th>
-                </tr>
-                <tr class="bg-light align-middle">
-                    <th>
-                        <input
-                            type="text"
-                            name="q"
-                            form="referralReportFilters"
-                            value="{{ $filters['q'] ?? '' }}"
-                            class="form-control form-control-sm"
-                            placeholder="Name, email, phone, code"
-                        >
-                    </th>
-                    <th>
-                        <input
-                            type="text"
-                            name="referral_code"
-                            form="referralReportFilters"
-                            value="{{ $filters['referral_code'] ?? '' }}"
-                            class="form-control form-control-sm"
-                            placeholder="Referral Code"
-                        >
-                    </th>
-                    <th>
-                        <div class="d-flex flex-column gap-2">
-                            <input type="date" name="from" form="referralReportFilters" value="{{ $filters['from'] ?? '' }}" class="form-control form-control-sm" title="From referral date">
-                            <input type="date" name="to" form="referralReportFilters" value="{{ $filters['to'] ?? '' }}" class="form-control form-control-sm" title="To referral date">
-                        </div>
-                    </th>
-                    <th>
-                        <select name="sort" form="referralReportFilters" class="form-select form-select-sm">
-                            <option value="last_referral_date" @selected(($filters['sort'] ?? '') === 'last_referral_date')>Sort: Last Referral</option>
-                            <option value="total_referred_users" @selected(($filters['sort'] ?? '') === 'total_referred_users')>Sort: Total Users</option>
-                        </select>
-                    </th>
-                    <th>
-                        <select name="reward_status" form="referralReportFilters" class="form-select form-select-sm" @disabled(! $hasRewardStatus)>
-                            <option value="">All Statuses</option>
-                            @foreach (['granted' => 'Granted', 'pending' => 'Pending', 'failed' => 'Failed'] as $value => $label)
-                                <option value="{{ $value }}" @selected(($filters['reward_status'] ?? '') === $value)>{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </th>
-                    <th>
-                        <select name="direction" form="referralReportFilters" class="form-select form-select-sm">
-                            <option value="desc" @selected(($filters['direction'] ?? 'desc') === 'desc')>Descending</option>
-                            <option value="asc" @selected(($filters['direction'] ?? 'desc') === 'asc')>Ascending</option>
-                        </select>
-                    </th>
-                    <th class="text-end">
-                        <button type="submit" form="referralReportFilters" class="btn btn-primary btn-sm">Apply</button>
-                        <a href="{{ route('admin.referral-report.index') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
-                    </th>
                 </tr>
             </thead>
             <tbody>

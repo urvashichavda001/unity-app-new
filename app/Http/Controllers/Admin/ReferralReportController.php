@@ -129,6 +129,7 @@ class ReferralReportController extends Controller
         $validated = $request->validate([
             'q' => ['nullable', 'string', 'max:255'],
             'referral_code' => ['nullable', 'string', 'max:100'],
+            'referred_q' => ['nullable', 'string', 'max:255'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
             'reward_status' => ['nullable', 'string', 'max:50'],
@@ -140,6 +141,7 @@ class ReferralReportController extends Controller
         return [
             'q' => trim((string) ($validated['q'] ?? '')),
             'referral_code' => trim((string) ($validated['referral_code'] ?? '')),
+            'referred_q' => trim((string) ($validated['referred_q'] ?? '')),
             'from' => (string) ($validated['from'] ?? ''),
             'to' => (string) ($validated['to'] ?? ''),
             'reward_status' => trim((string) ($validated['reward_status'] ?? '')),
@@ -163,6 +165,9 @@ class ReferralReportController extends Controller
         $query = DB::table('referraldata as rd')
             ->leftJoin('users as referrer', function ($join): void {
                 $join->on(DB::raw('rd.referrer_user_id::text'), '=', DB::raw('referrer.id::text'));
+            })
+            ->leftJoin('users as referred', function ($join): void {
+                $join->on(DB::raw('rd.referred_user_id::text'), '=', DB::raw('referred.id::text'));
             })
             ->selectRaw($this->summarySelectSql())
             ->groupBy('rd.referrer_user_id')
@@ -210,6 +215,7 @@ class ReferralReportController extends Controller
             ->selectRaw($this->detailSelectSql());
 
         $this->applyReferralDataFilters($query, $filters);
+        $this->applyReferredUserFilters($query, $filters);
 
         return $query
             ->orderByDesc(DB::raw($this->referralDateExpression()))
@@ -262,6 +268,7 @@ class ReferralReportController extends Controller
         }
 
         $this->applyReferralDataFilters($query, $filters);
+        $this->applyReferredUserFilters($query, $filters);
     }
 
     private function applyReferralDataFilters(Builder $query, array $filters): void
@@ -282,6 +289,24 @@ class ReferralReportController extends Controller
         if (($filters['reward_status'] ?? '') !== '' && $this->hasReferralColumn('reward_status')) {
             $query->where('rd.reward_status', $filters['reward_status']);
         }
+    }
+
+    private function applyReferredUserFilters(Builder $query, array $filters): void
+    {
+        if (($filters['referred_q'] ?? '') === '') {
+            return;
+        }
+
+        $like = '%' . $filters['referred_q'] . '%';
+        $query->where(function (Builder $inner) use ($like): void {
+            $inner->whereRaw('1 = 0');
+
+            foreach (['display_name', 'first_name', 'last_name', 'email', 'phone'] as $column) {
+                if ($this->hasUserColumn($column)) {
+                    $inner->orWhere('referred.' . $column, 'ilike', $like);
+                }
+            }
+        });
     }
 
     private function summarySelectSql(): string
