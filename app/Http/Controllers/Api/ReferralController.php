@@ -14,6 +14,8 @@ use App\Services\Coins\CoinsService;
 use App\Services\Notifications\NotifyUserService;
 use App\Services\Referrals\ReferralService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class ReferralController extends BaseApiController
@@ -70,6 +72,56 @@ class ReferralController extends BaseApiController
         ]);
     }
 
+    public function search(Request $request)
+    {
+        $queryText = trim((string) $request->query('q', ''));
+
+        if ($queryText === '') {
+            return $this->success([], 'Referral users fetched successfully.');
+        }
+
+        $referralCodeColumn = $this->referralLinksCodeColumn();
+        $referralUserColumn = $this->referralLinksUserColumn();
+        $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $queryText) . '%';
+
+        $query = User::query()
+            ->leftJoin('referral_links as rl', 'rl.' . $referralUserColumn, '=', 'users.id')
+            ->select([
+                'users.id as user_id',
+                'users.display_name',
+                'users.first_name',
+                'users.last_name',
+                'users.company_name',
+                DB::raw('rl."' . $referralCodeColumn . '" as referral_code'),
+            ])
+            ->where(function ($query) use ($like, $referralCodeColumn): void {
+                $query->where('users.display_name', 'ILIKE', $like)
+                    ->orWhere('users.first_name', 'ILIKE', $like)
+                    ->orWhere('users.last_name', 'ILIKE', $like)
+                    ->orWhere('users.email', 'ILIKE', $like)
+                    ->orWhere('users.phone', 'ILIKE', $like)
+                    ->orWhere('rl.' . $referralCodeColumn, 'ILIKE', $like);
+            })
+            ->orderBy('users.display_name')
+            ->limit(20);
+
+        $items = $query->get()
+            ->map(function ($row): array {
+                $displayName = trim((string) (($row->display_name ?: '') ?: (($row->first_name ?? '') . ' ' . ($row->last_name ?? ''))));
+
+                return [
+                    'user_id' => (string) $row->user_id,
+                    'display_name' => $displayName,
+                    'company_name' => $row->company_name,
+                    'referral_code' => $row->referral_code,
+                ];
+            })
+            ->unique('user_id')
+            ->values();
+
+        return $this->success($items, 'Referral users fetched successfully.');
+    }
+
     public function validateSelf(Request $request, ReferralService $referralService)
     {
         $user = $request->user();
@@ -110,6 +162,31 @@ class ReferralController extends BaseApiController
                     : null,
             ],
         ]);
+    }
+
+
+    private function referralLinksUserColumn(): string
+    {
+        if (Schema::hasTable('referral_links') && Schema::hasColumn('referral_links', 'user_id')) {
+            return 'user_id';
+        }
+
+        return 'referrer_user_id';
+    }
+
+    private function referralLinksCodeColumn(): string
+    {
+        if (! Schema::hasTable('referral_links')) {
+            return 'token';
+        }
+
+        foreach (['referral_code', 'token', 'code', 'ref_code', 'invite_code'] as $column) {
+            if (Schema::hasColumn('referral_links', $column)) {
+                return $column;
+            }
+        }
+
+        return 'token';
     }
 
     public function index(Request $request)

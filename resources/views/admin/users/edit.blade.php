@@ -456,11 +456,28 @@
                         <h6 class="mb-2">Joined Circle Categories</h6>
                         @php
                             $joinedCircleCategoryTrees = $joinedCircleCategoryTrees ?? collect();
+                            $registeredMainBusinessCategory = $user->mainBusinessCategory;
+                            $registeredBusinessCategory = $user->businessCategory;
+                            $hasRegisteredBusinessCategory = $registeredMainBusinessCategory || $registeredBusinessCategory;
                         @endphp
 
-                        @if($joinedCircleCategoryTrees->isEmpty())
+                        @if($joinedCircleCategoryTrees->isEmpty() && ! $hasRegisteredBusinessCategory)
                             <div class="text-muted">—</div>
                         @else
+                            @if($hasRegisteredBusinessCategory)
+                                <div class="border rounded p-3 bg-light-subtle mb-3">
+                                    <div class="fw-semibold mb-2">Registered Business Category</div>
+                                    <div class="small">
+                                        {{ $registeredMainBusinessCategory?->name ?? '—' }}
+                                        @if($registeredBusinessCategory)
+                                            <span class="text-muted mx-1">→</span>
+                                            {{ $registeredBusinessCategory->name }}
+                                        @endif
+                                    </div>
+                                </div>
+                            @endif
+
+                            @if($joinedCircleCategoryTrees->isNotEmpty())
                             <div class="row g-3">
                                 @foreach($joinedCircleCategoryTrees as $circleTree)
                                     <div class="col-12">
@@ -522,6 +539,7 @@
                                     </div>
                                 @endforeach
                             </div>
+                            @endif
                         @endif
                     </div>
                 </div>
