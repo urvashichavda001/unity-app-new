@@ -11,12 +11,10 @@
             </a>
             <h1 class="h4 mb-1">Users Referred by {{ $summary?->referrer_name ?: 'Deleted / Unknown User' }}</h1>
             <div class="text-muted small">
-                {{ $summary?->referrer_email ?: 'No email' }}
-                @if($summary?->referrer_phone)
-                    <span class="mx-1">•</span>{{ $summary->referrer_phone }}
-                @endif
+                <span>Email: {{ $summary?->referrer_email ?: 'No email' }}</span>
+                <span class="mx-1">•</span><span>Phone: {{ $summary?->referrer_phone ?: 'No phone' }}</span>
                 @if($summary?->referrer_company)
-                    <span class="mx-1">•</span>{{ $summary->referrer_company }}
+                    <span class="mx-1">•</span><span>Company: {{ $summary->referrer_company }}</span>
                 @endif
             </div>
         </div>
@@ -67,6 +65,7 @@
                             <div class="fw-semibold text-dark">{{ $record->referred_name ?: 'Deleted / Unknown User' }}</div>
                             <div class="text-muted small">{{ $record->referred_email ?: 'No email' }}</div>
                             <div class="text-muted small">{{ $record->referred_phone ?: 'No phone' }}</div>
+                            <div class="text-muted small">ID: {{ $record->referred_user_id ?: '—' }}</div>
                         </td>
                         <td>
                             <div>{{ $record->company_name ?: 'No company' }}</div>

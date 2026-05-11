@@ -43,6 +43,7 @@
                 <tr>
                     <th>Referrer</th>
                     <th>Referral Code</th>
+                    <th>Referred Users</th>
                     <th class="text-center">Total Users</th>
                     <th class="text-center">Coins Granted</th>
                     <th>Last Referral Date</th>
@@ -60,7 +61,17 @@
                         >
                     </th>
                     <th>
-                        <div class="d-flex gap-2">
+                        <input
+                            type="text"
+                            name="referral_code"
+                            form="referralReportFilters"
+                            value="{{ $filters['referral_code'] ?? '' }}"
+                            class="form-control form-control-sm"
+                            placeholder="Referral Code"
+                        >
+                    </th>
+                    <th>
+                        <div class="d-flex flex-column gap-2">
                             <input type="date" name="from" form="referralReportFilters" value="{{ $filters['from'] ?? '' }}" class="form-control form-control-sm" title="From referral date">
                             <input type="date" name="to" form="referralReportFilters" value="{{ $filters['to'] ?? '' }}" class="form-control form-control-sm" title="To referral date">
                         </div>
@@ -103,6 +114,29 @@
                         <td>
                             <span class="badge bg-light text-dark border text-wrap">{{ $record->referral_codes ?: '—' }}</span>
                         </td>
+                        <td style="min-width: 320px;">
+                            @php
+                                $referredUsers = $referredUsersByReferrer->get((string) $record->referrer_user_id, collect());
+                            @endphp
+                            @if($referredUsers->isNotEmpty())
+                                <div class="d-flex flex-column gap-2" style="max-height: 260px; overflow-y: auto;">
+                                    @foreach($referredUsers as $referredUser)
+                                        <div class="border rounded-3 p-2 bg-light-subtle">
+                                            <div class="fw-semibold text-dark">{{ $referredUser->referred_name ?: 'Deleted / Unknown User' }}</div>
+                                            <div class="text-muted small">{{ $referredUser->referred_email ?: 'No email' }}</div>
+                                            <div class="text-muted small">{{ $referredUser->referred_phone ?: 'No phone' }}</div>
+                                            <div class="d-flex flex-wrap gap-2 mt-1 small">
+                                                <span class="badge bg-light text-dark border">{{ $referredUser->used_at ? \Illuminate\Support\Carbon::parse($referredUser->used_at)->format('d-m-Y h:i A') : 'No date' }}</span>
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">{{ number_format((int) $referredUser->coins) }} coins</span>
+                                                <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{{ $referredUser->reward_status ?: '—' }}</span>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @else
+                                <span class="text-muted small">No referred users found.</span>
+                            @endif
+                        </td>
                         <td class="text-center fw-semibold">{{ number_format((int) $record->total_referred_users) }}</td>
                         <td class="text-center">
                             <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
@@ -122,7 +156,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4">No referral users found.</td>
+                        <td colspan="7" class="text-center text-muted py-4">No referral users found.</td>
                     </tr>
                 @endforelse
             </tbody>
