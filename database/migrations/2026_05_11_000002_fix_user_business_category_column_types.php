@@ -13,29 +13,22 @@ return new class extends Migration
             return;
         }
 
-        $level4Table = $this->level4CategoriesTable();
-
         Schema::table('users', function (Blueprint $table): void {
-            if (! Schema::hasColumn('users', 'main_business_category_id')) {
-                $table->unsignedBigInteger('main_business_category_id')->nullable();
-            }
-
-            if (! Schema::hasColumn('users', 'business_category_id')) {
-                $table->unsignedBigInteger('business_category_id')->nullable();
-            }
-
-            if (! Schema::hasColumn('users', 'city_of_residence')) {
-                $table->string('city_of_residence', 150)->nullable();
-            }
-
-            if (! Schema::hasColumn('users', 'referred_by_user_id')) {
-                $this->addNullableReferenceColumn($table, 'referred_by_user_id', 'users');
+            foreach (['main_business_category_id', 'business_category_id'] as $column) {
+                if (Schema::hasColumn('users', $column)) {
+                    $this->dropForeignIfExists('users', $column);
+                    $table->dropColumn($column);
+                }
             }
         });
 
+        Schema::table('users', function (Blueprint $table): void {
+            $table->unsignedBigInteger('main_business_category_id')->nullable();
+            $table->unsignedBigInteger('business_category_id')->nullable();
+        });
+
         $this->addForeignKeyIfSafe('users', 'main_business_category_id', 'circle_categories', 'id');
-        $this->addForeignKeyIfSafe('users', 'business_category_id', $level4Table, 'id');
-        $this->addForeignKeyIfSafe('users', 'referred_by_user_id', 'users', 'id');
+        $this->addForeignKeyIfSafe('users', 'business_category_id', $this->level4CategoriesTable(), 'id');
     }
 
     public function down(): void
@@ -45,20 +38,14 @@ return new class extends Migration
         }
 
         Schema::table('users', function (Blueprint $table): void {
-            foreach (['main_business_category_id', 'business_category_id', 'referred_by_user_id'] as $column) {
+            foreach (['main_business_category_id', 'business_category_id'] as $column) {
                 if (Schema::hasColumn('users', $column)) {
                     $this->dropForeignIfExists('users', $column);
-                }
-            }
-
-            foreach (['main_business_category_id', 'business_category_id', 'city_of_residence', 'referred_by_user_id'] as $column) {
-                if (Schema::hasColumn('users', $column)) {
                     $table->dropColumn($column);
                 }
             }
         });
     }
-
 
     private function level4CategoriesTable(): string
     {
@@ -71,40 +58,13 @@ return new class extends Migration
         return 'level4_categories';
     }
 
-    private function addNullableReferenceColumn(Blueprint $table, string $column, string $referencedTable): void
-    {
-        $referencedType = $this->columnDataType($referencedTable, 'id');
-
-        if ($referencedType === null) {
-            $table->unsignedInteger($column)->nullable();
-            return;
-        }
-
-        if ($referencedType === 'uuid') {
-            $table->uuid($column)->nullable();
-            return;
-        }
-
-        if (in_array($referencedType, ['bigint', 'bigserial'], true)) {
-            $table->unsignedBigInteger($column)->nullable();
-            return;
-        }
-
-        if (in_array($referencedType, ['integer', 'serial'], true)) {
-            $table->unsignedInteger($column)->nullable();
-            return;
-        }
-
-        $table->uuid($column)->nullable();
-    }
-
     private function addForeignKeyIfSafe(string $table, string $column, string $referencedTable, string $referencedColumn): void
     {
         if (! Schema::hasTable($referencedTable) || ! Schema::hasColumn($table, $column)) {
             return;
         }
 
-        if ($this->columnDataType($table, $column) !== $this->columnDataType($referencedTable, $referencedColumn)) {
+        if (! $this->integerTypesCompatible($this->columnDataType($table, $column), $this->columnDataType($referencedTable, $referencedColumn))) {
             return;
         }
 
@@ -149,6 +109,13 @@ return new class extends Migration
             ->first();
 
         return $row?->data_type;
+    }
+
+    private function integerTypesCompatible(?string $left, ?string $right): bool
+    {
+        $integerTypes = ['bigint', 'bigserial', 'integer', 'serial'];
+
+        return in_array($left, $integerTypes, true) && in_array($right, $integerTypes, true);
     }
 
     private function foreignKeyExists(string $constraint): bool

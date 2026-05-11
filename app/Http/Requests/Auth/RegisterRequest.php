@@ -42,9 +42,9 @@ class RegisterRequest extends FormRequest
             'city_id' => $this->nullableInput('city_id'),
         ];
 
-        if (! blank($incomingReferralCode)) {
-            $payload['referral_code'] = strtoupper(trim((string) $incomingReferralCode));
-        }
+        $payload['referral_code'] = blank($incomingReferralCode)
+            ? null
+            : strtoupper(trim((string) $incomingReferralCode));
 
         $this->merge($payload);
     }

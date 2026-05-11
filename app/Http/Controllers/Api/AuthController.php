@@ -497,10 +497,12 @@ class AuthController extends BaseApiController
             return null;
         }
 
-        $query = DB::table($this->level4CategoriesTable())
-            ->where('id', $businessCategoryId);
+        $level4Table = $this->level4CategoriesTable();
 
-        if (Schema::hasColumn($this->level4CategoriesTable(), 'is_active')) {
+        $query = DB::table($level4Table)
+            ->where('id', (int) $businessCategoryId);
+
+        if (Schema::hasColumn($level4Table, 'is_active')) {
             $query->where('is_active', true);
         }
 
@@ -683,11 +685,15 @@ class AuthController extends BaseApiController
         }
 
         if (Schema::hasColumn('users', 'main_business_category_id')) {
-            $user->main_business_category_id = $data['main_business_category_id'] ?? null;
+            $user->main_business_category_id = blank($data['main_business_category_id'] ?? null)
+                ? null
+                : (int) $data['main_business_category_id'];
         }
 
         if (Schema::hasColumn('users', 'business_category_id')) {
-            $user->business_category_id = $data['business_category_id'] ?? null;
+            $user->business_category_id = blank($data['business_category_id'] ?? null)
+                ? null
+                : (int) $data['business_category_id'];
         }
 
         if (! blank($data['resolved_referred_by_user_id'] ?? null)) {
