@@ -110,6 +110,7 @@ class UserResource extends JsonResource
             'leadership_roles'    => $this->leadership_roles ?? [],
             'special_recognitions'=> $this->special_recognitions ?? [],
             'social_links'        => $this->resolveSocialLinks(),
+            'media'               => $this->mediaValue(),
             'profile_photo_url'   => $this->profile_photo_url,
             'cover_photo_url'     => $coverPhotoUrl,
             'address'             => $this->address ?? null,
@@ -122,6 +123,28 @@ class UserResource extends JsonResource
             'created_at'          => $this->created_at,
             'updated_at'          => $this->updated_at,
         ];
+    }
+
+    /**
+     * @return array<int, array{id: string, url: string, type: string}>
+     */
+    private function mediaValue(): array
+    {
+        $media = $this->media;
+
+        if (! is_array($media)) {
+            return [];
+        }
+
+        return collect($media)
+            ->filter(fn ($item): bool => is_array($item) && ! blank($item['id'] ?? null) && ! blank($item['type'] ?? null))
+            ->map(fn (array $item): array => [
+                'id' => (string) $item['id'],
+                'url' => url('/api/v1/files/' . $item['id']),
+                'type' => (string) $item['type'],
+            ])
+            ->values()
+            ->all();
     }
 
     private function resolveCircleMemberships(): array

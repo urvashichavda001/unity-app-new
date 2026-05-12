@@ -57,6 +57,10 @@ class ProfileController extends BaseApiController
             }
         }
 
+        if (array_key_exists('media', $data)) {
+            $data['media'] = $this->formatMediaPayload($data['media']);
+        }
+
         if (array_key_exists('city_of_residence', $data) && ! array_key_exists('city', $data)) {
             $data['city'] = $data['city_of_residence'];
         }
@@ -136,6 +140,22 @@ class ProfileController extends BaseApiController
     }
 
     /**
+     * @param array<int, array<string, mixed>> $media
+     * @return array<int, array{id: string, url: string, type: string}>
+     */
+    private function formatMediaPayload(array $media): array
+    {
+        return collect($media)
+            ->map(fn (array $item): array => [
+                'id' => (string) $item['id'],
+                'url' => url('/api/v1/files/' . $item['id']),
+                'type' => (string) $item['type'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<int, string>
      */
     private function profileUpdateFields(): array
@@ -160,6 +180,7 @@ class ProfileController extends BaseApiController
             'preferred_language',
             'skills',
             'interests',
+            'media',
             'social_links',
             'profile_photo_id',
             'cover_photo_id',

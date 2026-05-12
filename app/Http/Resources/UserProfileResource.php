@@ -77,6 +77,7 @@ class UserProfileResource extends JsonResource
 
             'profile_photo_id'   => $this->profile_photo_file_id,
             'cover_photo_id'     => $this->cover_photo_file_id,
+            'media'              => $this->mediaValue(),
 
             'profile_photo_url'  => $this->profile_photo_file_id
                 ? url("/api/v1/files/{$this->profile_photo_file_id}")
@@ -88,5 +89,27 @@ class UserProfileResource extends JsonResource
             'created_at'         => $this->created_at,
             'updated_at'         => $this->updated_at,
         ];
+    }
+
+    /**
+     * @return array<int, array{id: string, url: string, type: string}>
+     */
+    private function mediaValue(): array
+    {
+        $media = $this->media;
+
+        if (! is_array($media)) {
+            return [];
+        }
+
+        return collect($media)
+            ->filter(fn ($item): bool => is_array($item) && ! blank($item['id'] ?? null) && ! blank($item['type'] ?? null))
+            ->map(fn (array $item): array => [
+                'id' => (string) $item['id'],
+                'url' => url('/api/v1/files/' . $item['id']),
+                'type' => (string) $item['type'],
+            ])
+            ->values()
+            ->all();
     }
 }
