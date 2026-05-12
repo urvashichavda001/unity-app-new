@@ -14,7 +14,7 @@ class CircleMemberController extends Controller
             ->where('circle_id', $circle->id)
             ->whereNull('deleted_at')
             ->with([
-                'user.city',
+                'user',
                 'user.businessCategory',
             ]);
 

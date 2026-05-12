@@ -20,12 +20,8 @@ class CircleMemberResource extends JsonResource
 
             'user' => $this->whenLoaded('user', function () {
                 $user = $this->user;
-                $city = $user?->relationLoaded('city')
-                    ? $user?->city
-                    : ($user?->relationLoaded('cityRelation') ? $user?->cityRelation : null);
-                $businessCategory = $user?->relationLoaded('businessCategory')
-                    ? $user?->businessCategory
-                    : null;
+                $cityName = $this->resolveCityName($user);
+                $categoryName = $this->resolveBusinessCategoryName($user);
                 $photoFileId = data_get($user, 'profile_photo_file_id')
                     ?: data_get($user, 'image_file_id')
                     ?: data_get($user, 'avatar_file_id')
@@ -45,11 +41,11 @@ class CircleMemberResource extends JsonResource
                     'phone' => $user?->phone ?? null,
                     'country_code' => $user?->country_code ?? null,
                     'city_id' => $user?->city_id,
-                    'city_name' => $city?->name,
-                    'city' => $city?->name,
+                    'city_name' => $cityName,
+                    'city' => $cityName,
                     'business_category_id' => $user?->business_category_id,
-                    'business_category_name' => $businessCategory?->name,
-                    'business_category' => $businessCategory?->name,
+                    'business_category_name' => $categoryName,
+                    'business_category' => $categoryName,
                     'business_sub_category' => $user?->business_sub_category,
                     'membership_status' => $user?->membership_status ?? null,
                     'is_active' => $user?->is_active ?? null,
@@ -71,5 +67,63 @@ class CircleMemberResource extends JsonResource
                 ];
             }),
         ];
+    }
+
+    private function resolveCityName($user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        $cityRelation = $user->relationLoaded('city')
+            ? $user->getRelationValue('city')
+            : ($user->relationLoaded('cityRelation') ? $user->getRelationValue('cityRelation') : null);
+
+        if (is_object($cityRelation)) {
+            return $cityRelation->name ?? null;
+        }
+
+        $city = $user->getAttribute('city');
+
+        if (is_object($city)) {
+            return $city->name ?? null;
+        }
+
+        if (is_string($city) && $city !== '') {
+            return $city;
+        }
+
+        $cityName = $user->getAttribute('city_name');
+
+        return is_string($cityName) && $cityName !== '' ? $cityName : null;
+    }
+
+    private function resolveBusinessCategoryName($user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        $businessCategoryRelation = $user->relationLoaded('businessCategory')
+            ? $user->getRelationValue('businessCategory')
+            : null;
+
+        if (is_object($businessCategoryRelation)) {
+            return $businessCategoryRelation->name ?? null;
+        }
+
+        $businessCategory = $user->getAttribute('business_category');
+
+        if (is_object($businessCategory)) {
+            return $businessCategory->name ?? null;
+        }
+
+        if (is_string($businessCategory) && $businessCategory !== '') {
+            return $businessCategory;
+        }
+
+        $businessCategoryName = $user->getAttribute('business_category_name');
+
+        return is_string($businessCategoryName) && $businessCategoryName !== '' ? $businessCategoryName : null;
     }
 }
