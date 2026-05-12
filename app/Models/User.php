@@ -342,7 +342,7 @@ class User extends Authenticatable
 
     public function businessCategory(): BelongsTo
     {
-        return $this->belongsTo(Level4Category::class, 'business_category_id');
+        return $this->belongsTo(CircleCategory::class, 'business_category_id');
     }
 
     public function foundedCircles(): HasMany

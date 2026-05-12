@@ -13,7 +13,10 @@ class CircleMemberController extends Controller
         $query = \App\Models\CircleMember::query()
             ->where('circle_id', $circle->id)
             ->whereNull('deleted_at')
-            ->with(['user.cityRelation']);
+            ->with([
+                'user.city',
+                'user.businessCategory',
+            ]);
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
