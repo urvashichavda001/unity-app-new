@@ -23,11 +23,14 @@ class UserPushToken extends Model
         'token',
         'platform',
         'device_id',
+        'app_version',
         'last_seen_at',
+        'last_update_notification_sent_at',
     ];
 
     protected $casts = [
         'last_seen_at' => 'datetime',
+        'last_update_notification_sent_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

@@ -11,3 +11,5 @@ Artisan::command('inspire', function () {
 Schedule::command('memberships:expire')->daily();
 
 Schedule::command('collaborations:expire')->dailyAt('00:10');
+
+Schedule::command('app:update-reminder-notifications')->hourly();

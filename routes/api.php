@@ -531,6 +531,7 @@ Route::prefix('v1')->group(function () {
 
         // Push tokens
         Route::post('/push-tokens', [PushTokenController::class, 'store']);
+        Route::post('/user/push-token', [PushTokenController::class, 'store']);
         Route::delete('/push-tokens', [PushTokenController::class, 'destroy']);
 
         if (app()->environment(['local', 'staging'])) {

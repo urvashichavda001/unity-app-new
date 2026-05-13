@@ -49,19 +49,36 @@ class FcmService
                 $androidNotification['image'] = $resolvedImageUrl;
             }
 
+            $androidNotification = array_merge([
+                'sound' => 'default',
+            ], $androidNotification);
+
             $payload = [
                 'message' => [
                     'token' => $token,
                     'notification' => $notification,
                     'data' => $this->normalizeData($data),
+                    'apns' => [
+                        'headers' => [
+                            'apns-priority' => '10',
+                        ],
+                        'payload' => [
+                            'aps' => [
+                                'alert' => [
+                                    'title' => $title,
+                                    'body' => $body,
+                                ],
+                                'sound' => 'default',
+                                'badge' => 1,
+                            ],
+                        ],
+                    ],
+                    'android' => [
+                        'priority' => 'high',
+                        'notification' => $androidNotification,
+                    ],
                 ],
             ];
-
-            if ($androidNotification !== []) {
-                $payload['message']['android'] = [
-                    'notification' => $androidNotification,
-                ];
-            }
 
             Log::info('Sending FCM request', [
                 'token_prefix' => substr($token, 0, 20) . '...',
@@ -178,7 +195,7 @@ class FcmService
         foreach ($data as $key => $value) {
             $normalized[(string) $key] = is_scalar($value) || $value === null
                 ? (string) $value
-                : json_encode($value);
+                : (json_encode($value) ?: '');
         }
 
         return $normalized;
