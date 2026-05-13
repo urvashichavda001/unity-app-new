@@ -25,9 +25,7 @@ class UserResource extends JsonResource
             ? url('/api/v1/files/' . $coverPhotoId)
             : null;
         $profileVideoId = $this->profile_video_id;
-        $profileVideoUrl = $profileVideoId
-            ? url('/api/v1/files/' . $profileVideoId)
-            : null;
+        $profileVideoUrl = $this->resolveProfileVideoUrl();
 
         $membershipStatus = $this->effective_membership_status ?? $this->membership_status;
         $resolvedCircle = $this->resolvePrimaryCircleContext();
@@ -137,6 +135,37 @@ class UserResource extends JsonResource
             'created_at'          => $this->created_at,
             'updated_at'          => $this->updated_at,
         ];
+    }
+
+
+    private function resolveProfileVideoUrl(): ?string
+    {
+        $media = $this->media;
+
+        if (is_string($media) && $media !== '') {
+            $decoded = json_decode($media, true);
+            $media = is_array($decoded) ? $decoded : [];
+        }
+
+        if (! is_array($media) || $media === []) {
+            return null;
+        }
+
+        $firstMedia = array_values($media)[0] ?? null;
+
+        if (! is_array($firstMedia)) {
+            return null;
+        }
+
+        if (! blank($firstMedia['url'] ?? null)) {
+            return (string) $firstMedia['url'];
+        }
+
+        if (! blank($firstMedia['id'] ?? null)) {
+            return url('/api/v1/files/' . $firstMedia['id']);
+        }
+
+        return null;
     }
 
     /**

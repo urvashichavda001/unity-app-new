@@ -56,14 +56,6 @@ Each member item keeps `profile_photo_id` and also includes `profile_photo_url` 
 
 If the member has no profile photo, `profile_photo_url` is `null`.
 
-## Manual database note
-
-No migration file is included for `users.profile_video_id`. If the production database does not already have the column, add it manually before relying on the profile video response fields:
-
-```sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_video_id uuid NULL;
-```
-
 ## Confirm member profile video fields
 
 ```http
@@ -72,16 +64,17 @@ Authorization: Bearer {token}
 Accept: application/json
 ```
 
-Each member item includes these additive fields:
+Each member item keeps existing profile video fields and sets `profile_video_url` from the first item in the `media` JSON column:
 
 ```json
 {
-  "profile_video_id": "019e1fd9-0000-0000-0000-000000000000",
-  "profile_video": {
-    "id": "019e1fd9-0000-0000-0000-000000000000",
-    "url": "https://peersunity.com/api/v1/files/019e1fd9-0000-0000-0000-000000000000"
-  },
-  "profile_video_url": "https://peersunity.com/api/v1/files/019e1fd9-0000-0000-0000-000000000000"
+  "media": [
+    {
+      "id": "019e1c11-a32e-709e-9694-a887466c6cfc",
+      "url": "https://peersunity.com/api/v1/files/019e1c11-a32e-709e-9694-a887466c6cfc"
+    }
+  ],
+  "profile_video_url": "https://peersunity.com/api/v1/files/019e1c11-a32e-709e-9694-a887466c6cfc"
 }
 ```
 
@@ -98,6 +91,6 @@ If the member has no profile video:
 ## Open a profile video file
 
 ```http
-GET /api/v1/files/{profile_video_id}
+GET /api/v1/files/{media_item_id}
 Authorization: Bearer {token}
 ```
