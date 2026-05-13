@@ -13,6 +13,9 @@ class CollaborationPostListResource extends JsonResource
         $isPaidAuth = $authUser ? (method_exists($authUser, 'isPaidMember') ? $authUser->isPaidMember() : ! in_array($authUser->membership_status, ['visitor', 'free_peer', 'suspended'], true)) : false;
         $posterPaid = ! in_array($this->user?->membership_status, ['visitor', 'free_peer', 'suspended'], true);
         $profilePhotoFileId = $this->user?->profile_photo_file_id ?? $this->user?->profile_photo_id;
+        $acceptedBy = $this->acceptedByUser;
+        $acceptedByName = $acceptedBy?->display_name ?: trim(($acceptedBy?->first_name ?? '') . ' ' . ($acceptedBy?->last_name ?? ''));
+        $acceptedByPhotoFileId = $acceptedBy?->profile_photo_file_id ?? $acceptedBy?->profile_photo_id;
 
         return [
             'id' => $this->id,
@@ -41,6 +44,21 @@ class CollaborationPostListResource extends JsonResource
             'posted_days_ago' => $this->posted_at ? $this->posted_at->diffInDays(now()) : null,
             'expires_at' => optional($this->expires_at)->toIso8601String(),
             'status' => $this->status,
+            'completion_status' => $this->completion_status ?: 'incomplete',
+            'completed_at' => optional($this->completed_at)->toIso8601String(),
+            'accepted_at' => optional($this->accepted_at)->toIso8601String(),
+            'accepted_by' => $acceptedBy ? [
+                'id' => $acceptedBy->id,
+                'name' => $acceptedByName,
+                'first_name' => $acceptedBy->first_name,
+                'last_name' => $acceptedBy->last_name,
+                'email' => $acceptedBy->email,
+                'phone' => $acceptedBy->phone,
+                'company_name' => $acceptedBy->company_name,
+                'designation' => $acceptedBy->designation,
+                'city' => $acceptedBy->city,
+                'profile_photo_url' => $acceptedByPhotoFileId ? url('/api/v1/files/' . $acceptedByPhotoFileId) : $acceptedBy->profile_photo_url,
+            ] : null,
             'interests_count' => (int) ($this->interests_count ?? 0),
             'meetings_count' => (int) ($this->meeting_requests_count ?? 0),
             'is_interested_by_me' => (bool) ($this->is_interested_by_me ?? false),
