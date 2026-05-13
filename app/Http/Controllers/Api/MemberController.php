@@ -9,6 +9,7 @@ use App\Models\Connection;
 use App\Models\User;
 use App\Services\Blocks\PeerBlockService;
 use App\Services\Notifications\NotifyUserService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -46,6 +47,10 @@ class MemberController extends BaseApiController
             ->with([
                 'city:id,name',
                 'circleMemberships' => fn ($query) => $this->joinedCircleMembershipsQuery($query),
+            ])
+            ->withCount([
+                'followers as followers_count',
+                'following as following_count',
             ]);
 
         // Manual test: inactive members should be excluded from the members list API.
@@ -133,7 +138,12 @@ class MemberController extends BaseApiController
 
     public function show(Request $request, string $id, PeerBlockService $peerBlockService)
     {
-        $user = User::with($this->memberDetailRelations())->find($id);
+        $user = User::with($this->memberDetailRelations())
+            ->withCount([
+                'followers as followers_count',
+                'following as following_count',
+            ])
+            ->find($id);
 
         if (! $user) {
             return $this->error('Member not found', 404);
@@ -150,6 +160,10 @@ class MemberController extends BaseApiController
     public function publicProfileBySlug(Request $request, string $slug, PeerBlockService $peerBlockService)
     {
         $user = User::with($this->memberDetailRelations())
+            ->withCount([
+                'followers as followers_count',
+                'following as following_count',
+            ])
             ->where('public_profile_slug', $slug)
             ->first();
 
@@ -163,6 +177,20 @@ class MemberController extends BaseApiController
         }
 
         return $this->success(new MemberDetailResource($user));
+    }
+
+    public function followersCount(string $user): JsonResponse
+    {
+        $member = User::query()->find($user);
+
+        if (! $member) {
+            return $this->error('User not found.', 404);
+        }
+
+        return $this->success([
+            'user_id' => (string) $member->id,
+            'followers_count' => $member->followers()->count(),
+        ], 'Follower count fetched successfully.');
     }
 
     private function memberDetailRelations(): array
