@@ -7,6 +7,7 @@ use App\Http\Resources\MemberDetailResource;
 use App\Http\Resources\UserResource;
 use App\Models\Connection;
 use App\Models\User;
+use App\Models\UserFollow;
 use App\Services\Blocks\PeerBlockService;
 use App\Services\Notifications\NotifyUserService;
 use Illuminate\Http\JsonResponse;
@@ -187,10 +188,80 @@ class MemberController extends BaseApiController
             return $this->error('User not found.', 404);
         }
 
+        $followersQuery = UserFollow::query()
+            ->where('following_id', $member->id)
+            ->with([
+                'follower:id,display_name,first_name,last_name,company_name,designation,email,phone,city_id,city,country,profile_photo_id,profile_photo_file_id',
+                'follower.city:id,name',
+            ]);
+
+        $followersCount = (clone $followersQuery)->count();
+
+        $followers = $followersQuery
+            ->latest('requested_at')
+            ->get()
+            ->map(fn (UserFollow $follow): array => $this->formatFollowerCountItem($follow))
+            ->values();
+
         return $this->success([
             'user_id' => (string) $member->id,
-            'followers_count' => $member->followers()->count(),
+            'followers_count' => $followersCount,
+            'followers' => $followers,
         ], 'Follower count fetched successfully.');
+    }
+
+    private function formatFollowerCountItem(UserFollow $follow): array
+    {
+        $follower = $follow->follower;
+
+        return [
+            'follow_id' => (string) $follow->id,
+            'status' => $follow->status,
+            'requested_at' => optional($follow->requested_at)?->toISOString(),
+            'accepted_at' => optional($follow->accepted_at)?->toISOString(),
+            'user' => $follower ? $this->formatFollowerUser($follower) : null,
+        ];
+    }
+
+    private function formatFollowerUser(User $follower): array
+    {
+        $profilePhotoId = $follower->profile_photo_file_id ?? $follower->profile_photo_id;
+
+        return [
+            'id' => (string) $follower->id,
+            'display_name' => $follower->display_name,
+            'first_name' => $follower->first_name,
+            'last_name' => $follower->last_name,
+            'company_name' => $follower->company_name,
+            'designation' => $follower->designation,
+            'email' => $follower->email,
+            'phone' => $follower->phone,
+            'city' => $this->resolveFollowerCityName($follower),
+            'country' => $follower->country,
+            'profile_photo_id' => $profilePhotoId,
+            'profile_photo_url' => $profilePhotoId
+                ? url('/api/v1/files/' . $profilePhotoId)
+                : null,
+        ];
+    }
+
+    private function resolveFollowerCityName(User $follower): ?string
+    {
+        if ($follower->relationLoaded('city')) {
+            $city = $follower->getRelation('city');
+
+            if ($city) {
+                return $city->name;
+            }
+        }
+
+        $city = $follower->getAttribute('city');
+
+        if (is_array($city)) {
+            return $city['name'] ?? null;
+        }
+
+        return $city ?: null;
     }
 
     private function memberDetailRelations(): array
