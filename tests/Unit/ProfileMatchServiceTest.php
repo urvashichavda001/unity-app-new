@@ -105,11 +105,17 @@ class ProfileMatchServiceTest extends TestCase
         $this->assertSame(2, $match['matched_details']['common_circles_count']);
     }
 
-    public function test_calculate_returns_null_for_self_profile(): void
+    public function test_calculate_returns_self_payload_for_self_profile(): void
     {
         $user = new User(['id' => 'same-user-id']);
 
-        $this->assertNull((new ProfileMatchService())->calculate($user, $user));
+        $match = (new ProfileMatchService())->calculate($user, $user);
+
+        $this->assertSame(100, $match['score']);
+        $this->assertSame(100, $match['percentage']);
+        $this->assertSame('Self', $match['level']);
+        $this->assertSame(['self'], $match['matched_fields']);
+        $this->assertTrue($match['matched_details']['is_self']);
     }
 
     public function test_normalize_array_field_handles_malformed_json_and_empty_values(): void

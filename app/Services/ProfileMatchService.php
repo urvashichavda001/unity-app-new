@@ -53,7 +53,7 @@ class ProfileMatchService
     public function calculate(User $authUser, User $member): ?array
     {
         if ((string) $authUser->id === (string) $member->id) {
-            return null;
+            return $this->selfMatch();
         }
 
         $rawScore = 0;
@@ -277,6 +277,19 @@ class ProfileMatchService
         return array_values(array_intersect($aValues, $bValues));
     }
 
+    private function selfMatch(): array
+    {
+        return [
+            'score' => 100,
+            'percentage' => 100,
+            'level' => 'Self',
+            'matched_fields' => ['self'],
+            'matched_details' => [
+                'is_self' => true,
+                'message' => 'This is your own profile.',
+            ],
+        ];
+    }
 
     private function attribute(User $user, string $field): mixed
     {

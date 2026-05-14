@@ -158,8 +158,9 @@ class UserResource extends JsonResource
             return null;
         }
 
-        if ((string) $authUser->id === (string) $this->id) {
-            return null;
+        $precomputed = $this->resource->getAttribute('profile_match_payload');
+        if (is_array($precomputed)) {
+            return $precomputed;
         }
 
         $profileMatchService = $request->attributes->get('profile_match_service');

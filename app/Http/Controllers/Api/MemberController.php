@@ -13,6 +13,7 @@ use App\Services\Notifications\NotifyUserService;
 use App\Services\ProfileMatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 class MemberController extends BaseApiController
@@ -106,7 +107,7 @@ class MemberController extends BaseApiController
         });
 
 
-        $authUser = $request->user('sanctum') ?? $request->user();
+        $authUser = auth('sanctum')->user();
 
         if ($authUser) {
             $authUser->loadMissing([
@@ -167,11 +168,59 @@ class MemberController extends BaseApiController
         $request->attributes->set('profile_match_auth_user', $authUser);
         $request->attributes->set('profile_match_service', $profileMatchService);
 
+        $members = $query->get();
+
+        if ($authUser) {
+            $members = $this->applyProfileMatchOrdering($members, $authUser, $profileMatchService, $selectColumns);
+        }
+
         $data = [
-            'items' => UserResource::collection($query->get()),
+            'items' => UserResource::collection($members),
         ];
 
         return $this->success($data);
+    }
+
+
+    private function applyProfileMatchOrdering(Collection $members, User $authUser, ProfileMatchService $profileMatchService, array $selectColumns): Collection
+    {
+        $authUserId = (string) $authUser->id;
+        $self = $members->first(fn (User $member): bool => (string) $member->id === $authUserId);
+
+        if (! $self) {
+            $self = User::query()
+                ->select($selectColumns)
+                ->with([
+                    'city:id,name',
+                    'circleMemberships' => fn ($query) => $this->joinedCircleMembershipsQuery($query),
+                ])
+                ->withCount([
+                    'followers as followers_count',
+                    'following as following_count',
+                ])
+                ->find($authUserId);
+        }
+
+        $members = $self
+            ? $members->reject(fn (User $member): bool => (string) $member->id === $authUserId)
+            : $members;
+
+        if ($self) {
+            $self->setAttribute('profile_match_payload', $profileMatchService->calculate($authUser, $self));
+        }
+
+        $matchedMembers = $members
+            ->map(function (User $member) use ($authUser, $profileMatchService): User {
+                $member->setAttribute('profile_match_payload', $profileMatchService->calculate($authUser, $member));
+
+                return $member;
+            })
+            ->sortByDesc(fn (User $member): int => (int) ($member->getAttribute('profile_match_payload')['percentage'] ?? 0))
+            ->values();
+
+        return $self
+            ? collect([$self])->merge($matchedMembers)->values()
+            : $matchedMembers;
     }
 
     public function names(Request $request, PeerBlockService $peerBlockService)
