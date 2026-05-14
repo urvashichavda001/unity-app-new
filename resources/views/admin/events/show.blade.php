@@ -11,7 +11,7 @@
             <div class="col-md-3"><strong>Circle:</strong> {{ $event->circle?->name ?? '-' }}</div>
             <div class="col-md-3"><strong>Mode:</strong> {{ $event->mode }}</div>
             <div class="col-md-3"><strong>Recurrence:</strong> {{ $event->recurrence_type ?? 'none' }}</div>
-            <div class="col-md-6"><strong>Location:</strong> {{ $event->location_text ?? '-' }}</div>
+            <div class="col-md-6"><strong>Location:</strong> @if(!empty($event->metadata['google_maps_url']))<a href="{{ $event->metadata['google_maps_url'] }}" target="_blank" rel="noopener">{{ $event->location_text ?? 'Open map' }}</a>@else{{ $event->location_text ?? '-' }}@endif</div>
             <div class="col-md-6"><strong>Online:</strong> {{ $event->online_meeting_url ?? '-' }}</div>
             <div class="col-12"><strong>Description:</strong> {{ $event->description ?? '-' }}</div>
         </div>

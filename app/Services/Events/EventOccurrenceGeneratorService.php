@@ -90,7 +90,7 @@ class EventOccurrenceGeneratorService
 
     private function weekly(CarbonImmutable $start, CarbonImmutable $until, int $interval, ?int $dayOfWeek): array
     {
-        $targetDow = $dayOfWeek ?? $start->dayOfWeek;
+        $targetDow = $this->normalizeDayOfWeek($dayOfWeek ?? $start->dayOfWeek);
         $cursor = $start->startOfWeek(CarbonInterface::SUNDAY)->addDays($targetDow)->setTimeFrom($start);
         if ($cursor->lt($start)) {
             $cursor = $cursor->addWeek();
@@ -138,11 +138,18 @@ class EventOccurrenceGeneratorService
         return $dates;
     }
 
+
+    private function normalizeDayOfWeek(int $dayOfWeek): int
+    {
+        return $dayOfWeek === 7 ? 0 : $dayOfWeek;
+    }
+
     private function monthlyCandidate(CarbonImmutable $month, CarbonImmutable $timeSource, ?int $dayOfMonth, ?int $weekOfMonth, ?int $dayOfWeek): ?CarbonImmutable
     {
         if ($weekOfMonth && $dayOfWeek !== null) {
+            $targetDayOfWeek = $this->normalizeDayOfWeek($dayOfWeek);
             $candidate = $month->startOfMonth();
-            while ($candidate->dayOfWeek !== $dayOfWeek) {
+            while ($candidate->dayOfWeek !== $targetDayOfWeek) {
                 $candidate = $candidate->addDay();
             }
             $candidate = $candidate->addWeeks($weekOfMonth - 1);

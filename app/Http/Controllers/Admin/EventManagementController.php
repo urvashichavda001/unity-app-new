@@ -78,18 +78,23 @@ class EventManagementController extends Controller
         return $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'event_type' => ['required', 'string', 'in:circle_meeting,global_event,public_event'],
+            'event_type' => ['required', 'string', 'in:circle_meeting,global_event,public_event,training'],
             'event_category' => ['nullable', 'string', 'max:100'],
             'circle_id' => ['nullable', 'uuid', 'exists:circles,id'],
             'mode' => ['required', 'string', 'in:offline,online,hybrid'],
             'location_text' => ['nullable', 'string'],
+            'venue_name' => ['nullable', 'string', 'max:255'],
+            'address_line' => ['nullable', 'string', 'max:500'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'google_maps_url' => ['nullable', 'string', 'max:2000'],
             'online_meeting_url' => ['nullable', 'string', 'max:2000'],
             'start_at' => ['required', 'date'],
-            'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
+            'end_at' => ['nullable', 'date', 'after:start_at'],
             'recurrence_type' => ['required', 'string', 'in:none,weekly,monthly,yearly'],
             'recurrence_interval' => ['nullable', 'integer', 'min:1'],
             'recurrence_week_of_month' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'recurrence_day_of_week' => ['nullable', 'integer', 'min:0', 'max:6'],
+            'recurrence_day_of_week' => ['nullable', 'integer', 'min:1', 'max:7'],
             'recurrence_day_of_month' => ['nullable', 'integer', 'min:1', 'max:31'],
             'recurrence_month' => ['nullable', 'integer', 'min:1', 'max:12'],
             'recurrence_ends_at' => ['nullable', 'date'],
@@ -105,6 +110,31 @@ class EventManagementController extends Controller
 
     private function withDefaults(array $data): array
     {
+        $locationMeta = array_filter([
+            'venue_name' => $data['venue_name'] ?? null,
+            'address_line' => $data['address_line'] ?? null,
+            'city' => $data['city'] ?? null,
+            'state' => $data['state'] ?? null,
+            'google_maps_url' => $data['google_maps_url'] ?? null,
+        ], fn ($value) => filled($value));
+
+        $locationParts = array_filter([
+            $data['venue_name'] ?? null,
+            $data['address_line'] ?? null,
+            $data['city'] ?? null,
+            $data['state'] ?? null,
+        ], fn ($value) => filled($value));
+
+        if (blank($data['location_text'] ?? null) && $locationParts) {
+            $data['location_text'] = implode(', ', $locationParts);
+        }
+
+        if ($locationMeta) {
+            $data['metadata'] = array_merge((array) ($data['metadata'] ?? []), $locationMeta);
+        }
+
+        unset($data['venue_name'], $data['address_line'], $data['city'], $data['state'], $data['google_maps_url']);
+
         foreach (['is_paid', 'qr_checkin_enabled', 'visitor_registration_enabled', 'member_registration_enabled'] as $key) {
             $data[$key] = (bool) ($data[$key] ?? false);
         }
@@ -112,6 +142,9 @@ class EventManagementController extends Controller
         $data['visibility'] = 'public';
         $data['is_virtual'] = in_array($data['mode'] ?? 'offline', ['online', 'hybrid'], true);
         $data['is_public'] = ($data['event_type'] ?? null) === 'public_event';
+        if (($data['event_type'] ?? null) === 'training') {
+            $data['event_category'] = $data['event_category'] ?: 'training';
+        }
 
         return $data;
     }

@@ -21,7 +21,7 @@ class UpsertAdminEventRequest extends FormRequest
             'title' => [$this->isMethod('post') ? 'required' : 'sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'start_at' => [$this->isMethod('post') ? 'required' : 'sometimes', 'date'],
-            'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
+            'end_at' => ['nullable', 'date', 'after:start_at'],
             'is_virtual' => ['sometimes', 'boolean'],
             'mode' => ['sometimes', 'string', 'in:offline,online,hybrid'],
             'location_text' => ['nullable', 'string'],
@@ -35,7 +35,7 @@ class UpsertAdminEventRequest extends FormRequest
             'visibility' => ['sometimes', 'string', 'in:public,circle,connections,private'],
             'is_paid' => ['sometimes', 'boolean'],
             'metadata' => ['nullable', 'array'],
-            'event_type' => ['sometimes', 'string', 'in:circle_meeting,global_event,public_event'],
+            'event_type' => ['sometimes', 'string', 'in:circle_meeting,global_event,public_event,training'],
             'event_category' => ['nullable', 'string', 'max:100'],
             'registration_limit' => ['nullable', 'integer', 'min:1'],
             'ticket_price' => ['nullable', 'numeric', 'min:0'],
@@ -47,11 +47,11 @@ class UpsertAdminEventRequest extends FormRequest
             'is_public' => ['sometimes', 'boolean'],
             'recurrence_type' => ['sometimes', 'string', 'in:none,weekly,monthly,yearly'],
             'recurrence_interval' => ['nullable', 'integer', 'min:1', 'max:24'],
-            'recurrence_day_of_week' => ['nullable', 'integer', 'min:0', 'max:6'],
+            'recurrence_day_of_week' => ['nullable', 'integer', 'min:1', 'max:7'],
             'recurrence_week_of_month' => ['nullable', 'integer', 'min:1', 'max:5'],
             'recurrence_day_of_month' => ['nullable', 'integer', 'min:1', 'max:31'],
             'recurrence_month' => ['nullable', 'integer', 'min:1', 'max:12'],
-            'recurrence_ends_at' => ['nullable', 'date', 'after_or_equal:start_at'],
+            'recurrence_ends_at' => ['nullable', 'date', 'after:start_at'],
         ];
     }
 }
