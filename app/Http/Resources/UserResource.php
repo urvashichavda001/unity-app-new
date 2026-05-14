@@ -144,32 +144,6 @@ class UserResource extends JsonResource
         ];
     }
 
-    private function resolveProfileMatch($request): ?array
-    {
-        if (! $request->attributes->get('profile_match_enabled', false)) {
-            return null;
-        }
-
-        $authUser = $request->attributes->get('profile_match_auth_user')
-            ?? $request->user('sanctum')
-            ?? $request->user();
-
-        if (! $authUser instanceof User) {
-            return null;
-        }
-
-        $precomputed = $this->resource->getAttribute('profile_match_payload');
-        if (is_array($precomputed)) {
-            return $precomputed;
-        }
-
-        $profileMatchService = $request->attributes->get('profile_match_service');
-        if (! $profileMatchService instanceof ProfileMatchService) {
-            $profileMatchService = app(ProfileMatchService::class);
-        }
-
-        return $profileMatchService->calculate($authUser, $this->resource);
-    }
 
     private function resolveProfileVideoUrl(): ?string
     {
