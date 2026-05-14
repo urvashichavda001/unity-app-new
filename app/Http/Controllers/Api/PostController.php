@@ -33,6 +33,12 @@ class PostController extends BaseApiController
         $page = LengthAwarePaginator::resolveCurrentPage();
 
         $postRows = DB::table('posts')
+            ->leftJoin('collaboration_posts as feed_collaboration_posts', function ($join): void {
+                $join->on('feed_collaboration_posts.id', '=', 'posts.source_id')
+                    ->where('posts.source_type', 'collaboration_post')
+                    ->where('posts.source_event', 'completed');
+            })
+            ->leftJoin('users as accepted_peers', 'accepted_peers.id', '=', 'feed_collaboration_posts.accepted_by_user_id')
             ->selectRaw('posts.id as id')
             ->selectRaw('posts.user_id as author_id')
             ->selectRaw('posts.circle_id as circle_id')
@@ -50,6 +56,14 @@ class PostController extends BaseApiController
             ->selectRaw('posts.updated_at as updated_at')
             ->selectRaw('posts.created_at as sort_at')
             ->selectRaw("'post' as source_type")
+            ->selectRaw('posts.source_type as post_source_type')
+            ->selectRaw('posts.source_event as post_source_event')
+            ->selectRaw('accepted_peers.id as accepted_by_id')
+            ->selectRaw('accepted_peers.display_name as accepted_by_display_name')
+            ->selectRaw('accepted_peers.first_name as accepted_by_first_name')
+            ->selectRaw('accepted_peers.last_name as accepted_by_last_name')
+            ->selectRaw('accepted_peers.company_name as accepted_by_company_name')
+            ->selectRaw('accepted_peers.city as accepted_by_city')
             ->selectRaw('NULL::uuid as impacted_peer_id')
             ->selectRaw('NULL::date as impact_date')
             ->selectRaw('NULL::text as impact_action')
@@ -76,6 +90,14 @@ class PostController extends BaseApiController
             ->selectRaw('impacts.updated_at as updated_at')
             ->selectRaw('COALESCE(impacts.timeline_posted_at, impacts.approved_at, impacts.created_at) as sort_at')
             ->selectRaw("'impact' as source_type")
+            ->selectRaw('NULL::text as post_source_type')
+            ->selectRaw('NULL::text as post_source_event')
+            ->selectRaw('NULL::uuid as accepted_by_id')
+            ->selectRaw('NULL::text as accepted_by_display_name')
+            ->selectRaw('NULL::text as accepted_by_first_name')
+            ->selectRaw('NULL::text as accepted_by_last_name')
+            ->selectRaw('NULL::text as accepted_by_company_name')
+            ->selectRaw('NULL::text as accepted_by_city')
             ->selectRaw('impacts.impacted_peer_id as impacted_peer_id')
             ->selectRaw('impacts.impact_date as impact_date')
             ->selectRaw('impacts.action as impact_action')
@@ -144,6 +166,22 @@ class PostController extends BaseApiController
                 'created_at' => $row->created_at,
                 'updated_at' => $row->updated_at,
             ];
+
+            if (
+                (string) $row->source_type === 'post'
+                && (string) ($row->post_source_type ?? '') === 'collaboration_post'
+                && (string) ($row->post_source_event ?? '') === 'completed'
+            ) {
+                $acceptedByName = trim((string) ($row->accepted_by_display_name
+                    ?: trim(((string) ($row->accepted_by_first_name ?? '')) . ' ' . ((string) ($row->accepted_by_last_name ?? '')))));
+
+                $item['accepted_by'] = $row->accepted_by_id ? [
+                    'id' => (string) $row->accepted_by_id,
+                    'name' => $acceptedByName !== '' ? $acceptedByName : null,
+                    'company_name' => $row->accepted_by_company_name,
+                    'city' => $row->accepted_by_city,
+                ] : null;
+            }
 
             if ((string) $row->source_type === 'impact') {
                 $impactedPeer = $row->impacted_peer_id ? $impactedPeers->get((string) $row->impacted_peer_id) : null;
