@@ -192,6 +192,7 @@ Route::prefix('v1')->group(function () {
 
         // Collaborations
         Route::get('/collaborations/history', [CollaborationPostController::class, 'history']);
+        Route::get('/collaborations/my-history', [CollaborationPostController::class, 'myHistory']);
         Route::patch('/collaborations/{id}/complete', [CollaborationPostController::class, 'complete'])->whereUuid('id');
         Route::patch('/collaborations/{id}/accept', [CollaborationPostController::class, 'accept'])->whereUuid('id');
         Route::post('/collaborations', [CollaborationPostController::class, 'store']);
