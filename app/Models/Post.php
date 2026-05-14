@@ -68,6 +68,11 @@ class Post extends Model
         return $this->belongsTo(Circle::class);
     }
 
+    public function collaborationPost(): BelongsTo
+    {
+        return $this->belongsTo(CollaborationPost::class, 'source_id');
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(PostComment::class);
