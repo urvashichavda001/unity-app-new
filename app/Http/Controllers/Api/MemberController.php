@@ -10,13 +10,14 @@ use App\Models\User;
 use App\Models\UserFollow;
 use App\Services\Blocks\PeerBlockService;
 use App\Services\Notifications\NotifyUserService;
+use App\Services\ProfileMatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
 class MemberController extends BaseApiController
 {
-    public function index(Request $request, PeerBlockService $peerBlockService)
+    public function index(Request $request, PeerBlockService $peerBlockService, ProfileMatchService $profileMatchService)
     {
         $selectColumns = [
             'id',
@@ -36,7 +37,13 @@ class MemberController extends BaseApiController
             'media',
             'city_id',
             'city',
+            'business_category_id',
+            'business_sub_category',
             'business_type',
+            'company_type',
+            'target_business_categories',
+            'target_regions',
+            'experience_years',
         ];
 
         if (Schema::hasColumn('users', 'profile_video_id')) {
@@ -60,13 +67,22 @@ class MemberController extends BaseApiController
         });
 
 
-        $excludedUserIds = array_values(array_unique(array_filter(array_merge(
-            $peerBlockService->blockedUserIdsFor((string) $request->user()->id),
-            $peerBlockService->usersWhoBlockedMeIdsFor((string) $request->user()->id)
-        ))));
+        $authUser = $request->user('sanctum') ?? $request->user();
 
-        if (! empty($excludedUserIds)) {
-            $query->whereNotIn('id', $excludedUserIds);
+        if ($authUser) {
+            $authUser->loadMissing([
+                'city:id,name',
+                'circleMemberships' => fn ($query) => $this->joinedCircleMembershipsQuery($query),
+            ]);
+
+            $excludedUserIds = array_values(array_unique(array_filter(array_merge(
+                $peerBlockService->blockedUserIdsFor((string) $authUser->id),
+                $peerBlockService->usersWhoBlockedMeIdsFor((string) $authUser->id)
+            ))));
+
+            if (! empty($excludedUserIds)) {
+                $query->whereNotIn('id', $excludedUserIds);
+            }
         }
 
         if ($search = trim((string) $request->input('q', ''))) {
@@ -99,12 +115,18 @@ class MemberController extends BaseApiController
             $query->where('business_type', $request->input('business_type'));
         }
 
-        $authBusinessType = $request->user()->business_type;
+        if ($authUser && filled($authUser->business_type)) {
+            $query->orderByRaw(
+                'CASE WHEN business_type = ? THEN 0 ELSE 1 END',
+                [$authUser->business_type]
+            );
+        }
 
-        $query->orderByRaw(
-            'CASE WHEN business_type = ? THEN 0 ELSE 1 END',
-            [$authBusinessType]
-        )->orderByDesc('created_at');
+        $query->orderByDesc('created_at');
+
+        $request->attributes->set('profile_match_enabled', true);
+        $request->attributes->set('profile_match_auth_user', $authUser);
+        $request->attributes->set('profile_match_service', $profileMatchService);
 
         $data = [
             'items' => UserResource::collection($query->get()),

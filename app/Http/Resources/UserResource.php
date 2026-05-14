@@ -8,6 +8,7 @@ use App\Models\CircleCategoryLevel3;
 use App\Models\CircleCategoryLevel4;
 use App\Models\CircleMemberCategorySelection;
 use App\Models\User;
+use App\Services\ProfileMatchService;
 use Illuminate\Support\Collection;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Schema;
@@ -136,9 +137,35 @@ class UserResource extends JsonResource
             'last_login_at'       => $this->last_login_at,
             'created_at'          => $this->created_at,
             'updated_at'          => $this->updated_at,
+            'profile_match'       => $this->resolveProfileMatch($request),
         ];
     }
 
+    private function resolveProfileMatch($request): ?array
+    {
+        if (! $request->attributes->get('profile_match_enabled', false)) {
+            return null;
+        }
+
+        $authUser = $request->attributes->get('profile_match_auth_user')
+            ?? $request->user('sanctum')
+            ?? $request->user();
+
+        if (! $authUser instanceof User) {
+            return null;
+        }
+
+        if ((string) $authUser->id === (string) $this->id) {
+            return null;
+        }
+
+        $profileMatchService = $request->attributes->get('profile_match_service');
+        if (! $profileMatchService instanceof ProfileMatchService) {
+            $profileMatchService = app(ProfileMatchService::class);
+        }
+
+        return $profileMatchService->calculate($authUser, $this->resource);
+    }
 
     private function resolveProfileVideoUrl(): ?string
     {
