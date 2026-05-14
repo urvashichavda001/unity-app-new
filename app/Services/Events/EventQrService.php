@@ -3,6 +3,7 @@
 namespace App\Services\Events;
 
 use App\Models\EventRegistration;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -29,11 +30,17 @@ class EventQrService
         $url = $this->url($relativePath);
         $qrData = ['path' => $relativePath, 'url' => $url, 'svg' => $svg];
 
-        $registration->update([
+        $updates = [
             'qr_code_path' => $relativePath,
             'qr_code_url' => $url,
             'qr_code_svg' => $svg,
-        ]);
+        ];
+
+        if (Schema::hasColumn('event_registrations', 'qr_generated_at')) {
+            $updates['qr_generated_at'] = now();
+        }
+
+        $registration->update($updates);
 
         return $qrData;
     }

@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class EventOccurrenceGeneratorService
 {
@@ -33,16 +34,24 @@ class EventOccurrenceGeneratorService
                 }
 
                 $sequence++;
-                $created->push(EventOccurrence::query()->create([
+                $payload = [
                     'event_id' => $event->id,
                     'sequence' => $sequence,
                     'occurrence_date' => $occurrenceDate,
                     'start_at' => $occurrenceStart,
                     'end_at' => $occurrenceEnd,
                     'status' => 'scheduled',
-                    'registration_limit' => $event->registration_limit,
-                    'registered_count' => 0,
-                ]));
+                ];
+                if (Schema::hasColumn('event_occurrences', 'registration_limit')) {
+                    $payload['registration_limit'] = $event->registration_limit;
+                }
+                if (Schema::hasColumn('event_occurrences', 'registered_count')) {
+                    $payload['registered_count'] = 0;
+                }
+                if (Schema::hasColumn('event_occurrences', 'checked_in_count')) {
+                    $payload['checked_in_count'] = 0;
+                }
+                $created->push(EventOccurrence::query()->create($payload));
             }
 
             return $created;

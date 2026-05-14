@@ -9,7 +9,11 @@ ALTER TABLE events
     ADD COLUMN IF NOT EXISTS recurrence_week_of_month INTEGER,
     ADD COLUMN IF NOT EXISTS recurrence_day_of_month INTEGER,
     ADD COLUMN IF NOT EXISTS recurrence_month INTEGER,
-    ADD COLUMN IF NOT EXISTS recurrence_ends_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS recurrence_ends_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS visitor_registration_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS member_registration_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS online_meeting_url TEXT,
+    ADD COLUMN IF NOT EXISTS zoho_form_url TEXT;
 
 CREATE TABLE IF NOT EXISTS event_occurrences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,6 +25,7 @@ CREATE TABLE IF NOT EXISTS event_occurrences (
     sequence INTEGER NOT NULL DEFAULT 1,
     registration_limit INTEGER,
     registered_count INTEGER NOT NULL DEFAULT 0,
+    checked_in_count INTEGER NOT NULL DEFAULT 0,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -33,6 +38,7 @@ UPDATE event_occurrences SET occurrence_date = start_at::date WHERE occurrence_d
 ALTER TABLE event_occurrences ALTER COLUMN occurrence_date SET NOT NULL;
 ALTER TABLE event_occurrences ADD COLUMN IF NOT EXISTS registration_limit INTEGER;
 ALTER TABLE event_occurrences ADD COLUMN IF NOT EXISTS registered_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE event_occurrences ADD COLUMN IF NOT EXISTS checked_in_count INTEGER NOT NULL DEFAULT 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_event_occurrences_event_date ON event_occurrences(event_id, occurrence_date) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_event_occurrences_event_id ON event_occurrences(event_id);
@@ -48,6 +54,10 @@ CREATE TABLE IF NOT EXISTS event_registrations (
     qr_code_path TEXT,
     qr_code_url TEXT,
     qr_code_svg TEXT,
+    qr_generated_at TIMESTAMPTZ,
+    last_qr_scan_at TIMESTAMPTZ,
+    scan_device_info TEXT,
+    attendance_source VARCHAR(50),
     status VARCHAR(30) NOT NULL DEFAULT 'registered',
     checkin_status VARCHAR(30) NOT NULL DEFAULT 'pending',
     registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -69,6 +79,10 @@ CREATE TABLE IF NOT EXISTS event_registrations (
 );
 
 ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS qr_code_url TEXT;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS qr_generated_at TIMESTAMPTZ;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS last_qr_scan_at TIMESTAMPTZ;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS scan_device_info TEXT;
+ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS attendance_source VARCHAR(50);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_event_registration_member_occurrence
     ON event_registrations(occurrence_id, user_id)

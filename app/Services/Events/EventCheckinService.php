@@ -2,9 +2,11 @@
 
 namespace App\Services\Events;
 
+use App\Models\EventOccurrence;
 use App\Models\EventRegistration;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class EventCheckinService
@@ -33,15 +35,49 @@ class EventCheckinService
                 throw ValidationException::withMessages(['event' => 'QR check-in is not enabled for this event.']);
             }
             if ($registration->checkin_status === 'checked_in' && ! ($force && $this->events->isAdmin($scanner))) {
-                throw ValidationException::withMessages(['registration' => 'Attendee is already checked in.']);
+                throw ValidationException::withMessages(['registration' => 'Attendance already marked.']);
             }
 
-            $registration->forceFill([
+            $updates = [
                 'status' => 'attended',
                 'checkin_status' => 'checked_in',
                 'checked_in_at' => now(),
                 'checked_in_by_user_id' => $scanner->id,
-            ])->save();
+            ];
+
+            if (Schema::hasColumn('event_registrations', 'last_qr_scan_at')) {
+                $updates['last_qr_scan_at'] = now();
+            }
+            if (Schema::hasColumn('event_registrations', 'attendance_source')) {
+                $updates['attendance_source'] = 'qr_scan';
+            }
+
+            $registration->forceFill($updates)->save();
+
+            $occurrence = EventOccurrence::query()
+                ->where('id', $registration->occurrence_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($occurrence) {
+                $checkedInCount = EventRegistration::query()
+                    ->where('occurrence_id', $registration->occurrence_id)
+                    ->where('checkin_status', 'checked_in')
+                    ->whereNull('deleted_at')
+                    ->count();
+
+                $registeredCount = EventRegistration::query()
+                    ->where('occurrence_id', $registration->occurrence_id)
+                    ->where('status', '!=', 'cancelled')
+                    ->whereNull('deleted_at')
+                    ->count();
+
+                $occurrenceUpdates = ['registered_count' => $registeredCount];
+                if (Schema::hasColumn('event_occurrences', 'checked_in_count')) {
+                    $occurrenceUpdates['checked_in_count'] = $checkedInCount;
+                }
+                $occurrence->forceFill($occurrenceUpdates)->save();
+            }
 
             return $registration->fresh(['event.circle', 'occurrence', 'user', 'checkedInBy']);
         });

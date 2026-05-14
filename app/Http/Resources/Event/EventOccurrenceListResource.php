@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Event;
 
 use App\Services\Events\EventQrService;
+use App\Services\Events\EventService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,9 +13,12 @@ class EventOccurrenceListResource extends JsonResource
     {
         $event = $this->event;
         $registration = $this->registrations->first();
-        $limit = $event->registration_limit;
+        $limit = $this->registration_limit ?? $event->registration_limit;
         $registeredCount = (int) ($this->registered_count ?? 0);
         $qr = app(EventQrService::class);
+        $eventService = app(EventService::class);
+        $canRegister = $eventService->canRegister($event, $request->user());
+        $showOnlineUrl = (bool) $registration || (bool) ($event->is_public ?? false) || $event->visibility === 'public';
 
         return [
             'occurrence_id' => $this->id,
@@ -27,13 +31,20 @@ class EventOccurrenceListResource extends JsonResource
             'circle' => $event->circle ? ['id' => $event->circle->id, 'name' => $event->circle->name, 'slug' => $event->circle->slug ?? null] : null,
             'start_at' => optional($this->start_at)->toISOString(),
             'end_at' => optional($this->end_at)->toISOString(),
+            'display_date' => optional($this->start_at)->format('M d, Y'),
+            'display_time' => trim(optional($this->start_at)->format('h:i A').' - '.optional($this->end_at)->format('h:i A'), ' -'),
             'location_text' => $event->location_text,
+            'online_meeting_url' => $showOnlineUrl ? ($event->online_meeting_url ?? null) : null,
             'is_paid' => (bool) $event->is_paid,
             'ticket_price' => (string) ($event->ticket_price ?? '0.00'),
             'registration_limit' => $limit,
             'registered_count' => $registeredCount,
             'available_seats' => $limit ? max(0, $limit - $registeredCount) : null,
             'qr_checkin_enabled' => (bool) $event->qr_checkin_enabled,
+            'can_register' => $canRegister['can_register'],
+            'can_register_reason' => $canRegister['reason'],
+            'visitor_registration_enabled' => $eventService->visitorRegistrationEnabled($event),
+            'member_registration_enabled' => $eventService->memberRegistrationEnabled($event),
             'user_registration' => [
                 'is_registered' => (bool) $registration,
                 'registration_id' => $registration?->id,

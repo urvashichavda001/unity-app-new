@@ -28,6 +28,7 @@ class EventOccurrence extends Model
         'sequence',
         'registration_limit',
         'registered_count',
+        'checked_in_count',
         'metadata',
     ];
 
@@ -38,6 +39,7 @@ class EventOccurrence extends Model
         'sequence' => 'integer',
         'registration_limit' => 'integer',
         'registered_count' => 'integer',
+        'checked_in_count' => 'integer',
         'metadata' => 'array',
     ];
 

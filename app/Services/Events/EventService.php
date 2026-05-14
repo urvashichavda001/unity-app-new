@@ -5,19 +5,32 @@ namespace App\Services\Events;
 use App\Models\CircleMember;
 use App\Models\Event;
 use App\Models\EventOccurrence;
+use App\Models\EventRegistration;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class EventService
 {
+    private const EVENT_ADMIN_ROLES = [
+        'global_admin', 'admin', 'super_admin', 'super-admin', 'industry_director', 'ded', 'circle_leader',
+        'founder', 'circle_founder', 'circle_director', 'director', 'chair', 'vice_chair', 'secretary',
+        'committee_leader', 'leadership_team',
+    ];
+
+    private const CIRCLE_LEADER_ROLES = [
+        'founder', 'circle_founder', 'circle_director', 'director', 'chair', 'vice_chair', 'secretary',
+        'committee_leader', 'leadership_team',
+    ];
+
     public function __construct(private readonly EventOccurrenceGeneratorService $occurrenceGenerator) {}
 
     public function create(array $data, User $actor): Event
     {
         return DB::transaction(function () use ($data, $actor): Event {
-            $data = $this->normalize($data, $actor);
+            $data = $this->filterEventColumns($this->normalize($data, $actor));
             $event = Event::query()->create($data);
             $this->occurrenceGenerator->generate($event);
 
@@ -28,7 +41,7 @@ class EventService
     public function update(Event $event, array $data): Event
     {
         return DB::transaction(function () use ($event, $data): Event {
-            $event->fill($this->normalize($data, null, false));
+            $event->fill($this->filterEventColumns($this->normalize($data, null, false)));
             $event->save();
             $this->occurrenceGenerator->regenerateFuture($event);
 
@@ -40,7 +53,7 @@ class EventService
     {
         $query = EventOccurrence::query()
             ->with(['event.circle', 'registrations' => fn ($q) => $user ? $q->where('user_id', $user->id) : $q->whereRaw('1 = 0')])
-            ->withCount(['registrations as registered_count' => fn ($q) => $q->where('status', '!=', 'cancelled')])
+            ->withCount(['registrations as registered_count' => fn ($q) => $q->where('status', '!=', 'cancelled')->whereNull('deleted_at')])
             ->whereHas('event', function (Builder $eventQuery) use ($filters): void {
                 $eventQuery->when($filters['event_type'] ?? null, fn ($q, $v) => $q->where('event_type', $v))
                     ->when($filters['circle_id'] ?? null, fn ($q, $v) => $q->where('circle_id', $v))
@@ -60,7 +73,7 @@ class EventService
     public function isEligible(Event $event, ?User $user): bool
     {
         if (! $user) {
-            return $event->event_type === 'public_event';
+            return $this->visitorRegistrationEnabled($event);
         }
 
         if ($this->isAdmin($user)) {
@@ -79,25 +92,142 @@ class EventService
         };
     }
 
-    public function isAdmin(User $user): bool
+    public function canRegister(Event $event, ?User $user): array
     {
-        return $user->roles()->whereIn('key', ['global_admin', 'industry_director', 'ded', 'circle_leader', 'founder', 'director', 'chair', 'vice_chair', 'secretary'])->exists();
+        if ($user && ! $this->memberRegistrationEnabled($event) && ! $this->isAdmin($user)) {
+            return ['can_register' => false, 'reason' => 'Member registration is not enabled for this event.'];
+        }
+
+        if (! $this->isEligible($event, $user)) {
+            return ['can_register' => false, 'reason' => 'User is not eligible for this event.'];
+        }
+
+        return ['can_register' => true, 'reason' => null];
     }
 
-    public function attendanceReport(Event $event): array
+    public function visitorRegistrationEnabled(Event $event): bool
     {
-        $registrations = $event->registrations()->with(['user', 'occurrence'])->latest('registered_at')->get();
-        $endedOccurrenceIds = $event->occurrences()->where('end_at', '<', now())->pluck('id');
+        return (bool) ($event->visitor_registration_enabled ?? false) || $event->event_type === 'public_event' || (bool) ($event->is_public ?? false);
+    }
+
+    public function memberRegistrationEnabled(Event $event): bool
+    {
+        return $event->member_registration_enabled === null ? true : (bool) $event->member_registration_enabled;
+    }
+
+    public function isAdmin(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $user->roles()->whereIn('key', self::EVENT_ADMIN_ROLES)->exists();
+    }
+
+    public function canViewAttendance(Event $event, ?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+        if ($event->created_by_user_id === $user->id || $event->organizer_user_id === $user->id) {
+            return true;
+        }
+        if (! $event->circle_id || ! Schema::hasColumn('circle_members', 'role')) {
+            return false;
+        }
+
+        return CircleMember::query()
+            ->where('circle_id', $event->circle_id)
+            ->where('user_id', $user->id)
+            ->whereNull('deleted_at')
+            ->whereIn(DB::raw('role::text'), self::CIRCLE_LEADER_ROLES)
+            ->exists();
+    }
+
+    public function attendanceReport(Event $event, array $filters = []): array
+    {
+        $query = EventRegistration::query()
+            ->with(['user', 'occurrence'])
+            ->where('event_id', $event->id)
+            ->when($filters['occurrence_id'] ?? null, fn ($q, $v) => $q->where('occurrence_id', $v))
+            ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
+            ->when($filters['checkin_status'] ?? null, fn ($q, $v) => $q->where('checkin_status', $v))
+            ->when(($filters['attendee_type'] ?? null) === 'member', fn ($q) => $q->whereNotNull('user_id'))
+            ->when(($filters['attendee_type'] ?? null) === 'visitor', fn ($q) => $q->whereNull('user_id'))
+            ->when($filters['search'] ?? null, function ($q, $search): void {
+                $term = '%'.strtolower($search).'%';
+                $q->where(function ($inner) use ($term): void {
+                    $inner->whereRaw('LOWER(COALESCE(visitor_name, \'\')) LIKE ?', [$term])
+                        ->orWhereRaw('LOWER(COALESCE(visitor_email, \'\')) LIKE ?', [$term])
+                        ->orWhereRaw('LOWER(COALESCE(visitor_phone, \'\')) LIKE ?', [$term])
+                        ->orWhereHas('user', function ($userQuery) use ($term): void {
+                            $userQuery->whereRaw('LOWER(COALESCE(display_name, \'\')) LIKE ?', [$term])
+                                ->orWhereRaw('LOWER(COALESCE(email, \'\')) LIKE ?', [$term])
+                                ->orWhereRaw('LOWER(COALESCE(phone, \'\')) LIKE ?', [$term]);
+                        });
+                });
+            })
+            ->latest('registered_at');
+
+        $registrations = $query->get();
 
         return [
-            'total_registered' => $registrations->where('status', '!=', 'cancelled')->count(),
-            'total_checked_in' => $registrations->where('checkin_status', 'checked_in')->count(),
-            'total_pending' => $registrations->where('checkin_status', 'pending')->where('status', '!=', 'cancelled')->count(),
-            'total_visitors' => $registrations->whereNull('user_id')->count(),
-            'total_members' => $registrations->whereNotNull('user_id')->count(),
-            'no_show' => $registrations->whereIn('occurrence_id', $endedOccurrenceIds)->where('checkin_status', 'pending')->where('status', '!=', 'cancelled')->count(),
-            'items' => $registrations,
+            'event' => [
+                'id' => $event->id,
+                'title' => $event->title,
+                'event_type' => $event->event_type,
+                'mode' => $event->mode,
+                'circle_id' => $event->circle_id,
+            ],
+            'summary' => [
+                'total_registered' => $registrations->where('status', '!=', 'cancelled')->count(),
+                'total_checked_in' => $registrations->where('checkin_status', 'checked_in')->count(),
+                'total_pending' => $registrations->where('checkin_status', 'pending')->where('status', '!=', 'cancelled')->count(),
+                'total_cancelled' => $registrations->where('status', 'cancelled')->count(),
+                'total_members' => $registrations->whereNotNull('user_id')->count(),
+                'total_visitors' => $registrations->whereNull('user_id')->count(),
+            ],
+            'items' => $registrations->map(fn (EventRegistration $registration) => $this->attendanceItem($registration))->values(),
         ];
+    }
+
+    public function attendanceItem(EventRegistration $registration): array
+    {
+        $user = $registration->user;
+
+        return [
+            'registration_id' => $registration->id,
+            'attendee_type' => $registration->user_id ? 'member' : 'visitor',
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->display_name ?? trim(($user->first_name ?? '').' '.($user->last_name ?? '')),
+                'email' => $user->email,
+                'phone' => $user->phone ?? null,
+                'company_name' => $user->company_name ?? null,
+                'city' => $user->city ?? $user->business_city ?? null,
+            ] : null,
+            'visitor' => $registration->user_id ? null : [
+                'name' => $registration->visitor_name,
+                'email' => $registration->visitor_email,
+                'phone' => $registration->visitor_phone,
+                'company' => $registration->visitor_company,
+                'city' => $registration->visitor_city,
+            ],
+            'status' => $registration->status,
+            'checkin_status' => $registration->checkin_status,
+            'registered_at' => optional($registration->registered_at)->toISOString(),
+            'checked_in_at' => optional($registration->checked_in_at)->toISOString(),
+            'source' => $registration->source,
+            'qr_code_url' => $registration->qr_code_url ?: app(EventQrService::class)->url($registration->qr_code_path),
+        ];
+    }
+
+    public function filterEventColumns(array $data): array
+    {
+        return array_filter($data, fn ($value, $key) => Schema::hasColumn('events', $key), ARRAY_FILTER_USE_BOTH);
     }
 
     private function normalize(array $data, ?User $actor, bool $withDefaults = true): array
@@ -117,6 +247,8 @@ class EventService
             $data['qr_checkin_enabled'] = $data['qr_checkin_enabled'] ?? true;
             $data['is_public'] = $data['is_public'] ?? (($data['event_type'] ?? null) === 'public_event');
             $data['is_paid'] = $data['is_paid'] ?? false;
+            $data['visitor_registration_enabled'] = $data['visitor_registration_enabled'] ?? (($data['event_type'] ?? null) === 'public_event');
+            $data['member_registration_enabled'] = $data['member_registration_enabled'] ?? true;
         }
 
         return $data;

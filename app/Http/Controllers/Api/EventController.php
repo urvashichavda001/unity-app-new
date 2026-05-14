@@ -21,6 +21,7 @@ use App\Models\EventRsvp;
 use App\Services\Events\EventCheckinService;
 use App\Services\Events\EventRegistrationService;
 use App\Services\Events\EventService;
+use App\Services\Events\EventQrService;
 use Illuminate\Http\Request;
 
 class EventController extends BaseApiController
@@ -75,13 +76,18 @@ class EventController extends BaseApiController
 
     public function visitorRegister(VisitorEventRegistrationRequest $request, string $eventId, string $occurrenceId)
     {
+        $event = Event::query()->findOrFail($eventId);
+        if (! $this->events->visitorRegistrationEnabled($event)) {
+            return $this->error('Visitor registration is not enabled for this event.', 403);
+        }
+
         $registration = $this->registrations->registerVisitor(
-            Event::query()->findOrFail($eventId),
+            $event,
             EventOccurrence::query()->findOrFail($occurrenceId),
-            $request->validated() + ['source' => $request->input('source', 'zoho_form')]
+            $request->validated() + ['source' => $request->input('source', 'visitor_app')]
         );
 
-        return $this->success(new EventRegistrationResource($registration), 'Visitor registration successful.', 201);
+        return $this->success(new EventRegistrationResource($registration), 'Visitor registered successfully.', 201);
     }
 
     public function myRegistrations(Request $request)
@@ -92,9 +98,24 @@ class EventController extends BaseApiController
             ->latest('registered_at')
             ->paginate(max(1, min((int) $request->input('per_page', 20), 100)));
 
+        $qr = app(EventQrService::class);
+
         return $this->success([
             'total' => $items->total(),
-            'items' => EventRegistrationResource::collection($items->getCollection()),
+            'items' => $items->getCollection()->map(fn (EventRegistration $registration) => [
+                'registration_id' => $registration->id,
+                'event_id' => $registration->event_id,
+                'occurrence_id' => $registration->occurrence_id,
+                'title' => $registration->event?->title,
+                'start_at' => optional($registration->occurrence?->start_at)->toISOString(),
+                'end_at' => optional($registration->occurrence?->end_at)->toISOString(),
+                'location_text' => $registration->event?->location_text,
+                'mode' => $registration->event?->mode,
+                'status' => $registration->status,
+                'checkin_status' => $registration->checkin_status,
+                'qr_code_url' => $registration->qr_code_url ?: $qr->url($registration->qr_code_path),
+                'attendee_type' => $registration->user_id ? 'member' : 'visitor',
+            ])->values(),
         ], 'My registrations fetched successfully.');
     }
 
@@ -115,14 +136,14 @@ class EventController extends BaseApiController
     public function attendance(Request $request, string $eventId)
     {
         $event = Event::query()->findOrFail($eventId);
-        if (! $this->events->isAdmin($request->user())) {
+        if (! $this->events->canViewAttendance($event, $request->user())) {
             return $this->error('You are not authorized to view attendance.', 403);
         }
 
-        $report = $this->events->attendanceReport($event);
-        $report['items'] = EventRegistrationResource::collection($report['items']);
-
-        return $this->success($report, 'Attendance fetched successfully.');
+        return $this->success(
+            $this->events->attendanceReport($event, $request->only(['occurrence_id', 'status', 'checkin_status', 'attendee_type', 'search'])),
+            'Attendance fetched successfully.'
+        );
     }
 
     public function checkinQr(string $qrToken)

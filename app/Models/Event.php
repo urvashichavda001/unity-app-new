@@ -55,6 +55,10 @@ class Event extends Model
         'recurrence_week_of_month',
         'recurrence_day_of_month',
         'recurrence_month',
+        'visitor_registration_enabled',
+        'member_registration_enabled',
+        'online_meeting_url',
+        'zoho_form_url',
         'recurrence_ends_at',
     ];
 
@@ -64,6 +68,8 @@ class Event extends Model
         'is_virtual' => 'boolean',
         'is_paid' => 'boolean',
         'is_public' => 'boolean',
+        'member_registration_enabled' => 'boolean',
+        'visitor_registration_enabled' => 'boolean',
         'qr_checkin_enabled' => 'boolean',
         'feedback_sent' => 'boolean',
         'gallery_published' => 'boolean',

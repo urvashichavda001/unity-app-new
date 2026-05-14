@@ -13,13 +13,13 @@ class VisitorEventRegistrationRequest extends FormRequest
         return [
             'visitor_name' => ['required', 'string', 'max:255'],
             'visitor_email' => ['nullable', 'email', 'max:255'],
-            'visitor_phone' => ['nullable', 'string', 'max:50'],
+            'visitor_phone' => ['required', 'string', 'max:50'],
             'visitor_company' => ['nullable', 'string', 'max:255'],
             'visitor_city' => ['nullable', 'string', 'max:255'],
             'zoho_form_entry_id' => ['nullable', 'string', 'max:255'],
             'zoho_payment_id' => ['nullable', 'string', 'max:255'],
             'zoho_payment_status' => ['nullable', 'string', 'max:100'],
-            'source' => ['sometimes', 'string', 'in:app,admin,scanner,zoho_form'],
+            'source' => ['sometimes', 'string', 'in:app,visitor_app,admin,zoho_form'],
             'metadata' => ['nullable', 'array'],
         ];
     }

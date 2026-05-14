@@ -39,6 +39,9 @@ class EventRegistrationResource extends JsonResource
                 'id' => $this->user->id,
                 'name' => $this->user->display_name ?? trim(($this->user->first_name ?? '').' '.($this->user->last_name ?? '')),
                 'email' => $this->user->email,
+                'phone' => $this->user->phone ?? null,
+                'company_name' => $this->user->company_name ?? null,
+                'city' => $this->user->city ?? $this->user->business_city ?? null,
             ] : [
                 'type' => 'visitor',
                 'name' => $this->visitor_name,

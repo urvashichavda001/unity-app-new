@@ -40,12 +40,18 @@ class EventRegistration extends Model
         'zoho_form_entry_id',
         'zoho_payment_id',
         'zoho_payment_status',
+        'qr_generated_at',
+        'last_qr_scan_at',
+        'scan_device_info',
+        'attendance_source',
         'metadata',
     ];
 
     protected $casts = [
         'registered_at' => 'datetime',
         'checked_in_at' => 'datetime',
+        'last_qr_scan_at' => 'datetime',
+        'qr_generated_at' => 'datetime',
         'metadata' => 'array',
     ];
 

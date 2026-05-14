@@ -10,7 +10,7 @@ class EventDetailResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        return [
+        $event = [
             'id' => $this->id,
             'title' => $this->title,
             'description' => $this->description,
@@ -21,6 +21,7 @@ class EventDetailResource extends JsonResource
             'start_at' => optional($this->start_at)->toISOString(),
             'end_at' => optional($this->end_at)->toISOString(),
             'location_text' => $this->location_text,
+            'online_meeting_url' => $this->online_meeting_url ?? null,
             'agenda' => $this->agenda,
             'speakers' => $this->speakers,
             'banner_url' => $this->banner_url,
@@ -30,6 +31,8 @@ class EventDetailResource extends JsonResource
             'registration_limit' => $this->registration_limit,
             'qr_checkin_enabled' => (bool) $this->qr_checkin_enabled,
             'is_public' => (bool) $this->is_public,
+            'visitor_registration_enabled' => app(EventService::class)->visitorRegistrationEnabled($this->resource),
+            'member_registration_enabled' => app(EventService::class)->memberRegistrationEnabled($this->resource),
             'recurrence' => [
                 'type' => $this->recurrence_type,
                 'interval' => $this->recurrence_interval,
@@ -39,11 +42,19 @@ class EventDetailResource extends JsonResource
                 'month' => $this->recurrence_month,
                 'ends_at' => optional($this->recurrence_ends_at)->toISOString(),
             ],
+        ];
+        $canRegister = app(EventService::class)->canRegister($this->resource, $request->user());
+
+        return $event + [
+            'event' => $event,
+            'can_register' => $canRegister['can_register'],
+            'can_register_reason' => $canRegister['reason'],
             'eligibility' => [
                 'is_eligible' => app(EventService::class)->isEligible($this->resource, $request->user()),
                 'reason' => app(EventService::class)->isEligible($this->resource, $request->user()) ? null : 'User is not eligible for this event.',
             ],
             'occurrences' => EventOccurrenceListResource::collection($this->whenLoaded('occurrences')),
+            'upcoming_occurrences' => EventOccurrenceListResource::collection($this->whenLoaded('occurrences')),
         ];
     }
 }
