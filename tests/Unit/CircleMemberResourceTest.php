@@ -29,6 +29,7 @@ class CircleMemberResourceTest extends TestCase
             'email' => 'member@example.com',
             'city_id' => $city->id,
             'business_sub_category' => 'Software Development',
+            'life_impacted_count' => 2,
         ]);
         $user->id = 'user-123';
         $user->setRelation('city', $city);
@@ -45,6 +46,7 @@ class CircleMemberResourceTest extends TestCase
         $this->assertSame('Manufacturing & Engineering Circles', $data['business_category_name']);
         $this->assertSame('Manufacturing & Engineering Circles', $data['business_category']);
         $this->assertSame('Software Development', $data['business_sub_category']);
+        $this->assertSame(2, $data['life_impacted_count']);
         $this->assertSame('circle-123', $data['categories'][0]['circle_id']);
         $this->assertSame('test1', $data['categories'][0]['circle_name']);
         $this->assertSame(['id' => 1, 'name' => 'Manufacturing & Engineering Circles'], $data['categories'][0]['level1_category']);
@@ -74,6 +76,7 @@ class CircleMemberResourceTest extends TestCase
         $this->assertNull($data['business_category_name']);
         $this->assertNull($data['business_category']);
         $this->assertSame('Software Development', $data['business_sub_category']);
+        $this->assertSame(0, $data['life_impacted_count']);
         $this->assertSame([], $data['categories']);
     }
 

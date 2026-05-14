@@ -54,6 +54,7 @@ class CircleMemberResource extends JsonResource
                     'business_sub_category' => $user?->business_sub_category,
                     'categories' => $categories,
                     'membership_status' => $user?->membership_status ?? null,
+                    'life_impacted_count' => (int) ($user->life_impacted_count ?? 0),
                     'is_active' => $user?->is_active ?? null,
                     'profile_photo_file_id' => $photoFileId,
                     'profile_photo_url' => $photoFileId
