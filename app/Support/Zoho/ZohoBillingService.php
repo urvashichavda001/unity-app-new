@@ -406,58 +406,76 @@ class ZohoBillingService
 
     public function createHostedPageForEventRegistration(array $customer, array $eventPayment): array
     {
-        $user = $customer['user'] ?? null;
-        $customerId = $user instanceof User
-            ? $this->ensureCustomerForUser($user)
-            : $this->ensureCustomerForContact($customer);
-
         $registrationId = (string) ($eventPayment['registration_id'] ?? '');
         $amount = round((float) ($eventPayment['amount'] ?? 0), 2);
         $currency = strtoupper((string) ($eventPayment['currency'] ?? 'INR'));
         $eventTitle = trim((string) ($eventPayment['event_title'] ?? 'Unity Event'));
-        $planCode = trim((string) config('zoho_billing.event_registration_plan_code'));
-        $itemId = trim((string) config('zoho_billing.event_registration_item_id'));
+        $checkoutPath = trim((string) config('zoho_billing.event_dynamic_checkout_path'));
 
         if ($registrationId === '' || $amount <= 0) {
             throw new RuntimeException('Invalid event registration checkout payload.');
         }
 
-        if ($planCode === '' && $itemId === '') {
+        if ($checkoutPath === '') {
+            Log::warning('dynamic Zoho event checkout unavailable because no endpoint is configured', [
+                'event_registration_id' => $registrationId,
+                'amount' => $amount,
+                'currency' => $currency,
+            ]);
+
             throw ValidationException::withMessages([
-                'zoho_event_payment' => 'Zoho event payment item/plan is not configured.',
+                'zoho_event_payment' => 'Dynamic Zoho event checkout is not supported by current Zoho Billing API setup.',
             ]);
         }
 
-        $plan = array_filter([
-            'plan_code' => $planCode !== '' ? $planCode : null,
-            'item_id' => $itemId !== '' ? $itemId : null,
-            'price' => $amount,
-            'quantity' => 1,
-        ], fn ($value) => $value !== null && $value !== '');
+        $user = $customer['user'] ?? null;
+        $customerId = $user instanceof User
+            ? $this->ensureCustomerForUser($user)
+            : $this->ensureCustomerForContact($customer);
 
         $payload = [
             'customer_id' => $customerId,
-            'plan' => $plan,
+            'amount' => $amount,
+            'currency_code' => $currency,
+            'description' => 'Event Registration - '.$eventTitle,
             'redirect_url' => (string) ($eventPayment['redirect_url'] ?? rtrim((string) config('app.url'), '/')),
         ];
 
-        Log::info('event hosted page request payload', [
+        Log::info('event dynamic hosted checkout request payload', [
             'event_registration_id' => $registrationId,
-            'customer_id' => $customerId,
-            'event_title' => $eventTitle,
+            'endpoint' => $checkoutPath,
+            'payload_keys' => array_keys($payload),
             'amount' => $amount,
             'currency' => $currency,
-            'plan_code_configured' => $planCode !== '',
-            'item_id_configured' => $itemId !== '',
         ]);
 
-        $response = $this->client->request('POST', '/hostedpages/newsubscription', $payload);
-        $hostedPage = is_array($response['hostedpage'] ?? null) ? $response['hostedpage'] : $response;
-        $hostedPageId = (string) ($hostedPage['hostedpage_id'] ?? '');
-        $checkoutUrl = (string) ($hostedPage['url'] ?? '');
+        $response = $this->client->request('POST', $checkoutPath, $payload);
+        $hostedPage = is_array($response['hostedpage'] ?? null)
+            ? $response['hostedpage']
+            : (is_array($response['payment_link'] ?? null) ? $response['payment_link'] : $response);
+
+        Log::info('event dynamic hosted checkout response shape', [
+            'event_registration_id' => $registrationId,
+            'endpoint' => $checkoutPath,
+            'response_keys' => array_keys($response),
+            'hosted_page_keys' => is_array($hostedPage) ? array_keys($hostedPage) : [],
+        ]);
+
+        $hostedPageId = (string) (
+            data_get($hostedPage, 'hostedpage_id')
+            ?? data_get($hostedPage, 'payment_link_id')
+            ?? data_get($hostedPage, 'id')
+            ?? ''
+        );
+        $checkoutUrl = (string) (
+            data_get($hostedPage, 'url')
+            ?? data_get($hostedPage, 'payment_url')
+            ?? data_get($hostedPage, 'checkout_url')
+            ?? ''
+        );
 
         if ($hostedPageId === '' || $checkoutUrl === '') {
-            throw new RuntimeException('Unable to create Zoho hosted page for event registration.');
+            throw new RuntimeException('Unable to create dynamic Zoho hosted checkout for event registration.');
         }
 
         return [
@@ -467,6 +485,7 @@ class ZohoBillingService
             'invoice_id' => data_get($hostedPage, 'invoice.invoice_id') ?? data_get($hostedPage, 'invoice_id'),
             'invoice_number' => data_get($hostedPage, 'invoice.invoice_number') ?? data_get($hostedPage, 'invoice_number'),
             'raw' => [
+                'endpoint' => $checkoutPath,
                 'hostedpage' => $response,
             ],
         ];
