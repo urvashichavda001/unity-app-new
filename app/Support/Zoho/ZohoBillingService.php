@@ -404,7 +404,7 @@ class ZohoBillingService
         return $customerId;
     }
 
-    public function createHostedInvoicePaymentForEventRegistration(array $customer, array $eventPayment): array
+    public function createHostedInvoicePaymentForEventRegistration(array $customer, array $eventPayment, ?callable $afterInvoiceCreated = null): array
     {
         $user = $customer['user'] ?? null;
         $customerId = $user instanceof User
@@ -451,6 +451,19 @@ class ZohoBillingService
             throw new RuntimeException('Unable to create Zoho invoice for event registration.');
         }
 
+        $invoiceMapping = [
+            'customer_id' => $customerId,
+            'invoice_id' => $invoiceId,
+            'invoice_number' => (string) ($invoice['invoice_number'] ?? $invoice['number'] ?? ''),
+            'raw_invoice' => $invoiceResponse,
+        ];
+
+        if ($afterInvoiceCreated !== null) {
+            $afterInvoiceCreated($invoiceMapping);
+        }
+
+        $markSentResponse = $this->markInvoiceAsSentForEventRegistration($invoiceId, $registrationId);
+
         $hostedPayload = [
             'invoice_id' => $invoiceId,
             'redirect_url' => (string) ($eventPayment['redirect_url'] ?? rtrim((string) config('app.url'), '/')),
@@ -473,9 +486,34 @@ class ZohoBillingService
             'checkout_url' => $checkoutUrl,
             'raw' => [
                 'invoice' => $invoiceResponse,
+                'mark_sent' => $markSentResponse,
                 'hostedpage' => $hostedResponse,
             ],
         ];
+    }
+
+
+    private function markInvoiceAsSentForEventRegistration(string $invoiceId, string $registrationId): array
+    {
+        try {
+            $response = $this->client->request('POST', '/invoices/'.$invoiceId.'/status/sent');
+
+            Log::info('event invoice marked as sent before hosted payment', [
+                'event_registration_id' => $registrationId,
+                'invoice_id' => $invoiceId,
+                'response' => $response,
+            ]);
+
+            return $response;
+        } catch (Throwable $throwable) {
+            Log::error('event invoice mark-as-sent failed before hosted payment', [
+                'event_registration_id' => $registrationId,
+                'invoice_id' => $invoiceId,
+                'error' => $throwable->getMessage(),
+            ]);
+
+            throw $throwable;
+        }
     }
 
     public function createHostedPageForSubscription(User $user, string $planCode): array
