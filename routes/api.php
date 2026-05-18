@@ -53,7 +53,6 @@ use App\Http\Controllers\Api\V1\CollaborationTypeController;
 use App\Http\Controllers\Api\V1\AdController;
 use App\Http\Controllers\Api\V1\Admin\AppVersionController as AdminAppVersionController;
 use App\Http\Controllers\Api\V1\Admin\AdminOpsController;
-use App\Http\Controllers\Api\V1\Admin\AdminCampaignController;
 use App\Http\Controllers\Api\V1\Admin\CircleManagementController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
 use App\Http\Controllers\Api\V1\Admin\EventAdminController;
@@ -233,14 +232,6 @@ Route::prefix('v1')->group(function () {
         Route::delete('/circle-join-requests/{id}', [CircleJoinRequestController::class, 'cancel'])->whereUuid('id');
 
         Route::prefix('admin')->group(function () {
-            Route::get('/campaigns', [AdminCampaignController::class, 'index']);
-            Route::post('/campaigns', [AdminCampaignController::class, 'store']);
-            Route::post('/campaigns/preview-recipients', [AdminCampaignController::class, 'previewRecipients']);
-            Route::get('/campaigns/filter-options', [AdminCampaignController::class, 'filterOptions']);
-            Route::get('/campaigns/member-search', [AdminCampaignController::class, 'memberSearch']);
-            Route::get('/campaigns/{campaign}', [AdminCampaignController::class, 'show'])->whereUuid('campaign');
-            Route::post('/campaigns/{campaign}/send', [AdminCampaignController::class, 'send'])->whereUuid('campaign');
-
             Route::post('/app/version', [AdminAppVersionController::class, 'upsert']);
             Route::get('/circle-join-requests', [CircleJoinRequestAdminController::class, 'index']);
             Route::get('/circle-join-requests/{id}', [CircleJoinRequestAdminController::class, 'show'])->whereUuid('id');
@@ -685,14 +676,4 @@ Route::prefix('v1')->group(function () {
 
 
     // Other module routes (members, circles, posts, etc.) will be added here later.
-});
-
-Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
-    Route::get('/campaigns', [AdminCampaignController::class, 'index']);
-    Route::post('/campaigns', [AdminCampaignController::class, 'store']);
-    Route::post('/campaigns/preview-recipients', [AdminCampaignController::class, 'previewRecipients']);
-    Route::get('/campaigns/filter-options', [AdminCampaignController::class, 'filterOptions']);
-    Route::get('/campaigns/member-search', [AdminCampaignController::class, 'memberSearch']);
-    Route::get('/campaigns/{campaign}', [AdminCampaignController::class, 'show'])->whereUuid('campaign');
-    Route::post('/campaigns/{campaign}/send', [AdminCampaignController::class, 'send'])->whereUuid('campaign');
 });

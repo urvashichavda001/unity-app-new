@@ -32,9 +32,6 @@ use App\Http\Controllers\Admin\CircularController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\AdController;
 use App\Http\Controllers\Admin\EmailLogController;
-use App\Http\Controllers\Admin\AdminCampaignController;
-use App\Http\Controllers\Admin\CampaignPamphletController;
-use App\Http\Controllers\Admin\CampaignEmailTemplateController;
 use App\Http\Controllers\Admin\ImpactsController;
 use App\Http\Controllers\Admin\LeadSubmissionsController;
 use App\Http\Controllers\Admin\ReferralReportController;
@@ -209,28 +206,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/pending-requests/leads/become-speaker/{id}', [LeadSubmissionsController::class, 'becomeSpeakerShow'])->name('leads.become-speaker.show');
         Route::get('/pending-requests/leads/become-mentor', [LeadSubmissionsController::class, 'becomeMentor'])->name('leads.become-mentor.index');
         Route::get('/pending-requests/leads/become-mentor/{id}', [LeadSubmissionsController::class, 'becomeMentorShow'])->name('leads.become-mentor.show');
-        Route::get('/campaign-email-templates', [CampaignEmailTemplateController::class, 'index'])->name('campaign-email-templates.index');
-        Route::get('/campaign-email-templates/list', [CampaignEmailTemplateController::class, 'list'])->name('campaign-email-templates.list');
-        Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
-        Route::get('/campaigns/create', [AdminCampaignController::class, 'create'])->name('campaigns.create');
-        Route::post('/campaigns', [AdminCampaignController::class, 'store'])->name('campaigns.store');
-        Route::post('/campaigns/preview-recipients', [AdminCampaignController::class, 'previewRecipients'])->name('campaigns.preview-recipients');
-        Route::post('/campaigns/import-audience', [AdminCampaignController::class, 'importAudience'])->name('campaigns.import-audience');
-        Route::get('/campaigns/audience-samples/{audienceType}', [AdminCampaignController::class, 'downloadAudienceSample'])->name('campaigns.audience-samples');
-        Route::get('/campaigns/filter-options', [AdminCampaignController::class, 'filterOptions'])->name('campaigns.filter-options');
-        Route::get('/campaigns/member-search', [AdminCampaignController::class, 'memberSearch'])->name('campaigns.member-search');
-        Route::get('/campaigns/{campaign}', [AdminCampaignController::class, 'show'])->name('campaigns.show');
-        Route::get('/campaigns/{campaign}/edit', [AdminCampaignController::class, 'edit'])->name('campaigns.edit');
-        Route::put('/campaigns/{campaign}', [AdminCampaignController::class, 'update'])->name('campaigns.update');
-        Route::post('/campaigns/{campaign}/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
-        Route::get('/campaign-pamphlets/select-list', [CampaignPamphletController::class, 'selectList'])->name('campaign-pamphlets.select-list');
-        Route::get('/campaign-pamphlets', [CampaignPamphletController::class, 'index'])->name('campaign-pamphlets.index');
-        Route::get('/campaign-pamphlets/create', [CampaignPamphletController::class, 'create'])->name('campaign-pamphlets.create');
-        Route::post('/campaign-pamphlets', [CampaignPamphletController::class, 'store'])->name('campaign-pamphlets.store');
-        Route::get('/campaign-pamphlets/{pamphlet}/edit', [CampaignPamphletController::class, 'edit'])->name('campaign-pamphlets.edit');
-        Route::put('/campaign-pamphlets/{pamphlet}', [CampaignPamphletController::class, 'update'])->name('campaign-pamphlets.update');
-        Route::delete('/campaign-pamphlets/{pamphlet}', [CampaignPamphletController::class, 'destroy'])->name('campaign-pamphlets.destroy');
-
         Route::get('/email-logs', [EmailLogController::class, 'index'])->name('email-logs.index');
 
         Route::get('/impacts', [ImpactsController::class, 'index'])->name('impacts.index');
