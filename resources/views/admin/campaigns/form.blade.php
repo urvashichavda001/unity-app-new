@@ -139,7 +139,6 @@
 
                 <div class="d-grid gap-2">
                     <button type="submit" class="btn btn-outline-primary" onclick="document.getElementById('campaignAction').value='draft'">Save Draft</button>
-                    <button type="button" id="previewRecipientsBtn" class="btn btn-outline-secondary">Preview Recipients</button>
                     <button type="submit" class="btn btn-success" onclick="document.getElementById('campaignAction').value='send'; return confirm('Send this campaign now? This cannot be undone.');">Send Campaign</button>
                 </div>
             </div>
@@ -467,7 +466,9 @@
     audienceType.addEventListener('change', syncFilterFields);
     syncTypeFields(); syncFilterFields(); renderEmailTemplatePreview();
 
-    document.getElementById('previewRecipientsBtn').addEventListener('click', async () => {
+    const previewRecipientsBtn = document.getElementById('previewRecipientsBtn');
+    if (previewRecipientsBtn) {
+        previewRecipientsBtn.addEventListener('click', async () => {
         const formData = new FormData(document.getElementById('campaignForm'));
         const response = await fetch('{{ route('admin.campaigns.preview-recipients') }}', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }, body: formData });
         const data = await response.json();
@@ -485,7 +486,8 @@
         }
         document.getElementById('previewBody').innerHTML = (data.recipients || []).map(row => `<tr><td>${row.display_name || '-'}</td><td>${row.email || '-'}</td><td>${row.phone || '-'}</td><td>${row.city || '-'}</td><td>${row.company_name || '-'}</td><td>${row.membership_status || '-'}</td><td>${row.circle_name || '-'}</td></tr>`).join('') || '<tr><td colspan="7" class="text-center text-muted">No recipients found.</td></tr>';
         document.getElementById('previewCard').style.display = 'block';
-    });
+        });
+    }
 })();
 </script>
 @endpush
