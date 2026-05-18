@@ -46,7 +46,7 @@
             ['icon' => 'bi-calendar-event', 'label' => 'Events', 'route' => 'admin.execution.events'],
             ['icon' => 'bi-people-fill', 'label' => 'Referrals & Visitors', 'route' => '#'],
             ['icon' => 'bi-life-preserver', 'label' => 'Support & Feedback', 'route' => '#'],
-            ['icon' => 'bi-bell', 'label' => 'Notifications & Email', 'route' => 'admin.execution.communications'],
+            ['icon' => 'bi-bell', 'label' => 'Notifications & Email', 'route' => 'admin.campaigns.index', 'active_routes' => ['admin.campaigns.*', 'admin.execution.communications']],
             ['icon' => 'bi-calendar2-week', 'label' => 'Meetings & Warnings', 'route' => 'admin.execution.meetings'],
             ['icon' => 'bi-shield-lock', 'label' => 'Audit & Compliance', 'route' => 'admin.execution.reports'],
             ['icon' => 'bi-gear', 'label' => 'System Settings', 'route' => '#'],
@@ -98,6 +98,13 @@
         request()->routeIs('admin.coin-claims.*') ||
         request()->routeIs('admin.circle-joining-requests.*') ||
         request()->routeIs('admin.impacts.pending');
+
+    $campaignsMenu = [
+        ['label' => 'Campaign Dashboard', 'route' => 'admin.campaigns.index'],
+        ['label' => 'Create Campaign', 'route' => 'admin.campaigns.create'],
+        ['label' => 'Pamphlets', 'route' => 'admin.campaign-pamphlets.index'],
+    ];
+    $campaignsActive = request()->routeIs('admin.campaigns.*') || request()->routeIs('admin.campaign-pamphlets.*') || request()->routeIs('admin.execution.communications');
 @endphp
 
 <aside class="admin-sidebar d-flex flex-column">
@@ -208,17 +215,35 @@
             </li>
 
             @foreach ($navItems as $item)
-                <li class="nav-item">
-                    @if ($item['route'] === '#')
-                        <span class="nav-link disabled">
-                            <i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}
-                        </span>
-                    @else
-                        <a class="nav-link {{ (isset($item['active_routes']) ? request()->routeIs(...$item['active_routes']) : request()->routeIs($item['route'])) ? 'active' : '' }}" href="{{ route($item['route']) }}">
-                            <i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}
+                @if ($item['label'] === 'Notifications & Email')
+                    <li class="nav-item menu-parent {{ $campaignsActive ? 'open' : '' }}">
+                        <a class="nav-link d-flex justify-content-between align-items-center {{ $campaignsActive ? 'active' : '' }}" data-bs-toggle="collapse" href="#campaignsSubmenu" role="button" aria-expanded="{{ $campaignsActive ? 'true' : 'false' }}" aria-controls="campaignsSubmenu">
+                            <span><i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}</span>
+                            <i class="bi bi-chevron-right menu-arrow"></i>
                         </a>
-                    @endif
-                </li>
+                        <div class="collapse {{ $campaignsActive ? 'show' : '' }}" id="campaignsSubmenu">
+                            <ul class="nav flex-column ms-3">
+                                @foreach ($campaignsMenu as $campaignItem)
+                                    <li class="nav-item">
+                                        <a class="nav-link {{ request()->routeIs($campaignItem['route']) ? 'active' : '' }}" href="{{ route($campaignItem['route']) }}">{{ $campaignItem['label'] }}</a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    </li>
+                @else
+                    <li class="nav-item">
+                        @if ($item['route'] === '#')
+                            <span class="nav-link disabled">
+                                <i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}
+                            </span>
+                        @else
+                            <a class="nav-link {{ (isset($item['active_routes']) ? request()->routeIs(...$item['active_routes']) : request()->routeIs($item['route'])) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                                <i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}
+                            </a>
+                        @endif
+                    </li>
+                @endif
             @endforeach
         </ul>
     </nav>
@@ -236,7 +261,7 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            ['activitiesSubmenu', 'postsSubmenu', 'pendingRequestsSubmenu', 'leadsSubmenu'].forEach((submenuId) => {
+            ['activitiesSubmenu', 'postsSubmenu', 'pendingRequestsSubmenu', 'leadsSubmenu', 'campaignsSubmenu'].forEach((submenuId) => {
                 const submenu = document.getElementById(submenuId);
                 if (!submenu) {
                     return;
