@@ -25,54 +25,16 @@ class CollaborationPostController extends Controller
 
     public function history(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'status' => ['nullable', 'string', 'in:incomplete,completed'],
-        ]);
+        $validated = $this->validateHistoryRequest($request);
 
-        $relations = [
-            'user:id,first_name,last_name,display_name,city,membership_status,profile_photo_file_id',
-            'industry:id,name,parent_id',
-            'collaborationType:id,name,slug',
-            'acceptedByUser:id,first_name,last_name,display_name,email,phone,company_name,designation,city,profile_photo_file_id,profile_photo_url',
-        ];
+        return $this->historyResponse($validated['status'] ?? null);
+    }
 
-        $baseQuery = CollaborationPost::query()
-            ->with($relations)
-            ->where('user_id', $request->user()->id)
-            ->where('status', '!=', CollaborationPost::STATUS_DELETED);
+    public function myHistory(Request $request): JsonResponse
+    {
+        $validated = $this->validateHistoryRequest($request);
 
-        $requestedStatus = $validated['status'] ?? null;
-
-        $incomplete = collect();
-        if ($requestedStatus === null || $requestedStatus === CollaborationPost::COMPLETION_INCOMPLETE) {
-            $incomplete = (clone $baseQuery)
-                ->where(function ($query): void {
-                    $query->whereNull('completion_status')
-                        ->orWhere('completion_status', CollaborationPost::COMPLETION_INCOMPLETE);
-                })
-                ->orderByDesc('posted_at')
-                ->orderByDesc('created_at')
-                ->get();
-        }
-
-        $completed = collect();
-        if ($requestedStatus === null || $requestedStatus === CollaborationPost::COMPLETION_COMPLETED) {
-            $completed = (clone $baseQuery)
-                ->where('completion_status', CollaborationPost::COMPLETION_COMPLETED)
-                ->orderByDesc('completed_at')
-                ->orderByDesc('posted_at')
-                ->orderByDesc('created_at')
-                ->get();
-        }
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Collaboration history fetched successfully.',
-            'data' => [
-                'incomplete' => CollaborationPostResource::collection($incomplete),
-                'completed' => CollaborationPostResource::collection($completed),
-            ],
-        ]);
+        return $this->historyResponse($validated['status'] ?? null, (string) $request->user()->id);
     }
 
     public function complete(Request $request, string $id): JsonResponse
@@ -117,6 +79,62 @@ class CollaborationPostController extends Controller
         $this->collaborationNotificationService->sendCompletedNotificationsAndEmails($post);
 
         return $this->collaborationResponse($post, 'Collaboration accepted successfully.');
+    }
+
+    private function validateHistoryRequest(Request $request): array
+    {
+        return $request->validate([
+            'status' => ['nullable', 'string', 'in:incomplete,completed'],
+        ]);
+    }
+
+    private function historyResponse(?string $requestedStatus, ?string $userId = null): JsonResponse
+    {
+        $baseQuery = CollaborationPost::query()
+            ->with($this->collaborationRelations())
+            ->where('status', '!=', CollaborationPost::STATUS_DELETED);
+
+        if ($userId !== null) {
+            $baseQuery->where('user_id', $userId);
+        }
+
+        $incomplete = collect();
+        if ($requestedStatus === null || $requestedStatus === CollaborationPost::COMPLETION_INCOMPLETE) {
+            $incomplete = (clone $baseQuery)
+                ->where(function ($query): void {
+                    $query->whereNull('completion_status')
+                        ->orWhere('completion_status', CollaborationPost::COMPLETION_INCOMPLETE);
+                })
+                ->latest('created_at')
+                ->get();
+        }
+
+        $completed = collect();
+        if ($requestedStatus === null || $requestedStatus === CollaborationPost::COMPLETION_COMPLETED) {
+            $completed = (clone $baseQuery)
+                ->where('completion_status', CollaborationPost::COMPLETION_COMPLETED)
+                ->latest('completed_at')
+                ->get();
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Collaboration history fetched successfully.',
+            'data' => [
+                'incomplete' => CollaborationPostResource::collection($incomplete),
+                'completed' => CollaborationPostResource::collection($completed),
+            ],
+        ]);
+    }
+
+    private function collaborationRelations(): array
+    {
+        return [
+            'user:id,first_name,last_name,display_name,city,membership_status,profile_photo_file_id',
+            'industry:id,name,parent_id',
+            'collaborationType:id,name,slug',
+            'acceptedByUser:id,first_name,last_name,display_name,email,phone,company_name,designation,city,profile_photo_file_id,profile_photo_url',
+        ];
     }
 
     private function markCompleted(Request $request, string $id, string $successMessage): JsonResponse
@@ -169,12 +187,7 @@ class CollaborationPostController extends Controller
 
     private function collaborationResponse(CollaborationPost $post, string $message): JsonResponse
     {
-        $post->load([
-            'user:id,first_name,last_name,display_name,city,membership_status,profile_photo_file_id',
-            'industry:id,name,parent_id',
-            'collaborationType:id,name,slug',
-            'acceptedByUser:id,first_name,last_name,display_name,email,phone,company_name,designation,city,profile_photo_file_id,profile_photo_url',
-        ]);
+        $post->load($this->collaborationRelations());
 
         return response()->json([
             'status' => true,

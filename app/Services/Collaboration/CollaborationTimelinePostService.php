@@ -24,16 +24,10 @@ class CollaborationTimelinePostService
     {
         $this->hideCreatedPost($collaboration);
 
-        $collaboration->loadMissing('user:id,display_name,first_name,last_name');
-
-        $user = $collaboration->user;
-        $userName = $user?->display_name ?: trim(($user?->first_name ?? '') . ' ' . ($user?->last_name ?? ''));
-        $prefix = $userName !== '' ? $userName : 'A peer';
-
         return (bool) $this->createTimelinePost(
             $collaboration,
             self::EVENT_COMPLETED,
-            "{$prefix} completed collaboration: {$collaboration->title}"
+            "I have completed collaboration: {$collaboration->title}"
         );
     }
 

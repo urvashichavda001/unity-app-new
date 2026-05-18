@@ -211,7 +211,7 @@ class PostModerationController extends Controller
         $impactIds = $pageRows->where('source_type', 'impact')->pluck('id')->values()->all();
 
         $postsById = Post::query()
-            ->with(['user', 'circle'])
+            ->with(['user', 'circle', 'collaborationPost.acceptedByUser'])
             ->whereIn('id', $postIds)
             ->get()
             ->keyBy(fn (Post $post) => (string) $post->id);
@@ -271,7 +271,7 @@ class PostModerationController extends Controller
                     return null;
                 }
 
-                $post->source_type = 'post';
+                $post->timeline_item_type = 'post';
 
                 return $post;
             }
@@ -284,6 +284,7 @@ class PostModerationController extends Controller
 
             return (object) [
                 'id' => (string) $impact->id,
+                'timeline_item_type' => 'impact',
                 'source_type' => 'impact',
                 'user' => $impact->user,
                 'circle' => null,

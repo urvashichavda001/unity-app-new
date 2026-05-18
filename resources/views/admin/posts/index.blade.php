@@ -118,7 +118,7 @@
                 <tbody>
                     @forelse ($posts as $post)
                         @php
-                            $isImpact = ($post->source_type ?? 'post') === 'impact';
+                            $isImpact = ($post->timeline_item_type ?? $post->source_type ?? 'post') === 'impact';
                             $owner = $post->user;
                             $circleName = optional($post->circle)->name;
                             $isActive = $isImpact
@@ -160,6 +160,13 @@
 
                                 return data_get($candidate, 'path');
                             })($post->media ?? null);
+                            $isCompletedCollaboration = ! $isImpact
+                                && ($post->source_type ?? null) === 'collaboration_post'
+                                && ($post->source_event ?? null) === 'completed';
+                            $acceptedBy = $isCompletedCollaboration ? optional($post->collaborationPost)->acceptedByUser : null;
+                            $acceptedByName = $acceptedBy
+                                ? ($acceptedBy->display_name ?: trim(($acceptedBy->first_name ?? '') . ' ' . ($acceptedBy->last_name ?? '')))
+                                : null;
                         @endphp
                         <tr>
                             <td>{{ $post->created_at?->format('Y-m-d H:i') }}</td>
@@ -171,7 +178,18 @@
                                 @if($isImpact)
                                     <span class="badge bg-info text-dark me-1">Impact</span>
                                 @endif
-                                {{ \Illuminate\Support\Str::limit($post->content_text, 60) }}
+                                <div>{{ \Illuminate\Support\Str::limit($post->content_text, 60) }}</div>
+                                @if($isCompletedCollaboration)
+                                    <div class="small text-muted mt-1">
+                                        @if($acceptedBy)
+                                            <div><strong>Accepted by:</strong> {{ $acceptedByName !== '' ? $acceptedByName : 'Not available' }}</div>
+                                            <div><strong>Company:</strong> {{ $acceptedBy->company_name ?: '—' }}</div>
+                                            <div><strong>City:</strong> {{ $acceptedBy->city ?: '—' }}</div>
+                                        @else
+                                            <div><strong>Accepted by:</strong> Not available</div>
+                                        @endif
+                                    </div>
+                                @endif
                             </td>
                             <td style="white-space:nowrap;">
                                 @if ($mediaUrl)
