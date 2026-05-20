@@ -22,11 +22,16 @@ class SupportTicket extends Model
         'email',
         'subject',
         'description',
+        'media_file_id',
+        'media_type',
+        'media_url',
         'status',
         'priority',
         'admin_note',
         'resolved_at',
     ];
+
+    protected $appends = ['media'];
 
     protected $casts = [
         'resolved_at' => 'datetime',
@@ -39,6 +44,20 @@ class SupportTicket extends Model
                 $model->id = (string) Str::uuid();
             }
         });
+    }
+
+
+    public function getMediaAttribute(): ?array
+    {
+        if (! $this->media_file_id || ! $this->media_url) {
+            return null;
+        }
+
+        return [
+            'file_id' => $this->media_file_id,
+            'type' => $this->media_type,
+            'url' => $this->media_url,
+        ];
     }
 
     public function user(): BelongsTo

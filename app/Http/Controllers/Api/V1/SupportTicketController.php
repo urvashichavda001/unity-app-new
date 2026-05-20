@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Mail\SupportTicketResolvedMail;
 use App\Mail\SupportTicketSubmittedMail;
+use App\Models\FileModel;
 use App\Models\SupportTicket;
 use App\Services\EmailLogs\EmailLogService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -25,13 +27,19 @@ class SupportTicketController extends BaseApiController
             'email' => ['required', 'email', 'max:150'],
             'subject' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
+            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,mp4,mov,avi,webm', 'max:51200'],
         ]);
+
+        $mediaPayload = $this->uploadSupportMedia($request);
 
         $ticket = new SupportTicket($validated);
         $ticket->user_id = optional($request->user())->id;
         $ticket->status = 'open';
         $ticket->priority = 'normal';
         $ticket->ticket_number = $this->generateTicketNumber();
+        $ticket->media_file_id = $mediaPayload['file_id'] ?? null;
+        $ticket->media_type = $mediaPayload['type'] ?? null;
+        $ticket->media_url = $mediaPayload['url'] ?? null;
         $ticket->save();
 
         $this->sendConfirmationEmail($ticket);
@@ -113,6 +121,57 @@ class SupportTicketController extends BaseApiController
         }
 
         return $this->success($ticket->fresh('user'), 'Support ticket updated successfully.');
+    }
+
+
+    private function uploadSupportMedia(Request $request): ?array
+    {
+        if (! $request->hasFile('media')) {
+            return null;
+        }
+
+        $media = $request->file('media');
+
+        if (! $media instanceof UploadedFile || ! $media->isValid()) {
+            abort(response()->json([
+                'success' => false,
+                'message' => 'Invalid media file uploaded.',
+                'errors' => null,
+            ], 422));
+        }
+
+        try {
+            $disk = config('filesystems.default', 'public');
+            $path = $media->store('uploads/' . now()->format('Y/m/d'), $disk);
+
+            $file = FileModel::create([
+                'uploader_user_id' => optional($request->user())->id,
+                's3_key' => $path,
+                'mime_type' => $media->getClientMimeType(),
+                'size_bytes' => $media->getSize(),
+            ]);
+
+            $mime = (string) $media->getClientMimeType();
+            $mediaType = str_starts_with($mime, 'image/') ? 'image' : 'video';
+            $baseUrl = rtrim((string) config('app.url'), '/');
+
+            return [
+                'file_id' => (string) $file->id,
+                'type' => $mediaType,
+                'url' => $baseUrl . '/api/v1/files/' . $file->id,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Support media upload failed.', [
+                'user_id' => optional($request->user())->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            abort(response()->json([
+                'success' => false,
+                'message' => 'Media upload failed. Please try again.',
+                'errors' => null,
+            ], 422));
+        }
     }
 
     private function generateTicketNumber(): string
