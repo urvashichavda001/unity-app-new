@@ -36,7 +36,6 @@ use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\PostSaveController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReferralController;
-use App\Http\Controllers\Api\SupportController;
 use App\Http\Controllers\Api\TestimonialController;
 use App\Http\Controllers\Api\UserContactController;
 use App\Http\Controllers\Api\V1\Billing\BillingCheckoutController;
@@ -91,6 +90,7 @@ use App\Http\Controllers\Api\V1\RequirementController as V1RequirementController
 use App\Http\Controllers\Api\V1\RequirementInterestController;
 use App\Http\Controllers\Api\V1\TimelineRequirementController;
 use App\Http\Controllers\Api\V1\UserActivitySummaryController;
+use App\Http\Controllers\Api\V1\SupportTicketController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoDebugController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoPlansController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoWebhookController;
@@ -541,10 +541,12 @@ Route::prefix('v1')->group(function () {
         Route::get('/my/requirements', [V1RequirementController::class, 'myIndex']);
 
         // Support
-        Route::post('/support', [SupportController::class, 'store']);
-        Route::get('/support/my', [SupportController::class, 'mySupportRequests']);
-        Route::get('/support/admin', [SupportController::class, 'adminIndex']);
-        Route::patch('/support/admin/{id}', [SupportController::class, 'adminUpdate']);
+        Route::post('/support', [SupportTicketController::class, 'store']);
+        Route::get('/support/my-tickets', [SupportTicketController::class, 'myTickets']);
+
+        Route::get('/admin/support-tickets', [SupportTicketController::class, 'adminIndex']);
+        Route::get('/admin/support-tickets/{id}', [SupportTicketController::class, 'adminShow'])->whereUuid('id');
+        Route::patch('/admin/support-tickets/{id}', [SupportTicketController::class, 'adminUpdate'])->whereUuid('id');
 
         // Chats & Messages
         Route::get('/chats', [ChatController::class, 'index']);
