@@ -76,7 +76,7 @@ class ZohoBillingPaymentLinkService
         $amount = number_format((float) ($registration->payment_amount ?? $registration->amount ?? 0), 2, '.', '');
 
         $payload = [
-            'amount' => $amount,
+            'total_payment_amount' => $amount,
             'currency' => 'INR',
             'customer_id' => $customerId,
             'email' => $email,
@@ -93,6 +93,7 @@ class ZohoBillingPaymentLinkService
         Log::info('zoho_billing_payment_link_create_request', [
             'registration_id' => (string) $registration->id,
             'payload' => $payload,
+            'body_keys' => array_keys($payload),
         ]);
         Log::info('Zoho Billing request path=/paymentlinks', ['registration_id' => (string) $registration->id]);
 
