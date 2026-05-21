@@ -56,9 +56,7 @@ class ZohoBillingPaymentLinkService
             return $registration;
         }
 
-        $email = (string) ($registration->user?->email ?: $registration->visitor_email ?: '');
-        $phone = (string) ($registration->user?->phone ?: $registration->visitor_phone ?: '');
-        $eventTitle = (string) ($registration->event?->title ?? 'Event');
+        $event = $registration->event;
         $amountValue = (float) ($registration->payment_amount ?? $registration->amount ?? 0);
         if ($amountValue < 1) {
             throw ValidationException::withMessages([
@@ -69,25 +67,17 @@ class ZohoBillingPaymentLinkService
         $customerId = $this->findOrCreateCustomer($registration);
         if (empty($customerId)) {
             throw ValidationException::withMessages([
-                'customer' => 'Unable to create or match Zoho customer for payment link.',
+                'customer' => 'Zoho customer_id missing for payment link.',
             ]);
         }
 
         $amount = number_format((float) ($registration->payment_amount ?? $registration->amount ?? 0), 2, '.', '');
 
         $payload = [
-            'total_payment_amount' => $amount,
-            'currency' => 'INR',
-            'customer_id' => $customerId,
-            'email' => $email,
-            'phone' => $phone,
-            'reference_id' => (string) $registration->id,
-            'description' => 'Event Registration - '.$eventTitle,
-            'return_url' => rtrim((string) config('app.url'), '/').'/api/v1/events/registrations/'.$registration->id.'/payment-return',
-            'notify_customer' => [
-                'email' => true,
-                'sms' => false,
-            ],
+            'customer_id' => (string) $customerId,
+            'payment_amount' => (float) $amount,
+            'description' => 'Event Registration - '.($event->title ?? 'Event'),
+            'expiry_time' => now()->addDays(15)->format('Y-m-d'),
         ];
 
         Log::info('zoho_billing_payment_link_create_request', [
@@ -99,7 +89,7 @@ class ZohoBillingPaymentLinkService
 
         try {
             $response = $this->client->request('POST', '/paymentlinks', $payload);
-            $link = data_get($response, 'payment_links') ?? data_get($response, 'payment_link') ?? $response;
+            $link = data_get($response, 'payment_link') ?? data_get($response, 'payment_links') ?? $response;
             $url = data_get($link, 'url');
 
             if (empty($url)) {
@@ -117,7 +107,7 @@ class ZohoBillingPaymentLinkService
                 'zoho_payment_link_url' => $url,
                 'payment_url' => $url,
                 'checkout_url' => $url,
-                'zoho_payment_status' => data_get($link, 'status', 'active'),
+                'zoho_payment_status' => data_get($link, 'status', 'Generated'),
                 'payment_gateway' => 'zoho_billing_payment_link',
                 'payment_status' => 'pending',
                 'status' => 'pending_payment',
