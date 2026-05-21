@@ -34,18 +34,38 @@ class ZohoEventPaymentService
 
     public function createEventInvoice(EventRegistration $registration): EventRegistration
     {
+        $registration->loadMissing(['event', 'occurrence', 'user']);
         if (! empty($registration->zoho_invoice_id)) return $registration;
+
+        $event = $registration->event;
+        $amount = (float) ($registration->payment_amount ?? $registration->amount ?? $event?->ticket_price ?? 0);
+        if ($amount <= 0) {
+            $message = 'Paid event ticket amount must be greater than 0.';
+            $registration->forceFill($this->f(['zoho_invoice_sync_error' => $message]))->save();
+            Log::error('zoho_event_payment_error', ['event_registration_id' => $registration->id, 'error' => $message]);
+
+            return $registration->fresh(['event', 'occurrence', 'user']);
+        }
+
         $registration = $this->findOrCreateCustomer($registration->fresh(['event','occurrence','user']));
-        $invoice = $this->client->request('POST', '/invoices', [
-            'customer_id' => $registration->zoho_customer_id,
-            'line_items' => [[
-                'name' => 'Event Ticket - '.(string)($registration->event?->title ?? 'Event'),
-                'description' => 'Occurrence: '.(optional($registration->occurrence?->start_at)->toDateTimeString() ?? '').', Registration: '.$registration->id,
-                'quantity' => 1,
-                'rate' => (float)($registration->amount ?? 0),
-            ]],
-            'reference_number' => (string)$registration->id,
+        $customerId = $registration->zoho_customer_id;
+        $lineItems = [[
+            'name' => 'Event Ticket - ' . ($event->title ?? 'Event Registration'),
+            'description' => 'Event Registration ID: ' . $registration->id,
+            'rate' => $amount,
+            'quantity' => 1,
+        ]];
+        $payload = [
+            'customer_id' => $customerId,
+            'line_items' => $lineItems,
+            'reference_number' => (string) $registration->id,
+        ];
+        Log::info('Zoho Billing invoice payload', [
+            'registration_id' => $registration->id,
+            'payload' => $payload,
         ]);
+
+        $invoice = $this->client->request('POST', '/invoices', $payload);
         $registration->forceFill($this->f([
             'zoho_invoice_id' => data_get($invoice,'invoice.invoice_id',data_get($invoice,'invoice_id')),
             'zoho_invoice_number' => data_get($invoice,'invoice.invoice_number',data_get($invoice,'invoice_number')),
@@ -60,9 +80,13 @@ class ZohoEventPaymentService
 
     public function createHostedPaymentPage(EventRegistration $registration): EventRegistration
     {
+        $registration->loadMissing(['event', 'occurrence', 'user']);
         if (! empty($registration->payment_url)) return $registration;
         try {
             $registration = $this->createEventInvoice($registration);
+            if (empty($registration->zoho_invoice_id)) {
+                return $registration;
+            }
             $hosted = $this->client->request('POST', '/hostedpages/invoice', ['invoice_id' => $registration->zoho_invoice_id, 'reference_id' => (string)$registration->id]);
             $url = data_get($hosted,'hostedpage.url',data_get($hosted,'url'));
             $registration->forceFill($this->f([

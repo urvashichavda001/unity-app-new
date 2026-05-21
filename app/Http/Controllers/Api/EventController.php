@@ -83,7 +83,7 @@ class EventController extends BaseApiController
 
         return $this->success(
             $this->payments->responsePayload($registration),
-            $requiresPayment ? 'Payment required. Please complete Razorpay checkout.' : 'Event registration successful.',
+            $requiresPayment ? 'Payment required. Please complete payment.' : 'Event registration successful.',
             201
         );
     }
@@ -105,7 +105,7 @@ class EventController extends BaseApiController
 
         return $this->success(
             $this->payments->responsePayload($registration),
-            $requiresPayment ? 'Payment required. Please complete Razorpay checkout.' : 'Visitor registered successfully.',
+            $requiresPayment ? 'Payment required. Please complete payment.' : 'Visitor registered successfully.',
             201
         );
     }
@@ -218,7 +218,7 @@ class EventController extends BaseApiController
 
         return $this->success(
             $this->payments->responsePayload($registration),
-            $requiresPayment ? 'Payment required. Please complete Razorpay checkout.' : 'Visitor registered successfully.',
+            $requiresPayment ? 'Payment required. Please complete payment.' : 'Visitor registered successfully.',
             201
         );
     }

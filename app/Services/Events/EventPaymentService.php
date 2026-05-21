@@ -58,12 +58,12 @@ class EventPaymentService
             return $registration;
         }
 
-        $gateway = (string) config('services.event_payment_gateway', 'zoho');
+        $gateway = (string) config('services.event_payment_gateway', env('EVENT_PAYMENT_GATEWAY', 'zoho'));
         $registration = $gateway === 'razorpay'
             ? $this->razorpay->createOrder($registration->fresh(['event', 'occurrence', 'user']))
             : $this->zoho->createHostedPaymentPage($registration->fresh(['event', 'occurrence', 'user']));
 
-        return DB::transaction(function () use ($registration): EventRegistration {
+        return DB::transaction(function () use ($registration, $gateway): EventRegistration {
             $registration = EventRegistration::query()->lockForUpdate()->findOrFail($registration->id);
             $metadata = array_merge((array) ($registration->metadata ?? []), [
                 'event_payment' => [
@@ -86,19 +86,22 @@ class EventPaymentService
     public function responsePayload(EventRegistration $registration): array
     {
         $requiresPayment = (bool) ($registration->payment_required ?? false);
+        $gateway = $requiresPayment ? (string) config('services.event_payment_gateway', env('EVENT_PAYMENT_GATEWAY', 'zoho')) : null;
+        $paymentUrl = $registration->payment_url ?? $registration->zoho_hosted_page_url ?? null;
+        $zohoLinkFailed = $requiresPayment && $gateway === 'zoho' && empty($paymentUrl);
 
         $payload = [
             'registration_id' => $registration->id,
-            'status' => true,
-            'success' => true,
+            'status' => ! $zohoLinkFailed,
+            'success' => ! $zohoLinkFailed,
             'payment_required' => $requiresPayment,
             'requires_payment' => $requiresPayment,
             'payment_status' => $registration->payment_status ?? ($requiresPayment ? 'pending' : 'not_required'),
             'amount' => $registration->amount !== null ? (string) $registration->amount : null,
             'currency' => $registration->currency ?? 'INR',
-            'payment_gateway' => $requiresPayment ? (string) config('services.event_payment_gateway', 'zoho') : null,
-            'payment_url' => $registration->payment_url ?? $registration->zoho_hosted_page_url ?? null,
-            'checkout_url' => $registration->payment_url ?? $registration->zoho_hosted_page_url ?? null,
+            'payment_gateway' => $gateway,
+            'payment_url' => $paymentUrl,
+            'checkout_url' => $paymentUrl,
             'qr_code_url' => $requiresPayment && ($registration->payment_status ?? null) !== 'paid'
                 ? null
                 : ($registration->qr_code_url ?: app(EventQrService::class)->url($registration->qr_code_path)),
@@ -106,9 +109,12 @@ class EventPaymentService
             'zoho_invoice_number' => $registration->zoho_invoice_number ?? null,
             'zoho_invoice_url' => $registration->zoho_invoice_url ?? null,
             'zoho_invoice_pdf_url' => $registration->zoho_invoice_pdf_url ?? null,
-            'message' => $requiresPayment
+            'message' => $zohoLinkFailed
+                ? 'Unable to create Zoho payment link. Please try again.'
+                : ($requiresPayment
                 ? 'Payment required. Please complete Zoho payment.'
-                : 'Event registration successful.',
+                : 'Event registration successful.'),
+            'error' => $zohoLinkFailed ? ($registration->zoho_invoice_sync_error ?? 'Zoho API request failed.') : null,
         ];
 
         if ($requiresPayment) {
