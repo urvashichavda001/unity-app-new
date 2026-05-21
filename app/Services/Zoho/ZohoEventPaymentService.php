@@ -49,9 +49,13 @@ class ZohoEventPaymentService
 
         $registration = $this->findOrCreateCustomer($registration->fresh(['event','occurrence','user']));
         $customerId = $registration->zoho_customer_id;
+        $itemId = config('services.zoho_event_ticket_item_id') ?: env('ZOHO_EVENT_TICKET_ITEM_ID');
+        if (empty($itemId)) {
+            throw new \RuntimeException('ZOHO_EVENT_TICKET_ITEM_ID is missing.');
+        }
         $lineItems = [[
-            'name' => 'Event Ticket - ' . ($event->title ?? 'Event Registration'),
-            'description' => 'Event Registration ID: ' . $registration->id,
+            'item_id' => $itemId,
+            'description' => 'Event Ticket - ' . ($event->title ?? 'Event Registration') . ' | Registration ID: ' . $registration->id,
             'rate' => $amount,
             'quantity' => 1,
         ]];
@@ -62,6 +66,7 @@ class ZohoEventPaymentService
         ];
         Log::info('Zoho Billing invoice payload', [
             'registration_id' => $registration->id,
+            'item_id_present' => ! empty(data_get($payload, 'line_items.0.item_id')),
             'payload' => $payload,
         ]);
 

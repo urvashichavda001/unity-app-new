@@ -117,7 +117,7 @@ class EventPaymentService
             'error' => $zohoLinkFailed ? ($registration->zoho_invoice_sync_error ?? 'Zoho API request failed.') : null,
         ];
 
-        if ($requiresPayment) {
+        if ($requiresPayment && $gateway === 'razorpay') {
             $payload['razorpay'] = $this->razorpay->checkoutPayload($registration);
         }
 

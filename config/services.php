@@ -40,6 +40,7 @@ return [
     ],
 
     'event_payment_gateway' => env('EVENT_PAYMENT_GATEWAY', 'zoho'),
+    'zoho_event_ticket_item_id' => env('ZOHO_EVENT_TICKET_ITEM_ID'),
 
     'members_with_circles' => [
         // Fixed token for GET /api/v1/members-with-circles and /api/v1/members-with-circles/{identifier}
