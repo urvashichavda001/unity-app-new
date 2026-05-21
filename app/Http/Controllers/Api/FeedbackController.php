@@ -8,9 +8,9 @@ use App\Models\FeedbackForm;
 use App\Models\FeedbackMedia;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 
 class FeedbackController extends BaseApiController
 {
@@ -36,53 +36,59 @@ class FeedbackController extends BaseApiController
 
         $user = $request->user();
         $category = FeedbackCategory::query()->findOrFail($validated['category_id']);
-
-        $feedbackForm = FeedbackForm::query()->create([
-            'user_id' => $user?->id,
-            'category_id' => $category->id,
-            'category' => $category->name,
-            'subject' => $validated['subject'],
-            'question' => $validated['question'],
-            'status' => 'submitted',
-        ]);
-
         $mediaResponse = [];
-        $uploadedMedia = $request->file('media', []);
-        foreach ($uploadedMedia as $file) {
-            $path = $file->store('feedback-media', 'public');
-            $url = Storage::disk('public')->url($path);
-            $mime = (string) $file->getClientMimeType();
-            $type = str_starts_with($mime, 'image/') ? 'image' : (str_starts_with($mime, 'video/') ? 'video' : 'file');
 
-            $media = FeedbackMedia::query()->create([
-                'feedback_form_id' => $feedbackForm->id,
-                'file_path' => $path,
-                'file_url' => $url,
-                'file_type' => $type,
-                'mime_type' => $mime,
-                'original_name' => $file->getClientOriginalName(),
-                'file_size' => $file->getSize(),
+        $feedback = DB::transaction(function () use ($validated, $user, $category, $request, &$mediaResponse) {
+            $feedback = FeedbackForm::query()->create([
+                'user_id' => $user?->id,
+                'category_id' => $category->id,
+                'category' => $category->name,
+                'subject' => $validated['subject'],
+                'question' => $validated['question'],
+                'status' => 'submitted',
             ]);
 
-            $mediaResponse[] = [
-                'id' => $media->id,
-                'url' => $media->file_url,
-                'type' => $media->file_type,
-            ];
-        }
+            if ($request->hasFile('media')) {
+                foreach ($request->file('media') as $file) {
+                    $path = $file->store('feedback-media', 'public');
+                    $mimeType = (string) $file->getMimeType();
+                    $fileType = str_starts_with($mimeType, 'image/')
+                        ? 'image'
+                        : (str_starts_with($mimeType, 'video/') ? 'video' : 'file');
 
-        $feedbackForm->load(['category', 'user']);
+                    $media = FeedbackMedia::query()->create([
+                        'feedback_form_id' => $feedback->id,
+                        'file_path' => $path,
+                        'file_url' => asset('storage/' . $path),
+                        'file_type' => $fileType,
+                        'mime_type' => $mimeType,
+                        'original_name' => $file->getClientOriginalName(),
+                        'file_size' => $file->getSize(),
+                    ]);
 
-        $this->sendFeedbackEmails($feedbackForm);
+                    $mediaResponse[] = [
+                        'id' => $media->id,
+                        'url' => $media->file_url,
+                        'type' => $media->file_type,
+                    ];
+                }
+            }
+
+            return $feedback;
+        });
+
+        $feedback->load(['category', 'user']);
+
+        $this->sendFeedbackEmails($feedback);
 
         return $this->success([
-            'id' => $feedbackForm->id,
-            'subject' => $feedbackForm->subject,
-            'category' => $feedbackForm->category,
-            'question' => $feedbackForm->question,
-            'status' => $feedbackForm->status,
+            'id' => $feedback->id,
+            'subject' => $feedback->subject,
+            'category' => $feedback->category,
+            'question' => $feedback->question,
+            'status' => $feedback->status,
             'media' => $mediaResponse,
-            'created_at' => $feedbackForm->created_at,
+            'created_at' => $feedback->created_at,
         ], 'Thank you for your feedback. Our team will review it and get back to you soon.', 201);
     }
 
