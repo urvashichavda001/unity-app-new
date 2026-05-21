@@ -6,10 +6,47 @@ use App\Models\EventRegistration;
 use App\Support\Zoho\ZohoBillingClient;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class ZohoBillingPaymentLinkService
 {
     public function __construct(private readonly ZohoBillingClient $client) {}
+
+
+    public function findOrCreateCustomer(EventRegistration $registration): ?string
+    {
+        if (! empty($registration->zoho_customer_id)) {
+            return (string) $registration->zoho_customer_id;
+        }
+
+        $registration->loadMissing(['user']);
+        $email = (string) ($registration->user?->email ?: $registration->visitor_email ?: '');
+        if ($email === '') {
+            return null;
+        }
+
+        $phone = (string) ($registration->user?->phone ?: $registration->visitor_phone ?: '');
+        $name = (string) ($registration->user?->name ?: $registration->visitor_name ?: 'Event Attendee');
+
+        $search = $this->client->request('GET', '/customers', ['email' => $email], true);
+        $customer = data_get($search, 'customers.0');
+        $customerId = data_get($customer, 'customer_id');
+
+        if (! $customerId) {
+            $created = $this->client->request('POST', '/customers', [
+                'display_name' => $name,
+                'email' => $email,
+                'phone' => $phone,
+            ]);
+            $customerId = data_get($created, 'customer.customer_id') ?? data_get($created, 'customer_id');
+        }
+
+        if ($customerId) {
+            $registration->forceFill($this->filter(['zoho_customer_id' => $customerId]))->save();
+        }
+
+        return $customerId ? (string) $customerId : null;
+    }
 
     public function createPaymentLink(EventRegistration $registration): EventRegistration
     {
@@ -22,12 +59,26 @@ class ZohoBillingPaymentLinkService
         $email = (string) ($registration->user?->email ?: $registration->visitor_email ?: '');
         $phone = (string) ($registration->user?->phone ?: $registration->visitor_phone ?: '');
         $eventTitle = (string) ($registration->event?->title ?? 'Event');
-        $amount = (float) ($registration->payment_amount ?? $registration->amount ?? 0);
+        $amountValue = (float) ($registration->payment_amount ?? $registration->amount ?? 0);
+        if ($amountValue < 1) {
+            throw ValidationException::withMessages([
+                'ticket_price' => 'Paid event ticket price must be at least ₹1 for Zoho payment link.',
+            ]);
+        }
+
+        $customerId = $this->findOrCreateCustomer($registration);
+        if (empty($customerId)) {
+            throw ValidationException::withMessages([
+                'customer' => 'Unable to create or match Zoho customer for payment link.',
+            ]);
+        }
+
+        $amount = number_format((float) ($registration->payment_amount ?? $registration->amount ?? 0), 2, '.', '');
 
         $payload = [
             'amount' => $amount,
             'currency' => 'INR',
-            'customer_id' => $registration->zoho_customer_id,
+            'customer_id' => $customerId,
             'email' => $email,
             'phone' => $phone,
             'reference_id' => (string) $registration->id,
@@ -75,6 +126,8 @@ class ZohoBillingPaymentLinkService
                 'registration_id' => (string) $registration->id,
                 'zoho_payment_link_id' => $registration->zoho_payment_link_id,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             $registration->forceFill($this->filter([
                 'zoho_invoice_sync_error' => $e->getMessage(),
