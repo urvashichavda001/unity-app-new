@@ -9,6 +9,7 @@ use App\Models\CollaborationPost;
 use App\Services\Collaboration\CollaborationPostService;
 use App\Services\Collaboration\CollaborationTimelinePostService;
 use App\Services\CollaborationNotificationService;
+use App\Services\ActivityCreativeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -42,7 +43,7 @@ class CollaborationPostController extends Controller
         return $this->markCompleted($request, $id, 'Collaboration marked as completed successfully.');
     }
 
-    public function accept(Request $request, string $id): JsonResponse
+    public function accept(Request $request, string $id, ActivityCreativeService $activityCreativeService): JsonResponse
     {
         $post = CollaborationPost::query()->where('id', $id)->first();
 
@@ -78,7 +79,9 @@ class CollaborationPostController extends Controller
         $this->collaborationTimelinePostService->createCompletedPost($post);
         $this->collaborationNotificationService->sendCompletedNotificationsAndEmails($post);
 
-        return $this->collaborationResponse($post, 'Collaboration accepted successfully.');
+        $activityCreativeService->createOrUpdateCreative('collaboration_accept', (string) $post->id, (string) $request->user()->id, $activityCreativeService->buildCreativePayload('collaboration_accept', $post));
+
+        return $this->collaborationResponse($post, 'Collaboration accepted successfully.', $activityCreativeService->buildDownloadUrl('collaboration-accept', (string) $post->id));
     }
 
     private function validateHistoryRequest(Request $request): array
@@ -185,18 +188,23 @@ class CollaborationPostController extends Controller
         return $this->collaborationResponse($post, $successMessage);
     }
 
-    private function collaborationResponse(CollaborationPost $post, string $message): JsonResponse
+    private function collaborationResponse(CollaborationPost $post, string $message, ?string $creativeUrl = null): JsonResponse
     {
         $post->load($this->collaborationRelations());
 
         return response()->json([
             'status' => true,
             'message' => $message,
-            'data' => new CollaborationPostResource($post),
+            'data' => array_merge((new CollaborationPostResource($post))->resolve(), $creativeUrl ? [
+                'creative' => [
+                    'available' => true,
+                    'download_url' => $creativeUrl,
+                ],
+            ] : []),
         ]);
     }
 
-    public function store(StoreCollaborationPostRequest $request): JsonResponse
+    public function store(StoreCollaborationPostRequest $request, ActivityCreativeService $activityCreativeService): JsonResponse
     {
         Log::info('HIT collaborations.store', [
             'user_id' => optional($request->user())->id,
@@ -240,10 +248,17 @@ class CollaborationPostController extends Controller
             'collaborationType:id,name,slug',
         ]);
 
+        $activityCreativeService->createOrUpdateCreative('collaboration', (string) $post->id, (string) $request->user()->id, $activityCreativeService->buildCreativePayload('collaboration', $post));
+        $data = (new CollaborationPostResource($post))->resolve();
+        $data['creative'] = [
+            'available' => true,
+            'download_url' => $activityCreativeService->buildDownloadUrl('collaboration', (string) $post->id),
+        ];
+
         return response()->json([
             'status' => true,
             'message' => 'Collaboration post created successfully.',
-            'data' => new CollaborationPostResource($post),
+            'data' => $data,
         ], 201);
     }
 }

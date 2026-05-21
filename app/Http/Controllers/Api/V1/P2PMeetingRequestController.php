@@ -13,10 +13,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use App\Services\ActivityCreativeService;
 
 class P2PMeetingRequestController extends BaseApiController
 {
-    public function store(Request $request, NotifyUserService $notifyUserService, PeerBlockService $peerBlockService)
+    public function store(Request $request, NotifyUserService $notifyUserService, PeerBlockService $peerBlockService, ActivityCreativeService $activityCreativeService)
     {
         $authUser = $request->user();
 
@@ -73,7 +74,15 @@ class P2PMeetingRequestController extends BaseApiController
 
         $meetingRequest->load(['requester', 'invitee']);
 
-        return $this->success(new P2PMeetingRequestResource($meetingRequest), 'P2P meeting request created.', 201);
+        $activityCreativeService->createOrUpdateCreative('p2p_meeting_request', (string) $meetingRequest->id, (string) $authUser->id, $activityCreativeService->buildCreativePayload('p2p_meeting_request', $meetingRequest));
+
+        $payload = (new P2PMeetingRequestResource($meetingRequest))->resolve();
+        $payload['creative'] = [
+            'available' => true,
+            'download_url' => $activityCreativeService->buildDownloadUrl('p2p-meeting-request', (string) $meetingRequest->id),
+        ];
+
+        return $this->success($payload, 'P2P meeting request created.', 201);
     }
 
     public function inbox(Request $request)

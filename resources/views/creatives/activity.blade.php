@@ -25,13 +25,14 @@
     <div class="body">
         <div class="meta">
             <div><strong>Created By:</strong> {{ $userName }}@if(!empty($userCompany)) ({{ $userCompany }})@endif</div>
+            <div><strong>City:</strong> {{ $userCity ?? 'N/A' }}</div>
             <div><strong>Date:</strong> {{ $activityDate }}</div>
         </div>
 
         <div class="text">{{ $creativeText }}</div>
 
         <div class="footer">
-            Generated from Peers Global Unity Activity API
+            Powered by Peers Global Unity
         </div>
     </div>
 </div>

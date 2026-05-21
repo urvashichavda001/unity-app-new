@@ -7,6 +7,7 @@ use App\Http\Resources\Requirement\IncompleteRequirementResource;
 use App\Http\Resources\Requirement\RequirementDetailResource;
 use App\Models\Requirement;
 use App\Models\RequirementInterest;
+use App\Services\ActivityCreativeService;
 use App\Services\Requirements\RequirementNotificationService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -16,7 +17,10 @@ use Throwable;
 
 class RequirementController extends Controller
 {
-    public function __construct(private readonly RequirementNotificationService $requirementNotificationService)
+    public function __construct(
+        private readonly RequirementNotificationService $requirementNotificationService,
+        private readonly ActivityCreativeService $activityCreativeService
+    )
     {
     }
 
@@ -58,6 +62,7 @@ class RequirementController extends Controller
             ]);
 
             $requirement->load('user');
+            $this->activityCreativeService->createOrUpdateCreative('requirement', (string) $requirement->id, (string) auth()->id(), $this->activityCreativeService->buildCreativePayload('requirement', $requirement));
 
             $notifiedCount = 0;
             try {
@@ -73,7 +78,12 @@ class RequirementController extends Controller
             return response()->json([
                 'status' => true,
                 'message' => 'Requirement created',
-                'data' => $requirement,
+                'data' => array_merge($requirement->toArray(), [
+                    'creative' => [
+                        'available' => true,
+                        'download_url' => $this->activityCreativeService->buildDownloadUrl('requirement', (string) $requirement->id),
+                    ],
+                ]),
                 'meta' => [
                     'notified_count' => $notifiedCount,
                 ],

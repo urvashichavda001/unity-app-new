@@ -7,6 +7,7 @@ use App\Http\Requests\Requirements\InterestRequirementRequest;
 use App\Models\Requirement;
 use App\Models\RequirementInterest;
 use App\Services\Blocks\PeerBlockService;
+use App\Services\ActivityCreativeService;
 use App\Services\Requirements\RequirementNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +16,8 @@ use Throwable;
 class RequirementInterestController extends Controller
 {
     public function __construct(private readonly RequirementNotificationService $requirementNotificationService,
-        private readonly PeerBlockService $peerBlockService)
+        private readonly PeerBlockService $peerBlockService,
+        private readonly ActivityCreativeService $activityCreativeService)
     {
     }
 
@@ -69,6 +71,9 @@ class RequirementInterestController extends Controller
             ]);
         }
 
+        $creativeActivityId = (string) ($interest->id ?: $requirement->id);
+        $this->activityCreativeService->createOrUpdateCreative('requirement_interest', $creativeActivityId, (string) $request->user()->id, $this->activityCreativeService->buildCreativePayload('requirement_interest', $interest));
+
         return response()->json([
             'status' => true,
             'message' => 'Interest registered successfully.',
@@ -79,6 +84,10 @@ class RequirementInterestController extends Controller
                 'source' => $interest->source,
                 'comment' => $interest->comment,
                 'created_at' => optional($interest->created_at)?->toISOString(),
+                'creative' => [
+                    'available' => true,
+                    'download_url' => $this->activityCreativeService->buildDownloadUrl('requirement-interest', $creativeActivityId),
+                ],
             ],
             'meta' => null,
         ]);
