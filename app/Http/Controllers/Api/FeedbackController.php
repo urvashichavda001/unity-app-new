@@ -26,7 +26,7 @@ class FeedbackController extends BaseApiController
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
+        $request->validate([
             'subject' => ['required', 'string', 'max:255'],
             'category_id' => ['required', 'uuid', 'exists:feedback_categories,id'],
             'question' => ['required', 'string'],
@@ -34,27 +34,38 @@ class FeedbackController extends BaseApiController
             'media.*' => ['file', 'mimes:jpg,jpeg,png,webp,mp4,mov,avi,pdf,doc,docx', 'max:20480'],
         ]);
 
-        $user = $request->user();
-        $category = FeedbackCategory::query()->findOrFail($validated['category_id']);
-        $mediaResponse = [];
+        DB::beginTransaction();
 
-        $feedback = DB::transaction(function () use ($validated, $user, $category, $request, &$mediaResponse) {
+        try {
+            $category = FeedbackCategory::query()->findOrFail($request->category_id);
+
             $feedback = FeedbackForm::query()->create([
-                'user_id' => $user?->id,
+                'user_id' => auth()->id(),
                 'category_id' => $category->id,
                 'category' => $category->name,
-                'subject' => $validated['subject'],
-                'question' => $validated['question'],
+                'subject' => $request->subject,
+                'question' => $request->question,
                 'status' => 'submitted',
             ]);
+
+            if (! $feedback || ! $feedback->id) {
+                throw new \Exception('Feedback form was not created properly.');
+            }
+
+            $mediaItems = [];
 
             if ($request->hasFile('media')) {
                 foreach ($request->file('media') as $file) {
                     $path = $file->store('feedback-media', 'public');
                     $mimeType = (string) $file->getMimeType();
-                    $fileType = str_starts_with($mimeType, 'image/')
-                        ? 'image'
-                        : (str_starts_with($mimeType, 'video/') ? 'video' : 'file');
+
+                    if (str_starts_with($mimeType, 'image/')) {
+                        $fileType = 'image';
+                    } elseif (str_starts_with($mimeType, 'video/')) {
+                        $fileType = 'video';
+                    } else {
+                        $fileType = 'file';
+                    }
 
                     $media = FeedbackMedia::query()->create([
                         'feedback_form_id' => $feedback->id,
@@ -66,30 +77,42 @@ class FeedbackController extends BaseApiController
                         'file_size' => $file->getSize(),
                     ]);
 
-                    $mediaResponse[] = [
-                        'id' => $media->id,
-                        'url' => $media->file_url,
-                        'type' => $media->file_type,
-                    ];
+                    $mediaItems[] = $media;
                 }
             }
 
-            return $feedback;
-        });
+            DB::commit();
 
-        $feedback->load(['category', 'user']);
+            $feedback->load(['category', 'user']);
+            $this->sendFeedbackEmails($feedback);
 
-        $this->sendFeedbackEmails($feedback);
+            return response()->json([
+                'success' => true,
+                'message' => 'Thank you for your feedback. Our team will review it and get back to you soon.',
+                'data' => [
+                    'id' => $feedback->id,
+                    'subject' => $feedback->subject,
+                    'category' => $feedback->category,
+                    'question' => $feedback->question,
+                    'status' => $feedback->status,
+                    'media' => $mediaItems,
+                    'created_at' => $feedback->created_at,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
 
-        return $this->success([
-            'id' => $feedback->id,
-            'subject' => $feedback->subject,
-            'category' => $feedback->category,
-            'question' => $feedback->question,
-            'status' => $feedback->status,
-            'media' => $mediaResponse,
-            'created_at' => $feedback->created_at,
-        ], 'Thank you for your feedback. Our team will review it and get back to you soon.', 201);
+            Log::error('Feedback submit failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => null,
+            ], 500);
+        }
     }
 
     private function sendFeedbackEmails(FeedbackForm $feedbackForm): void
