@@ -141,6 +141,7 @@ class EventController extends BaseApiController
             'zoho_invoice_pdf_url' => $registration->zoho_invoice_pdf_url ?? null,
             'zoho_payment_status' => $registration->zoho_payment_status ?? null,
             'zoho_payment_id' => $registration->zoho_payment_id ?? null,
+            'invoice_sync_error' => $registration->zoho_invoice_sync_error ?? null,
             'invoice' => $this->invoicePayload($registration),
         ], 'Payment status fetched successfully.');
     }
