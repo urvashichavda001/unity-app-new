@@ -21,7 +21,7 @@ class EventZohoInvoiceSyncService
         $registration->loadMissing(['event', 'occurrence', 'user']);
 
         try {
-            Log::info('zoho_event_invoice_create_after_payment_start', [
+            Log::info('zoho_invoice_create_start', [
                 'event_registration_id' => (string) $registration->id,
                 'existing_invoice_id' => $registration->zoho_invoice_id,
             ]);
@@ -43,7 +43,7 @@ class EventZohoInvoiceSyncService
                 'zoho_invoice_sync_error' => null,
             ]))->save();
 
-            Log::info(! empty($registration->getOriginal('zoho_invoice_id')) ? 'zoho_event_invoice_updated_after_payment' : 'zoho_event_invoice_created_after_payment', [
+            Log::info(! empty($registration->getOriginal('zoho_invoice_id')) ? 'zoho_event_invoice_updated_after_payment' : 'zoho_invoice_created', [
                 'event_registration_id' => (string) $registration->id,
                 'zoho_invoice_id' => $registration->zoho_invoice_id,
             ]);
@@ -51,16 +51,47 @@ class EventZohoInvoiceSyncService
             try {
                 if (! empty($registration->zoho_invoice_id)) {
                     $this->zohoBillingClient->request('POST', '/invoices/'.$registration->zoho_invoice_id.'/status/sent');
-                    Log::info('zoho_event_invoice_mark_paid_success', [
+                    Log::info('zoho_invoice_mark_sent', [
                         'event_registration_id' => (string) $registration->id,
                         'zoho_invoice_id' => $registration->zoho_invoice_id,
                     ]);
+
+                    if (! empty($registration->zoho_payment_id)) {
+                        try {
+                            $this->zohoBillingClient->request('POST', '/customerpayments', [
+                                'customer_id' => $registration->zoho_customer_id,
+                                'payment_mode' => 'zoho_payment_link',
+                                'amount' => (float) ($registration->amount ?? 0),
+                                'date' => now()->toDateString(),
+                                'reference_number' => (string) ($registration->zoho_payment_id ?? $registration->id),
+                                'invoices' => [[
+                                    'invoice_id' => $registration->zoho_invoice_id,
+                                    'amount_applied' => (float) ($registration->amount ?? 0),
+                                ]],
+                            ]);
+                            Log::info('zoho_invoice_payment_attached', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
+                        } catch (\Throwable) {
+                            // non-fatal
+                        }
+                    }
+
+                    $invoiceResponse = $this->zohoBillingClient->request('GET', '/invoices/'.$registration->zoho_invoice_id);
+                    $invoiceData = is_array($invoiceResponse['invoice'] ?? null) ? $invoiceResponse['invoice'] : $invoiceResponse;
+                    $registration->forceFill($this->filterRegistrationColumns([
+                        'zoho_invoice_url' => data_get($invoiceData, 'invoice_url') ?? data_get($invoiceData, 'url') ?? $registration->zoho_invoice_url,
+                        'zoho_invoice_pdf_url' => data_get($invoiceData, 'invoice_pdf_url') ?? data_get($invoiceData, 'pdf_url') ?? $registration->zoho_invoice_pdf_url,
+                        'zoho_invoice_status' => data_get($invoiceData, 'status') ?? $registration->zoho_invoice_status,
+                    ]))->save();
+                    Log::info('zoho_invoice_fetch_success', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
                 }
-            } catch (\Throwable) {
-                // non-fatal, keep paid state
+            } catch (\Throwable $fetchException) {
+                Log::error('zoho_invoice_fetch_failed', [
+                    'event_registration_id' => (string) $registration->id,
+                    'error' => $fetchException->getMessage(),
+                ]);
             }
         } catch (\Throwable $exception) {
-            Log::error('zoho_event_invoice_failed_after_payment', [
+            Log::error('zoho_invoice_sync_failed', [
                 'event_registration_id' => (string) $registration->id,
                 'error' => $exception->getMessage(),
             ]);
@@ -138,7 +169,7 @@ class EventZohoInvoiceSyncService
             ],
         ];
 
-        Log::info('zoho_event_invoice_payload', [
+        Log::info('zoho_invoice_payload', [
             'event_registration_id' => (string) $registration->id,
             'payload' => $payload['invoice_payload'],
         ]);

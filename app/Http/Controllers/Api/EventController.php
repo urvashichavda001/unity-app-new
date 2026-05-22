@@ -142,7 +142,7 @@ class EventController extends BaseApiController
             'zoho_payment_status' => $registration->zoho_payment_status ?? null,
             'zoho_payment_id' => $registration->zoho_payment_id ?? null,
             'invoice_sync_error' => $registration->zoho_invoice_sync_error ?? null,
-            'invoice' => $this->invoicePayload($registration),
+            'invoice' => array_merge($this->invoicePayload($registration), ['invoice_sync_error' => $registration->zoho_invoice_sync_error ?? null]),
         ], 'Payment status fetched successfully.');
     }
 
@@ -297,6 +297,79 @@ class EventController extends BaseApiController
         );
     }
 
+
+    public function invoices(Request $request)
+    {
+        $q = EventRegistration::query()->with(['event', 'occurrence', 'user'])->latest('created_at');
+        if ($request->filled('payment_status')) $q->where('payment_status', $request->input('payment_status'));
+        if ($request->filled('event_id')) $q->where('event_id', $request->input('event_id'));
+        if ($request->filled('occurrence_id')) $q->where('occurrence_id', $request->input('occurrence_id'));
+        if ($request->filled('user_id')) $q->where('user_id', $request->input('user_id'));
+        if ($request->filled('visitor_email')) $q->where('visitor_email', $request->input('visitor_email'));
+
+        $items = $q->paginate(max(1, min((int) $request->input('per_page', 20), 100)));
+
+        return $this->success([
+            'total' => $items->total(),
+            'items' => $items->getCollection()->map(fn(EventRegistration $r) => $this->invoiceListItem($r))->values(),
+            'pagination' => [
+                'current_page' => $items->currentPage(),
+                'last_page' => $items->lastPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+            ],
+        ], 'Event invoices fetched successfully.');
+    }
+
+    public function invoiceDetails(Request $request, string $registrationId)
+    {
+        $r = EventRegistration::query()->with(['event', 'occurrence', 'user'])->findOrFail($registrationId);
+        if ($r->user_id && $request->user() && $r->user_id !== $request->user()->id && ! $this->events->canViewAttendance($r->event, $request->user())) {
+            return $this->error('You are not authorized to view this invoice.', 403);
+        }
+
+        return $this->success(array_merge($this->invoiceListItem($r), [
+            'event' => [
+                'title' => $r->event?->title,
+                'location_text' => $r->event?->location_text,
+                'mode' => $r->event?->mode,
+                'start_at' => optional($r->occurrence?->start_at)->toISOString(),
+                'end_at' => optional($r->occurrence?->end_at)->toISOString(),
+            ],
+            'qr_code_url' => $r->qr_code_url ?: app(EventQrService::class)->url($r->qr_code_path),
+            'invoice_sync_error' => $r->zoho_invoice_sync_error,
+        ]), 'Event invoice fetched successfully.');
+    }
+
+    private function invoiceListItem(EventRegistration $registration): array
+    {
+        $attendeeName = $registration->user?->display_name ?: trim(($registration->user?->first_name ?? '').' '.($registration->user?->last_name ?? '')) ?: $registration->visitor_name;
+        $email = $registration->user?->email ?: $registration->visitor_email;
+        $phone = $registration->user?->phone ?: $registration->visitor_phone;
+
+        return [
+            'registration_id' => $registration->id,
+            'event_id' => $registration->event_id,
+            'event_title' => $registration->event?->title,
+            'occurrence_id' => $registration->occurrence_id,
+            'attendee_name' => $attendeeName,
+            'email' => $email,
+            'phone' => $phone,
+            'payment_status' => $registration->payment_status,
+            'payment_gateway' => $registration->payment_gateway,
+            'amount' => $registration->amount !== null ? (string) $registration->amount : null,
+            'currency' => $registration->currency ?? 'INR',
+            'zoho_invoice_id' => $registration->zoho_invoice_id,
+            'zoho_invoice_number' => $registration->zoho_invoice_number,
+            'zoho_invoice_status' => $registration->zoho_invoice_status,
+            'zoho_invoice_url' => $registration->zoho_invoice_url,
+            'zoho_invoice_pdf_url' => $registration->zoho_invoice_pdf_url,
+            'zoho_payment_id' => $registration->zoho_payment_id,
+            'paid_at' => optional($registration->payment_completed_at)->toISOString(),
+            'created_at' => optional($registration->created_at)->toISOString(),
+        ];
+    }
+
     private function invoicePayload(EventRegistration $registration): array
     {
         return [
@@ -305,6 +378,7 @@ class EventController extends BaseApiController
             'zoho_invoice_number' => $registration->zoho_invoice_number ?? null,
             'invoice_url' => $registration->zoho_invoice_url ?? null,
             'invoice_pdf_url' => $registration->zoho_invoice_pdf_url ?? null,
+            'zoho_invoice_status' => $registration->zoho_invoice_status ?? null,
         ];
     }
 
