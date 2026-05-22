@@ -54,7 +54,7 @@ class P2pMeetingHistoryController extends BaseApiController
 
         $items = TableRowResource::collection(
             $items->map(function (P2pMeeting $meeting) use ($nameMap, $authUserId) {
-                $attributes = $meeting->getAttributes();
+$attributes = $meeting->toArray();
                 $otherUserId = $this->resolveOtherUserId($meeting, $authUserId);
                 $attributes['other_user_name'] = $otherUserId ? ($nameMap[$otherUserId] ?? null) : null;
                 $attributes['media'] = $this->expandP2pMedia($meeting->media);
@@ -111,11 +111,13 @@ class P2pMeetingHistoryController extends BaseApiController
      */
     private function expandP2pMedia(mixed $rawMedia): array
     {
-        if (! is_array($rawMedia) || $rawMedia === []) {
+        $media = $this->normalizeMediaPayload($rawMedia);
+
+        if ($media === []) {
             return [];
         }
 
-        $fileIds = collect($rawMedia)
+        $fileIds = collect($media)
             ->map(fn ($item): ?string => is_array($item) ? ($item['file_id'] ?? null) : null)
             ->filter()
             ->values()
@@ -127,7 +129,7 @@ class P2pMeetingHistoryController extends BaseApiController
 
         $files = FileModel::query()->whereIn('id', $fileIds)->get()->keyBy('id');
 
-        return collect($rawMedia)
+        return collect($media)
             ->map(function ($item) use ($files): array {
                 $fileId = is_array($item) ? ($item['file_id'] ?? null) : null;
                 $mediaType = is_array($item) ? ($item['media_type'] ?? null) : null;
@@ -144,5 +146,18 @@ class P2pMeetingHistoryController extends BaseApiController
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeMediaPayload(mixed $rawMedia): array
+    {
+        if (is_string($rawMedia)) {
+            $decoded = json_decode($rawMedia, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($rawMedia) ? $rawMedia : [];
     }
 }
