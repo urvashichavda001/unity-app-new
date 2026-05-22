@@ -8,6 +8,7 @@ use App\Models\P2pMeeting;
 use App\Models\Post;
 use App\Models\User;
 use App\Events\ActivityCreated;
+use App\Models\FileModel;
 use App\Services\Blocks\PeerBlockService;
 use App\Services\Coins\CoinsService;
 use App\Services\Notifications\NotifyUserService;
@@ -94,12 +95,15 @@ class P2pMeetingController extends BaseApiController
         }
 
         try {
+            $mediaEntries = $this->buildMediaEntries((array) $request->input('media_file_ids', []));
+
             $meeting = P2pMeeting::create([
                 'initiator_user_id' => $authUser->id,
                 'peer_user_id' => $request->input('peer_user_id'),
                 'meeting_date' => $request->input('meeting_date'),
                 'meeting_place' => $request->input('meeting_place'),
                 'remarks' => $request->input('remarks'),
+                'media' => $mediaEntries,
                 'is_deleted' => false,
             ]);
 
@@ -117,6 +121,8 @@ class P2pMeetingController extends BaseApiController
                     'balance_after' => $coinsLedger->balance_after,
                 ]);
             }
+
+            $meeting->setAttribute('media', $this->expandP2pMedia($meeting->media));
 
             $this->createPostForP2pMeeting($meeting);
 
@@ -178,5 +184,81 @@ class P2pMeetingController extends BaseApiController
         }
 
         return $this->success($meeting);
+    }
+
+    /**
+     * @param  array<int, string>  $fileIds
+     * @return array<int, array{file_id: string, media_type: string}>
+     */
+    private function buildMediaEntries(array $fileIds): array
+    {
+        if ($fileIds === []) {
+            return [];
+        }
+
+        $fileMap = FileModel::query()
+            ->whereIn('id', $fileIds)
+            ->get(['id', 'mime_type'])
+            ->keyBy('id');
+
+        $media = [];
+
+        foreach ($fileIds as $fileId) {
+            $file = $fileMap->get($fileId);
+            if (! $file) {
+                continue;
+            }
+
+            $mimeType = strtolower((string) ($file->mime_type ?? ''));
+            $media[] = [
+                'file_id' => (string) $file->id,
+                'media_type' => str_starts_with($mimeType, 'image/')
+                    ? 'image'
+                    : (str_starts_with($mimeType, 'video/') ? 'video' : 'file'),
+            ];
+        }
+
+        return $media;
+    }
+
+    /**
+     * @param  mixed  $rawMedia
+     * @return array<int, array<string, mixed>>
+     */
+    private function expandP2pMedia(mixed $rawMedia): array
+    {
+        if (! is_array($rawMedia) || $rawMedia === []) {
+            return [];
+        }
+
+        $fileIds = collect($rawMedia)
+            ->map(fn ($item): ?string => is_array($item) ? ($item['file_id'] ?? null) : null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $files = FileModel::query()
+            ->whereIn('id', $fileIds)
+            ->get()
+            ->keyBy('id');
+
+        return collect($rawMedia)
+            ->map(function ($item) use ($files): array {
+                $fileId = is_array($item) ? ($item['file_id'] ?? null) : null;
+                $mediaType = is_array($item) ? ($item['media_type'] ?? null) : null;
+                $file = is_string($fileId) && $fileId !== '' ? $files->get($fileId) : null;
+
+                return [
+                    'file_id' => $fileId,
+                    'media_type' => $mediaType,
+                    'url' => is_string($fileId) && $fileId !== '' ? url('/api/v1/files/' . $fileId) : null,
+                    'mime_type' => $file->mime_type ?? $file->mime ?? $file->type ?? null,
+                    'original_name' => $file->original_name ?? $file->original_filename ?? $file->name ?? null,
+                    'size' => $file->size ?? $file->size_bytes ?? null,
+                ];
+            })
+            ->values()
+            ->all();
     }
 }
