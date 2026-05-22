@@ -7,6 +7,7 @@ use App\Http\Resources\TableRowResource;
 use App\Models\FileModel;
 use App\Models\P2pMeeting;
 use App\Support\ActivityHistory\OtherUserNameResolver;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
@@ -58,7 +59,7 @@ class P2pMeetingHistoryController extends BaseApiController
                 $attributes['other_user_name'] = $otherUserId ? ($nameMap[$otherUserId] ?? null) : null;
                 $attributes['media'] = $this->expandP2pMedia($meeting->media);
 
-                return $attributes;
+                return $this->formatP2pMeetingTimestamps($attributes);
             })
         );
 
@@ -75,6 +76,24 @@ class P2pMeetingHistoryController extends BaseApiController
         }
 
         return $this->success($response);
+    }
+
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function formatP2pMeetingTimestamps(array $attributes): array
+    {
+        foreach (['created_at', 'updated_at'] as $field) {
+            if (! empty($attributes[$field])) {
+                $attributes[$field] = Carbon::parse((string) $attributes[$field])
+                    ->timezone('Asia/Kolkata')
+                    ->format('Y-m-d H:i:s');
+            }
+        }
+
+        return $attributes;
     }
 
     private function resolveOtherUserId(P2pMeeting $meeting, string $authUserId): ?string

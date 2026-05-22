@@ -12,6 +12,7 @@ use App\Models\FileModel;
 use App\Services\Blocks\PeerBlockService;
 use App\Services\Coins\CoinsService;
 use App\Services\Notifications\NotifyUserService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -75,7 +76,10 @@ class P2pMeetingController extends BaseApiController
             ->paginate($perPage);
 
         return $this->success([
-            'items' => $paginator->items(),
+            'items' => collect($paginator->items())
+                ->map(fn (P2pMeeting $meeting): array => $this->formatP2pMeetingTimestamps($meeting->getAttributes()))
+                ->values()
+                ->all(),
             'pagination' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
@@ -160,7 +164,7 @@ class P2pMeetingController extends BaseApiController
             // Verify SQL:
             // select * from notifications where user_id = '<receiver-user-uuid>' order by created_at desc limit 20;
 
-            return $this->success($meeting, 'P2P meeting saved successfully', 201);
+            return $this->success($this->formatP2pMeetingTimestamps($meeting->getAttributes()), 'P2P meeting saved successfully', 201);
         } catch (Throwable $e) {
             return $this->error('Something went wrong', 500);
         }
@@ -183,7 +187,25 @@ class P2pMeetingController extends BaseApiController
             return $this->error('P2P meeting not found', 404);
         }
 
-        return $this->success($meeting);
+        return $this->success($this->formatP2pMeetingTimestamps($meeting->getAttributes()));
+    }
+
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function formatP2pMeetingTimestamps(array $attributes): array
+    {
+        foreach (['created_at', 'updated_at'] as $field) {
+            if (! empty($attributes[$field])) {
+                $attributes[$field] = Carbon::parse((string) $attributes[$field])
+                    ->timezone('Asia/Kolkata')
+                    ->format('Y-m-d H:i:s');
+            }
+        }
+
+        return $attributes;
     }
 
     /**
