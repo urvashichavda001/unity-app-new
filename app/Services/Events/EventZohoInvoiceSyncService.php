@@ -6,6 +6,8 @@ use App\Models\EventRegistration;
 use App\Models\User;
 use App\Support\Zoho\ZohoBillingClient;
 use App\Support\Zoho\ZohoBillingService;
+use App\Support\Zoho\ZohoBillingTokenService;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -14,6 +16,7 @@ class EventZohoInvoiceSyncService
     public function __construct(
         private readonly ZohoBillingService $zohoBillingService,
         private readonly ZohoBillingClient $zohoBillingClient,
+        private readonly ZohoBillingTokenService $zohoBillingTokenService,
     ) {}
 
     public function sync(EventRegistration $registration): EventRegistration
@@ -65,10 +68,11 @@ class EventZohoInvoiceSyncService
 
                     if (! empty($registration->zoho_invoice_id)) {
                         try {
-                            $beforeInvoiceResponse = $this->zohoBillingClient->request('GET', '/invoices/'.$registration->zoho_invoice_id);
+                            $beforeInvoiceResponse = $this->booksRequest('GET', '/invoices/'.$registration->zoho_invoice_id);
                             $beforeInvoiceData = is_array($beforeInvoiceResponse['invoice'] ?? null) ? $beforeInvoiceResponse['invoice'] : $beforeInvoiceResponse;
                             $beforeStatus = strtolower((string) data_get($beforeInvoiceData, 'status', ''));
                             $beforeBalance = (float) (data_get($beforeInvoiceData, 'balance') ?? data_get($beforeInvoiceData, 'balance_due') ?? 0);
+                            $creditsAvailable = (float) (data_get($beforeInvoiceData, 'credits_applied') ?? data_get($beforeInvoiceData, 'unused_credits_receivable_amount') ?? 0);
 
                             if (in_array($beforeStatus, ['paid'], true) || $beforeBalance <= 0.0) {
                                 Log::info('zoho_invoice_payment_record_success', [
@@ -78,22 +82,41 @@ class EventZohoInvoiceSyncService
                                     'reason' => 'already_paid_or_zero_balance',
                                 ]);
                             } else {
-                                Log::info('zoho_invoice_payment_record_start', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
-                                $paymentResponse = $this->zohoBillingClient->request('POST', '/customerpayments', [
-                                    'customer_id' => $registration->zoho_customer_id,
-                                    'payment_mode' => 'UPI',
-                                    'amount' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
-                                    'date' => now()->toDateString(),
-                                    'reference_number' => (string) ($registration->zoho_payment_link_id ?? $registration->zoho_payment_id ?? $registration->id),
-                                    'description' => 'Payment received via Zoho Payment Link for Event Registration',
-                                    'invoices' => [[
-                                        'invoice_id' => $registration->zoho_invoice_id,
-                                        'amount_applied' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
-                                    ]],
-                                ]);
-                                $registration->forceFill($this->filterRegistrationColumns([
-                                    'zoho_payment_id' => data_get($paymentResponse, 'payment.payment_id') ?? data_get($paymentResponse, 'payment_id') ?? $registration->zoho_payment_id,
-                                ]))->save();
+                                $applied = false;
+                                if ($creditsAvailable > 0) {
+                                    Log::info('zoho_invoice_apply_credit_start', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
+                                    $creditId = data_get($beforeInvoiceData, 'customer_payments.0.payment_id') ?? data_get($beforeInvoiceData, 'credits.0.creditnote_id');
+                                    if (! empty($creditId)) {
+                                        $this->booksRequest('POST', '/invoices/'.$registration->zoho_invoice_id.'/credits', [
+                                            'credits' => [[
+                                                'credit_id' => (string) $creditId,
+                                                'amount_applied' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
+                                            ]],
+                                        ]);
+                                        Log::info('zoho_invoice_apply_credit_success', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
+                                        $applied = true;
+                                    }
+                                }
+
+                                if (! $applied) {
+                                    Log::info('zoho_invoice_customer_payment_start', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
+                                    $paymentResponse = $this->booksRequest('POST', '/customerpayments', [
+                                        'customer_id' => $registration->zoho_customer_id,
+                                        'payment_mode' => 'upi',
+                                        'amount' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
+                                        'date' => now()->toDateString(),
+                                        'reference_number' => (string) ($registration->zoho_payment_link_id ?? $registration->zoho_payment_id ?? $registration->id),
+                                        'description' => 'Payment received via Zoho Payment Link',
+                                        'invoices' => [[
+                                            'invoice_id' => $registration->zoho_invoice_id,
+                                            'amount_applied' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
+                                        ]],
+                                    ]);
+                                    $registration->forceFill($this->filterRegistrationColumns([
+                                        'zoho_payment_id' => data_get($paymentResponse, 'payment.payment_id') ?? data_get($paymentResponse, 'payment_id') ?? $registration->zoho_payment_id,
+                                    ]))->save();
+                                    Log::info('zoho_invoice_customer_payment_success', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
+                                }
                                 Log::info('zoho_invoice_payment_record_success', ['event_registration_id' => (string) $registration->id, 'zoho_invoice_id' => $registration->zoho_invoice_id]);
                             }
                         } catch (\Throwable $paymentException) {
@@ -102,7 +125,7 @@ class EventZohoInvoiceSyncService
                         }
                     }
 
-                    $invoiceResponse = $this->zohoBillingClient->request('GET', '/invoices/'.$registration->zoho_invoice_id);
+                    $invoiceResponse = $this->booksRequest('GET', '/invoices/'.$registration->zoho_invoice_id);
                     Log::info('zoho_invoice_final_fetch', [
                         'event_registration_id' => (string) $registration->id,
                         'zoho_invoice_id' => $registration->zoho_invoice_id,
@@ -239,7 +262,7 @@ class EventZohoInvoiceSyncService
         foreach ($paths as $path) {
             try {
                 Log::info('zoho_invoice_mark_sent_attempt', ['invoice_id' => $invoiceId, 'path' => $path]);
-                $response = $this->zohoBillingClient->request('POST', $path);
+                $response = $this->booksRequest('POST', $path);
                 Log::info('zoho_invoice_mark_sent_attempt_success', ['invoice_id' => $invoiceId, 'path' => $path, 'response_keys' => array_keys($response)]);
                 return;
             } catch (\Throwable $e) {
@@ -249,6 +272,29 @@ class EventZohoInvoiceSyncService
         }
 
         throw new \RuntimeException('Unable to mark invoice as sent: '.json_encode($lastError));
+    }
+
+    private function booksRequest(string $method, string $path, array $payload = []): array
+    {
+        $token = $this->zohoBillingTokenService->getAccessToken();
+        $orgId = (string) (config('services.zoho.billing_org_id') ?: config('zoho_billing.org_id') ?: env('ZOHO_BILLING_ORG_ID'));
+        $base = 'https://www.zohoapis.in/books/v3';
+        $url = rtrim($base, '/').'/'.ltrim($path, '/');
+
+        $request = Http::acceptJson()->asJson()->withHeaders([
+            'Authorization' => 'Zoho-oauthtoken '.$token,
+            'Content-Type' => 'application/json',
+        ]);
+
+        $response = strtoupper($method) === 'GET'
+            ? $request->get($url, array_merge(['organization_id' => $orgId], $payload))
+            : $request->send(strtoupper($method), $url.'?organization_id='.$orgId, ['json' => $payload]);
+
+        if (! $response->successful()) {
+            throw new \RuntimeException('Books request failed: '.$response->status().' '.($response->body() ?: 'unknown'));
+        }
+
+        return $response->json() ?? [];
     }
 
     private function filterRegistrationColumns(array $data): array
