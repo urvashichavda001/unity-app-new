@@ -28,11 +28,9 @@ class GeoNearbyPeerResource extends JsonResource
 
     private function resolveProfilePhotoUrl(): ?string
     {
-        if ($this->profile_photo_file_id) {
-            return url('/api/v1/files/' . $this->profile_photo_file_id);
-        }
-
-        return $this->getRawOriginal('profile_photo_url');
+        return $this->profile_photo_file_id
+            ? url('/api/v1/files/' . $this->profile_photo_file_id)
+            : null;
     }
 
     private function resolveLocation(): array
@@ -56,10 +54,26 @@ class GeoNearbyPeerResource extends JsonResource
             ];
         }
 
-        if (! empty($this->city)) {
+        $rawCity = $this->city;
+
+        if (is_array($rawCity)) {
+            return [
+                'id' => $rawCity['id'] ?? null,
+                'name' => $rawCity['name'] ?? null,
+            ];
+        }
+
+        if (is_object($rawCity)) {
+            return [
+                'id' => $rawCity->id ?? null,
+                'name' => $rawCity->name ?? null,
+            ];
+        }
+
+        if (is_string($rawCity) && trim($rawCity) !== '') {
             return [
                 'id' => null,
-                'name' => $this->city,
+                'name' => $rawCity,
             ];
         }
 
