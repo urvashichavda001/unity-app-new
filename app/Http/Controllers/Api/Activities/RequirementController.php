@@ -40,6 +40,14 @@ class RequirementController extends BaseApiController
     protected function createPostForRequirement(Requirement $requirement): void
     {
         try {
+            $alreadyExists = Post::where('source_type', 'requirement')
+                ->where('source_id', $requirement->id)
+                ->exists();
+
+            if ($alreadyExists) {
+                return;
+            }
+
             $mediaForPost = $this->addUrlsToMedia($requirement->media ?? []);
 
             Post::create([
@@ -52,6 +60,8 @@ class RequirementController extends BaseApiController
                 'moderation_status' => 'pending',
                 'sponsored'         => false,
                 'is_deleted'        => false,
+                'source_type'       => 'requirement',
+                'source_id'         => $requirement->id,
             ]);
         } catch (Throwable $e) {
             Log::error('Failed to create post for requirement', [
