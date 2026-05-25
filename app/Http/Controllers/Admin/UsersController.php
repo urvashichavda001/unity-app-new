@@ -1566,24 +1566,35 @@ class UsersController extends Controller
         $now = now();
         switch ($joinedFilter) {
             case 'last_month':
-                $query->whereRaw("{$joinedDateExpression} >= ?", [$now->copy()->subDays(30)->startOfDay()]);
-                $query->whereRaw("{$joinedDateExpression} <= ?", [$now->copy()->endOfDay()]);
+                $query->whereRaw("{$joinedDateExpression} BETWEEN ? AND ?", [
+                    $now->copy()->subDays(30)->startOfDay(),
+                    $now->copy()->endOfDay(),
+                ]);
                 break;
             case 'last_week':
-                $query->whereRaw("{$joinedDateExpression} >= ?", [$now->copy()->subDays(7)->startOfDay()]);
-                $query->whereRaw("{$joinedDateExpression} <= ?", [$now->copy()->endOfDay()]);
+                $query->whereRaw("{$joinedDateExpression} BETWEEN ? AND ?", [
+                    $now->copy()->subDays(7)->startOfDay(),
+                    $now->copy()->endOfDay(),
+                ]);
                 break;
             case 'yesterday':
-                $query->whereDate(DB::raw($joinedDateExpression), '=', $now->copy()->subDay()->toDateString());
+                $query->whereRaw("{$joinedDateExpression} BETWEEN ? AND ?", [
+                    $now->copy()->subDay()->startOfDay(),
+                    $now->copy()->subDay()->endOfDay(),
+                ]);
                 break;
             case 'custom':
                 $fromDate = $this->parseJoinedFilterDate($joinedFrom);
                 $toDate = $this->parseJoinedFilterDate($joinedTo);
 
-                if ($fromDate instanceof Carbon) {
+                if ($fromDate instanceof Carbon && $toDate instanceof Carbon) {
+                    $query->whereRaw("{$joinedDateExpression} BETWEEN ? AND ?", [
+                        $fromDate->startOfDay(),
+                        $toDate->endOfDay(),
+                    ]);
+                } elseif ($fromDate instanceof Carbon) {
                     $query->whereRaw("{$joinedDateExpression} >= ?", [$fromDate->startOfDay()]);
-                }
-                if ($toDate instanceof Carbon) {
+                } elseif ($toDate instanceof Carbon) {
                     $query->whereRaw("{$joinedDateExpression} <= ?", [$toDate->endOfDay()]);
                 }
                 break;
