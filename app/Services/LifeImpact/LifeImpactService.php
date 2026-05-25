@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Throwable;
 
 class LifeImpactService
 {
@@ -34,12 +35,17 @@ class LifeImpactService
         return (int) DB::transaction(function () use ($userId, $impactValue, $activityType, $title, $triggeredByUserId, $activityId, $description, $meta) {
             $historyTable = $this->lifeImpactHistoriesTable();
 
-            DB::table('users')
-                ->where('id', $userId)
-                ->update([
-                    'life_impacted_count' => DB::raw('COALESCE(life_impacted_count, 0) + ' . $impactValue),
-                    'updated_at' => now(),
-                ]);
+            if ($activityId !== null) {
+                $existing = DB::table($historyTable)
+                    ->where('user_id', $userId)
+                    ->where('activity_type', $activityType)
+                    ->where('activity_id', $activityId)
+                    ->first();
+
+                if ($existing) {
+                    return $this->getCurrentTotal($userId);
+                }
+            }
 
             $normalizedMeta = null;
             if (! empty($meta)) {
@@ -93,7 +99,37 @@ class LifeImpactService
                 $payload['status'] = 'approved';
             }
 
-            DB::table($historyTable)->insert($payload);
+            try {
+                DB::table($historyTable)->insert($payload);
+            } catch (Throwable $exception) {
+                if ($activityId !== null) {
+                    $duplicate = DB::table($historyTable)
+                        ->where('user_id', $userId)
+                        ->where('activity_type', $activityType)
+                        ->where('activity_id', $activityId)
+                        ->exists();
+
+                    if ($duplicate) {
+                        Log::warning('Life impact duplicate insert avoided', [
+                            'user_id' => $userId,
+                            'activity_type' => $activityType,
+                            'activity_id' => $activityId,
+                            'error' => $exception->getMessage(),
+                        ]);
+
+                        return $this->getCurrentTotal($userId);
+                    }
+                }
+
+                throw $exception;
+            }
+
+            DB::table('users')
+                ->where('id', $userId)
+                ->update([
+                    'life_impacted_count' => DB::raw('COALESCE(life_impacted_count, 0) + ' . $impactValue),
+                    'updated_at' => now(),
+                ]);
 
             return $this->getCurrentTotal($userId);
         });
