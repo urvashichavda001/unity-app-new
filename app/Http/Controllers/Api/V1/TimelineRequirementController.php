@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Requirement\RequirementTimelineResource;
 use App\Models\Requirement;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -13,7 +14,20 @@ class TimelineRequirementController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Requirement::query()
+            ->select('requirements.*')
+            ->selectRaw('rp.post_id as post_id')
             ->with('user')
+            ->leftJoinSub(
+                DB::table('posts')
+                    ->selectRaw('source_id, MAX(id) as post_id')
+                    ->where('source_type', 'requirement')
+                    ->where('is_deleted', false)
+                    ->groupBy('source_id'),
+                'rp',
+                'rp.source_id',
+                '=',
+                'requirements.id'
+            )
             ->where('status', 'open')
             ->whereNull('deleted_at')
             ->orderByDesc('created_at');
