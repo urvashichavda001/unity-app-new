@@ -1386,8 +1386,7 @@ class UsersController extends Controller
 
         $joinedStatus = $this->activeCircleMemberStatus();
 
-        $query = User::query()
-            ->select([
+        $userSelectColumns = [
                 'id',
                 'email',
                 'phone',
@@ -1409,7 +1408,6 @@ class UsersController extends Controller
                 'members_introduced_count',
                 'target_regions',
                 'target_business_categories',
-                'main_business_category_id',
                 'business_category_id',
                 'hobbies_interests',
                 'leadership_roles',
@@ -1452,7 +1450,14 @@ class UsersController extends Controller
                 'welcome_membership_email_status',
                 'welcome_membership_email_error',
                 'welcome_membership_email_plan_code',
-            ])
+            ];
+
+        if (Schema::hasColumn('users', 'main_business_category_id')) {
+            $userSelectColumns[] = 'main_business_category_id';
+        }
+
+        $query = User::query()
+            ->select($userSelectColumns)
             ->with([
                 'city',
                 'mainBusinessCategory:id,name',
