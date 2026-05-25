@@ -5,6 +5,7 @@ namespace App\Services\LifeImpact;
 use App\Models\Impact;
 use App\Models\ImpactAction;
 use App\Models\LifeImpactHistory;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -32,20 +33,22 @@ class LifeImpactService
             return $this->getCurrentTotal($userId);
         }
 
-        return (int) DB::transaction(function () use ($userId, $impactValue, $activityType, $title, $triggeredByUserId, $activityId, $description, $meta) {
-            $historyTable = $this->lifeImpactHistoriesTable();
+        $historyTable = $this->lifeImpactHistoriesTable();
 
-            if ($activityId !== null) {
-                $existing = DB::table($historyTable)
-                    ->where('user_id', $userId)
-                    ->where('activity_type', $activityType)
-                    ->where('activity_id', $activityId)
-                    ->first();
+        if ($activityId !== null) {
+            $existing = DB::table($historyTable)
+                ->where('user_id', $userId)
+                ->where('activity_type', $activityType)
+                ->where('activity_id', $activityId)
+                ->first();
 
-                if ($existing) {
-                    return $this->getCurrentTotal($userId);
-                }
+            if ($existing) {
+                return $this->getCurrentTotal($userId);
             }
+        }
+
+        try {
+            return (int) DB::transaction(function () use ($userId, $impactValue, $activityType, $title, $triggeredByUserId, $activityId, $description, $meta, $historyTable) {
 
             $normalizedMeta = null;
             if (! empty($meta)) {
@@ -99,40 +102,39 @@ class LifeImpactService
                 $payload['status'] = 'approved';
             }
 
-            try {
                 DB::table($historyTable)->insert($payload);
-            } catch (Throwable $exception) {
-                if ($activityId !== null) {
-                    $duplicate = DB::table($historyTable)
-                        ->where('user_id', $userId)
-                        ->where('activity_type', $activityType)
-                        ->where('activity_id', $activityId)
-                        ->exists();
 
-                    if ($duplicate) {
-                        Log::warning('Life impact duplicate insert avoided', [
-                            'user_id' => $userId,
-                            'activity_type' => $activityType,
-                            'activity_id' => $activityId,
-                            'error' => $exception->getMessage(),
-                        ]);
+                DB::table('users')
+                    ->where('id', $userId)
+                    ->update([
+                        'life_impacted_count' => DB::raw('COALESCE(life_impacted_count, 0) + ' . $impactValue),
+                        'updated_at' => now(),
+                    ]);
 
-                        return $this->getCurrentTotal($userId);
-                    }
+                return $this->getCurrentTotal($userId);
+            });
+        } catch (QueryException $exception) {
+            if ($activityId !== null && $this->isDuplicateViolation($exception)) {
+                $existingAfterRace = DB::table($historyTable)
+                    ->where('user_id', $userId)
+                    ->where('activity_type', $activityType)
+                    ->where('activity_id', $activityId)
+                    ->first();
+
+                if ($existingAfterRace) {
+                    Log::warning('Life impact duplicate race handled', [
+                        'user_id' => $userId,
+                        'activity_type' => $activityType,
+                        'activity_id' => $activityId,
+                        'error' => $exception->getMessage(),
+                    ]);
+
+                    return $this->getCurrentTotal($userId);
                 }
-
-                throw $exception;
             }
 
-            DB::table('users')
-                ->where('id', $userId)
-                ->update([
-                    'life_impacted_count' => DB::raw('COALESCE(life_impacted_count, 0) + ' . $impactValue),
-                    'updated_at' => now(),
-                ]);
-
-            return $this->getCurrentTotal($userId);
-        });
+            throw $exception;
+        }
     }
 
     public function incrementAndLog(
@@ -396,5 +398,11 @@ class LifeImpactService
         $schema = trim((string) explode(',', $searchPath)[0], " \t\n\r\0\x0B\"");
 
         return ($schema !== '' ? $schema . '.' : '') . 'life_impact_histories';
+    }
+
+    private function isDuplicateViolation(QueryException $exception): bool
+    {
+        return (string) ($exception->getCode() ?? '') === '23505'
+            || str_contains(Str::lower($exception->getMessage()), 'unique_life_impact_activity_user');
     }
 }
