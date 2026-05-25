@@ -132,6 +132,7 @@ class P2pMeetingController extends BaseApiController
             $meeting->setAttribute('media', $this->expandP2pMedia($meeting->media));
 
             $this->createPostForP2pMeeting($meeting);
+            $meeting->setAttribute('post_id', $this->resolveTimelinePostId('p2p_meeting', (string) $meeting->id));
 
             event(new ActivityCreated(
                 'P2P Meeting',
@@ -202,6 +203,9 @@ class P2pMeetingController extends BaseApiController
         $attributes = $meeting->toArray();
         $attributes['media'] = $this->expandP2pMedia($attributes['media'] ?? null);
 
+        $attributes['post_id'] = $meeting->getAttribute('post_id')
+            ?? $this->resolveTimelinePostId('p2p_meeting', (string) $meeting->id);
+
         if ($meeting->getAttribute('coins') !== null) {
             $attributes['coins'] = $meeting->getAttribute('coins');
         }
@@ -230,6 +234,16 @@ class P2pMeetingController extends BaseApiController
      * @param  array<int, string>  $fileIds
      * @return array<int, array{file_id: string, media_type: string}>
      */
+    private function resolveTimelinePostId(string $sourceType, string $sourceId): ?string
+    {
+        return Post::query()
+            ->where('source_type', $sourceType)
+            ->where('source_id', $sourceId)
+            ->where('is_deleted', false)
+            ->latest('created_at')
+            ->value('id');
+    }
+
     private function buildMediaEntries(array $fileIds): array
     {
         if ($fileIds === []) {
