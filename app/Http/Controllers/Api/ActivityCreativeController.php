@@ -52,6 +52,71 @@ class ActivityCreativeController extends BaseApiController
         return $this->success($items, 'Activity creatives fetched successfully.');
     }
 
+
+    public function myCreatives(Request $request): JsonResponse
+    {
+        $request->validate([
+            'activity_type' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'max:50'],
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $user = $request->user();
+        $perPage = (int) $request->input('per_page', 20);
+
+        $query = ActivityCreative::query()
+            ->where('user_id', $user->id)
+            ->whereNull('deleted_at');
+
+        if ($request->filled('activity_type')) {
+            $query->where('activity_type', $request->input('activity_type'));
+        }
+
+        $query->where('status', $request->input('status', 'active'));
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('created_at', '>=', $request->input('from_date'));
+        }
+
+        if ($request->filled('to_date')) {
+            $query->whereDate('created_at', '<=', $request->input('to_date'));
+        }
+
+        $paginator = $query->latest('created_at')->paginate($perPage);
+
+        $items = collect($paginator->items())->map(function (ActivityCreative $creative) {
+            return [
+                'id' => $creative->id,
+                'post_id' => $creative->post_id,
+                'activity_type' => $creative->activity_type,
+                'activity_id' => $creative->activity_id,
+                'title' => $creative->title,
+                'description' => $creative->description,
+                'creative_file_id' => $creative->creative_file_id,
+                'creative_url' => $creative->creative_url,
+                'status' => $creative->status,
+                'meta' => $creative->meta ?? [],
+                'created_at' => optional($creative->created_at)->toISOString(),
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'My activity creatives fetched successfully.',
+            'data' => [
+                'items' => $items,
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
+                ],
+            ],
+        ]);
+    }
+
     /**
      * Store a creative image and metadata.
      * Both activity_id and post_id are optional.

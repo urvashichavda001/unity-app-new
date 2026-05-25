@@ -611,6 +611,7 @@ Route::prefix('v1')->group(function () {
         Route::patch('/referrals/visitors/{id}', [ReferralController::class, 'updateVisitor']);
 
 
+        Route::get('/my/activity-creatives', [ActivityCreativeController::class, 'myCreatives']);
         Route::get('/activity-creatives', [ActivityCreativeController::class, 'index']);
         Route::post('/activity-creatives', [ActivityCreativeController::class, 'store']);
         Route::get('/activity-creatives/{id}', [ActivityCreativeController::class, 'show'])->whereUuid('id');
