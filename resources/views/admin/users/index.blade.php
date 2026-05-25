@@ -128,8 +128,14 @@
                                 <option value="custom" @selected(($filters['joined_filter'] ?? 'all') === 'custom')>Custom Range</option>
                             </select>
                             <div id="joinedCustomRange" class="d-flex flex-column gap-2">
-                                <input type="date" name="joined_from" form="usersFiltersForm" class="form-control form-control-sm" value="{{ request('joined_from', $filters['joined_from'] ?? '') }}" placeholder="From Date">
-                                <input type="date" name="joined_to" form="usersFiltersForm" class="form-control form-control-sm" value="{{ request('joined_to', $filters['joined_to'] ?? '') }}" placeholder="To Date">
+                                <div class="d-flex flex-column gap-1">
+                                    <label for="joinedFrom" class="form-label form-label-sm mb-0 text-muted small">From</label>
+                                    <input id="joinedFrom" type="date" name="joined_from" form="usersFiltersForm" class="form-control form-control-sm" value="{{ request('joined_from', $filters['joined_from'] ?? '') }}" placeholder="From Date">
+                                </div>
+                                <div class="d-flex flex-column gap-1">
+                                    <label for="joinedTo" class="form-label form-label-sm mb-0 text-muted small">To</label>
+                                    <input id="joinedTo" type="date" name="joined_to" form="usersFiltersForm" class="form-control form-control-sm" value="{{ request('joined_to', $filters['joined_to'] ?? '') }}" placeholder="To Date">
+                                </div>
                             </div>
                         </div>
                     </th>
