@@ -13,6 +13,7 @@ use App\Services\Blocks\PeerBlockService;
 use App\Services\Coins\CoinsService;
 use App\Services\Notifications\NotifyUserService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -151,40 +152,67 @@ class BusinessDealController extends BaseApiController
                 ]);
             }
 
-            $this->createPostForBusinessDeal($businessDeal);
+            try {
+                $this->createPostForBusinessDeal($businessDeal);
+            } catch (Throwable $exception) {
+                Log::warning('Business deal side-effect failed: timeline post', [
+                    'business_deal_id' => (string) $businessDeal->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
 
-
-            ActivityCreative::updateOrCreate(
-                [
-                    'activity_type' => 'business_deal',
-                    'activity_id' => (string) $businessDeal->id,
-                    'user_id' => (string) $authUser->id,
-                ],
-                ActivityCreativeController::buildCreativePayload('business_deal', $businessDeal, $authUser)
-            );
-
-            event(new ActivityCreated(
-                'Business Deal',
-                $businessDeal,
-                (string) $authUser->id,
-                $businessDeal->to_user_id ? (string) $businessDeal->to_user_id : null
-            ));
-
-            $targetUser = User::find($businessDeal->to_user_id);
-
-            if ($targetUser) {
-                $notifyUserService->notifyUser(
-                    $targetUser,
-                    $authUser,
-                    'activity_business_deal',
+            try {
+                ActivityCreative::updateOrCreate(
                     [
                         'activity_type' => 'business_deal',
                         'activity_id' => (string) $businessDeal->id,
-                        'title' => 'New Business Deal',
-                        'body' => ($authUser->display_name ?? $authUser->name ?? 'A member') . ' recorded a business deal with you',
+                        'user_id' => (string) $authUser->id,
                     ],
-                    $businessDeal
+                    ActivityCreativeController::buildCreativePayload('business_deal', $businessDeal, $authUser)
                 );
+            } catch (Throwable $exception) {
+                Log::warning('Business deal side-effect failed: activity creative generation', [
+                    'business_deal_id' => (string) $businessDeal->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+
+            try {
+                event(new ActivityCreated(
+                    'Business Deal',
+                    $businessDeal,
+                    (string) $authUser->id,
+                    $businessDeal->to_user_id ? (string) $businessDeal->to_user_id : null
+                ));
+            } catch (Throwable $exception) {
+                Log::warning('Business deal side-effect failed: activity event/email pipeline', [
+                    'business_deal_id' => (string) $businessDeal->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+
+            try {
+                $targetUser = User::find($businessDeal->to_user_id);
+
+                if ($targetUser) {
+                    $notifyUserService->notifyUser(
+                        $targetUser,
+                        $authUser,
+                        'activity_business_deal',
+                        [
+                            'activity_type' => 'business_deal',
+                            'activity_id' => (string) $businessDeal->id,
+                            'title' => 'New Business Deal',
+                            'body' => ($authUser->display_name ?? $authUser->name ?? 'A member') . ' recorded a business deal with you',
+                        ],
+                        $businessDeal
+                    );
+                }
+            } catch (Throwable $exception) {
+                Log::warning('Business deal side-effect failed: push notification', [
+                    'business_deal_id' => (string) $businessDeal->id,
+                    'error' => $exception->getMessage(),
+                ]);
             }
 
             $updatedLifeImpact = $this->increaseLifeImpact(
@@ -223,7 +251,16 @@ class BusinessDealController extends BaseApiController
 
             return $this->success($businessDeal, 'Business deal saved successfully', 201);
         } catch (Throwable $e) {
-            return $this->error('Something went wrong', 500);
+            Log::error('Business deal create failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => (string) ($authUser->id ?? ''),
+                'to_user_id' => $targetUserId,
+            ]);
+
+            return $this->error(App::environment('local') ? $e->getMessage() : 'Something went wrong', 500);
         }
     }
 
