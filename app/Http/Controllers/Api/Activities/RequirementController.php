@@ -141,6 +141,18 @@ class RequirementController extends BaseApiController
             // Build response payload from the model
             $data = $requirement->toArray();
 
+            $postId = Post::query()
+                ->where('source_id', $requirement->id)
+                ->whereIn('source_type', ['requirement', 'requirements'])
+                ->where(function ($query) {
+                    $query->where('is_deleted', false)
+                        ->orWhereNull('is_deleted');
+                })
+                ->latest('created_at')
+                ->value('id');
+
+            $data['post_id'] = $postId;
+
             // Ensure media includes URL
             $data['media'] = $this->addUrlsToMedia($requirement->media ?? []);
 

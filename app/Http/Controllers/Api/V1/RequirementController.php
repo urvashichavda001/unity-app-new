@@ -98,10 +98,12 @@ class RequirementController extends Controller
                 ]);
             }
 
+            $postId = $this->resolveTimelinePostId('requirement', (string) $requirement->id);
+
             return response()->json([
                 'status' => true,
                 'message' => 'Requirement created',
-                'data' => $requirement,
+                'data' => array_merge($requirement->toArray(), ['post_id' => $postId]),
                 'meta' => [
                     'notified_count' => $notifiedCount,
                 ],
@@ -123,6 +125,16 @@ class RequirementController extends Controller
                 'meta' => null,
             ], 500);
         }
+    }
+
+    private function resolveTimelinePostId(string $sourceType, string $sourceId): ?string
+    {
+        return Post::query()
+            ->where('source_type', $sourceType)
+            ->where('source_id', $sourceId)
+            ->where('is_deleted', false)
+            ->latest('created_at')
+            ->value('id');
     }
 
     public function myIndex(Request $request): JsonResponse
@@ -315,6 +327,7 @@ class RequirementController extends Controller
                 'data' => [
                     'id' => (string) $requirement->id,
                     'status' => $requirement->status,
+                    'post_id' => $this->resolveTimelinePostId('requirement', (string) $requirement->id),
                 ],
                 'meta' => null,
             ], 200);

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Activities\RequirementController as ActivitiesRequi
 use App\Http\Controllers\Api\Activities\RequirementHistoryController;
 use App\Http\Controllers\Api\Activities\TestimonialHistoryController;
 use App\Http\Controllers\Api\ActivityController;
+use App\Http\Controllers\Api\ActivityCreativeController;
 use App\Http\Controllers\Api\AdsController;
 use App\Http\Controllers\Api\Admin\CircleJoinRequestAdminController;
 use App\Http\Controllers\Api\AdminActivityController;
@@ -608,6 +609,13 @@ Route::prefix('v1')->group(function () {
         Route::get('/referrals/links', [ReferralController::class, 'listLinks']);
         Route::get('/referrals/visitors', [ReferralController::class, 'listVisitors']);
         Route::patch('/referrals/visitors/{id}', [ReferralController::class, 'updateVisitor']);
+
+
+        Route::get('/my/activity-creatives', [ActivityCreativeController::class, 'myCreatives']);
+        Route::get('/activity-creatives', [ActivityCreativeController::class, 'index']);
+        Route::post('/activity-creatives', [ActivityCreativeController::class, 'store']);
+        Route::get('/activity-creatives/{id}', [ActivityCreativeController::class, 'show'])->whereUuid('id');
+        Route::delete('/activity-creatives/{id}', [ActivityCreativeController::class, 'destroy'])->whereUuid('id');
 
         // Files
         Route::post('/files/upload', [FileController::class, 'upload']);
