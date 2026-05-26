@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Zoho;
 
 use App\Http\Controllers\Controller;
+use App\Services\Zoho\ZohoEventPaymentService;
 use App\Support\Zoho\ZohoBillingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -10,14 +11,14 @@ use Throwable;
 
 class ZohoWebhookController extends Controller
 {
-    public function __construct(private readonly ZohoBillingService $zohoBillingService)
+    public function __construct(private readonly ZohoBillingService $zohoBillingService, private readonly ZohoEventPaymentService $zohoEventPaymentService)
     {
     }
 
     public function handle(Request $request)
     {
         $token = $request->header('X-Webhook-Token') ?? $request->header('x-webhook-token');
-        $configuredSecret = (string) config('zoho_billing.webhook_secret', '');
+        $configuredSecret = (string) (config('services.zoho.webhook_token', '') ?: config('zoho_billing.webhook_secret', ''));
 
         if ($configuredSecret === '' || ! is_string($token) || ! hash_equals($configuredSecret, $token)) {
             Log::warning('Zoho webhook unauthorized token mismatch', [
@@ -65,6 +66,7 @@ class ZohoWebhookController extends Controller
         $ok = false;
 
         try {
+            $this->zohoEventPaymentService->syncPaidPaymentFromWebhook($event);
             $ok = $this->zohoBillingService->applyWebhookEvent($event);
         } catch (Throwable $throwable) {
             Log::error('Zoho webhook processing failed', [

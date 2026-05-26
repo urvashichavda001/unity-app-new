@@ -37,7 +37,11 @@ return [
 
     'zoho' => [
         'webhook_token' => env('ZOHO_WEBHOOK_TOKEN'),
+        'billing_org_id' => env('ZOHO_BILLING_ORG_ID'),
     ],
+
+    'event_payment_gateway' => env('EVENT_PAYMENT_GATEWAY', 'zoho_billing_payment_link'),
+    'zoho_event_ticket_item_id' => env('ZOHO_EVENT_TICKET_ITEM_ID'),
 
     'members_with_circles' => [
         // Fixed token for GET /api/v1/members-with-circles and /api/v1/members-with-circles/{identifier}

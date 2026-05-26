@@ -103,6 +103,10 @@ class EventRegistrationService
 
     private function createRegistration(Event $event, EventOccurrence $occurrence, array $data, bool $applyPayment = true): EventRegistration
     {
+        if ($applyPayment && $this->payments->paymentRequired($event) && $this->payments->amount($event) <= 0) {
+            throw ValidationException::withMessages(['ticket_price' => 'Paid event ticket price must be greater than zero.']);
+        }
+
         $registration = DB::transaction(function () use ($event, $occurrence, $data, $applyPayment): EventRegistration {
             $lockedOccurrence = EventOccurrence::query()
                 ->where('id', $occurrence->id)
@@ -121,7 +125,12 @@ class EventRegistrationService
                 ? EventRegistration::query()->where('occurrence_id', $lockedOccurrence->id)->where('user_id', $data['user_id'])->where('status', '!=', 'cancelled')->whereNull('deleted_at')
                 : $this->duplicateVisitorQuery($lockedOccurrence->id, $data);
 
-            if ($query->exists()) {
+            $existing = $query->lockForUpdate()->first();
+            if ($existing) {
+                if (($existing->payment_required ?? false) && ($existing->payment_status ?? null) === 'pending' && $existing->status === 'pending_payment') {
+                    return $existing->fresh(['event.circle', 'occurrence', 'user']);
+                }
+
                 throw ValidationException::withMessages(['registration' => 'Already registered for this event occurrence.']);
             }
 

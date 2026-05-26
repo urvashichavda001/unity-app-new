@@ -50,6 +50,10 @@ class RazorpayWebhookController extends Controller
 
             return response()->json(['ok' => true]);
         }
+        Log::info('payment_webhook_received', [
+            'gateway' => 'razorpay',
+            'event' => $data['event'] ?? null,
+        ]);
 
         $event = $data['event'] ?? '';
 
@@ -83,9 +87,14 @@ class RazorpayWebhookController extends Controller
 
         $eventRegistration = EventRegistration::query()->where('razorpay_order_id', $orderId)->first();
         if ($eventRegistration) {
+            if (($eventRegistration->payment_status ?? null) === 'paid') {
+                return;
+            }
+
             $this->eventPaymentFinalizer->markPaid($eventRegistration, [
                 'razorpay_payment_id' => $paymentEntity['id'] ?? null,
                 'razorpay_payment_status' => $paymentEntity['status'] ?? 'captured',
+                'razorpay_signature' => $payload['payload']['payment']['entity']['acquirer_data']['auth_code'] ?? null,
             ]);
 
             return;
@@ -147,6 +156,9 @@ class RazorpayWebhookController extends Controller
                 'razorpay_payment_id' => $paymentEntity['id'] ?? null,
                 'razorpay_payment_status' => $paymentEntity['status'] ?? 'failed',
                 'payment_status' => 'failed',
+                'status' => 'payment_failed',
+                'payment_failed_reason' => $paymentEntity['error_description'] ?? $paymentEntity['error_reason'] ?? 'Payment failed',
+                'webhook_payload' => $payload,
             ]))->save();
 
             return;

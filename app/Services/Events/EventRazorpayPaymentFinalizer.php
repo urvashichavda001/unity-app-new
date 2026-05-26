@@ -4,6 +4,7 @@ namespace App\Services\Events;
 
 use App\Models\EventRegistration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class EventRazorpayPaymentFinalizer
@@ -28,10 +29,12 @@ class EventRazorpayPaymentFinalizer
                     'razorpay_payment_status' => $paymentData['razorpay_payment_status'] ?? 'captured',
                     'razorpay_paid_at' => now(),
                 ]))->save();
+                Log::info('payment_success_registration_updated', ['event_registration_id' => (string) $locked->id]);
             }
 
             if (empty($locked->qr_code_path) && empty($locked->qr_code_url)) {
                 $this->qr->generateAndStore($locked);
+                Log::info('qr_generated_after_payment', ['event_registration_id' => (string) $locked->id]);
             }
 
             return $locked->fresh(['event.circle', 'occurrence', 'user']);

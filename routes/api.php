@@ -95,6 +95,7 @@ use App\Http\Controllers\Api\V1\SupportTicketController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoDebugController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoPlansController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoWebhookController;
+use App\Http\Controllers\Api\V1\Zoho\ZohoPaymentLinkWebhookController;
 use App\Http\Controllers\Api\V1\Zoho\ZohoEventFormWebhookController;
 use App\Http\Controllers\Api\WalletController;
 use Illuminate\Support\Facades\Route;
@@ -137,11 +138,14 @@ Route::prefix('v1')->group(function () {
     Route::get('/events/registrations/{registration_id}/payment-status', [EventController::class, 'paymentStatus'])->whereUuid('registration_id');
     Route::post('/events/registrations/{registration_id}/razorpay/verify', [EventController::class, 'verifyRazorpay'])->whereUuid('registration_id');
     Route::get('/events/registrations/{registration_id}/invoice', [EventController::class, 'invoice'])->whereUuid('registration_id');
+    Route::get('/events/invoices', [EventController::class, 'invoices']);
+    Route::get('/events/invoices/{registration_id}', [EventController::class, 'invoiceDetails'])->whereUuid('registration_id');
     Route::middleware('throttle:60,1')->group(function () {
         Route::get('/public/events/{event_id}/occurrences/{occurrence_id}', [EventController::class, 'publicOccurrence'])->whereUuid('event_id')->whereUuid('occurrence_id');
         Route::post('/public/events/{event_id}/occurrences/{occurrence_id}/register', [EventController::class, 'publicRegister'])->whereUuid('event_id')->whereUuid('occurrence_id');
     });
     Route::post('/zoho/events/form-webhook', ZohoEventFormWebhookController::class);
+    Route::post('/payments/zoho-billing/payment-link/webhook', [ZohoPaymentLinkWebhookController::class, 'handle']);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/membership-summary', [MembershipSummaryController::class, 'show']);
@@ -462,6 +466,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/events/registrations/{registration_id}/payment-status', [EventController::class, 'paymentStatus'])->whereUuid('registration_id');
         Route::post('/events/registrations/{registration_id}/razorpay/verify', [EventController::class, 'verifyRazorpay'])->whereUuid('registration_id');
         Route::get('/events/registrations/{registration_id}/invoice', [EventController::class, 'invoice'])->whereUuid('registration_id');
+    Route::get('/events/invoices', [EventController::class, 'invoices']);
+    Route::get('/events/invoices/{registration_id}', [EventController::class, 'invoiceDetails'])->whereUuid('registration_id');
         Route::get('/events/{event_id}/attendance', [EventController::class, 'attendance'])->whereUuid('event_id');
         Route::post('/events/{event_id}/occurrences/{occurrence_id}/register', [EventController::class, 'register'])->whereUuid('event_id')->whereUuid('occurrence_id');
         Route::get('/events/{id}', [EventController::class, 'show'])->whereUuid('id');
@@ -668,7 +674,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/membership-plans', [MembershipPlanController::class, 'index']);
     Route::get('/zoho/plans', [ZohoPlansController::class, 'index']);
     Route::post('/webhooks/razorpay', [RazorpayWebhookController::class, 'handle']);
+    Route::post('/payments/razorpay/webhook', [RazorpayWebhookController::class, 'handle']);
     Route::post('/zoho/webhook', [ZohoWebhookController::class, 'handle']);
+    Route::post('/payments/zoho/webhook', [ZohoWebhookController::class, 'handle']);
     Route::post('/billing/zoho/webhook', [ZohoBillingWebhookController::class, 'handle']);
     Route::post('/webhooks/zoho/circle-subscription', [ZohoBillingWebhookController::class, 'handleCircleSubscription']);
     Route::get('/billing/checkout/{hostedpage_id}/status', [BillingCheckoutController::class, 'status']);

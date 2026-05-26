@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Razorpay\Api\Api;
+use Throwable;
 
 class EventRazorpayPaymentService
 {
@@ -43,7 +44,7 @@ class EventRazorpayPaymentService
                     'occurrence_id' => (string) $registration->occurrence_id,
                 ],
             ]);
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             Log::error('Razorpay event order creation failed', [
                 'event_registration_id' => (string) $registration->id,
                 'error' => $exception->getMessage(),
@@ -59,6 +60,10 @@ class EventRazorpayPaymentService
                 'razorpay_payment_status' => 'created',
                 'payment_status' => 'pending',
             ]))->save();
+            Log::info('payment_order_created', [
+                'event_registration_id' => (string) $locked->id,
+                'razorpay_order_id' => (string) ($order['id'] ?? ''),
+            ]);
 
             return $locked->fresh(['event.circle', 'occurrence', 'user']);
         });
@@ -88,7 +93,7 @@ class EventRazorpayPaymentService
 
     public function verifySignature(string $orderId, string $paymentId, string $signature): bool
     {
-        $secret = (string) config('razorpay.key_secret');
+        $secret = (string) config('razorpay.webhook_secret', config('razorpay.key_secret'));
         if ($secret === '') {
             return false;
         }

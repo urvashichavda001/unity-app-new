@@ -26,6 +26,7 @@ use App\Services\Events\EventQrService;
 use App\Services\Events\EventRazorpayPaymentFinalizer;
 use App\Services\Events\EventRazorpayPaymentService;
 use App\Services\Events\EventZohoInvoiceSyncService;
+use App\Services\Zoho\ZohoBillingPaymentLinkService;
 use Illuminate\Http\Request;
 
 class EventController extends BaseApiController
@@ -38,6 +39,7 @@ class EventController extends BaseApiController
         private readonly EventRazorpayPaymentService $razorpayPayments,
         private readonly EventRazorpayPaymentFinalizer $paymentFinalizer,
         private readonly EventZohoInvoiceSyncService $zohoInvoiceSync,
+        private readonly ZohoBillingPaymentLinkService $zohoBillingPaymentLinkService,
     ) {}
 
     public function index(Request $request)
@@ -83,7 +85,7 @@ class EventController extends BaseApiController
 
         return $this->success(
             $this->payments->responsePayload($registration),
-            $requiresPayment ? 'Payment required. Please complete Razorpay checkout.' : 'Event registration successful.',
+            $requiresPayment ? 'Payment required. Please complete payment.' : 'Event registration successful.',
             201
         );
     }
@@ -105,7 +107,7 @@ class EventController extends BaseApiController
 
         return $this->success(
             $this->payments->responsePayload($registration),
-            $requiresPayment ? 'Payment required. Please complete Razorpay checkout.' : 'Visitor registered successfully.',
+            $requiresPayment ? 'Payment required. Please complete payment.' : 'Visitor registered successfully.',
             201
         );
     }
@@ -113,17 +115,34 @@ class EventController extends BaseApiController
 
     public function paymentStatus(string $registrationId)
     {
-        $registration = EventRegistration::query()->findOrFail($registrationId);
+        $registration = EventRegistration::query()->with(['event', 'occurrence', 'user'])->findOrFail($registrationId);
+
+        if (($registration->payment_gateway ?? '') === 'zoho_billing_payment_link' && ! empty($registration->zoho_payment_link_id)) {
+            try {
+                $registration = $this->zohoBillingPaymentLinkService->syncPaymentStatus($registration);
+            } catch (\Throwable) {
+                // non-fatal fallback
+            }
+        }
 
         return $this->success([
             'registration_id' => $registration->id,
-            'payment_gateway' => ($registration->payment_required ?? false) ? 'razorpay' : null,
+            'payment_required' => (bool) ($registration->payment_required ?? false),
+            'payment_gateway' => ($registration->payment_required ?? false) ? (string) config('services.event_payment_gateway', 'zoho_billing_payment_link') : null,
             'payment_status' => $registration->payment_status ?? ((bool) ($registration->payment_required ?? false) ? 'pending' : 'not_required'),
             'status' => $registration->status,
+            'payment_completed_at' => optional($registration->payment_completed_at)->toISOString(),
             'qr_code_url' => ($registration->payment_required ?? false) && ($registration->payment_status ?? null) !== 'paid'
                 ? null
                 : ($registration->qr_code_url ?: app(EventQrService::class)->url($registration->qr_code_path)),
-            'invoice' => $this->invoicePayload($registration),
+            'zoho_invoice_id' => $registration->zoho_invoice_id ?? null,
+            'zoho_invoice_number' => $registration->zoho_invoice_number ?? null,
+            'zoho_invoice_url' => $registration->zoho_invoice_url ?? null,
+            'zoho_invoice_pdf_url' => $registration->zoho_invoice_pdf_url ?? null,
+            'zoho_payment_status' => $registration->zoho_payment_status ?? null,
+            'zoho_payment_id' => $registration->zoho_payment_id ?? null,
+            'invoice_sync_error' => $registration->zoho_invoice_sync_error ?? null,
+            'invoice' => array_merge($this->invoicePayload($registration), ['invoice_sync_error' => $registration->zoho_invoice_sync_error ?? null]),
         ], 'Payment status fetched successfully.');
     }
 
@@ -212,7 +231,7 @@ class EventController extends BaseApiController
 
         return $this->success(
             $this->payments->responsePayload($registration),
-            $requiresPayment ? 'Payment required. Please complete Razorpay checkout.' : 'Visitor registered successfully.',
+            $requiresPayment ? 'Payment required. Please complete payment.' : 'Visitor registered successfully.',
             201
         );
     }
@@ -240,10 +259,11 @@ class EventController extends BaseApiController
                 'mode' => $registration->event?->mode,
                 'status' => $registration->status,
                 'checkin_status' => $registration->checkin_status,
-                'payment_gateway' => ($registration->payment_required ?? false) ? 'razorpay' : null,
+                'payment_gateway' => ($registration->payment_required ?? false) ? (string) config('services.event_payment_gateway', 'zoho_billing_payment_link') : null,
                 'payment_status' => $registration->payment_status ?? null,
                 'razorpay_order_id' => $registration->razorpay_order_id ?? null,
-                'checkout_url' => null,
+                'payment_url' => $registration->payment_url ?? $registration->zoho_payment_link_url ?? $registration->zoho_hosted_page_url ?? null,
+                'checkout_url' => $registration->payment_url ?? $registration->zoho_payment_link_url ?? $registration->zoho_hosted_page_url ?? null,
                 'qr_code_url' => ($registration->payment_required ?? false) && ($registration->payment_status ?? null) !== 'paid' ? null : ($registration->qr_code_url ?: $qr->url($registration->qr_code_path)),
                 'attendee_type' => $registration->user_id ? 'member' : 'visitor',
             ])->values(),
@@ -277,6 +297,82 @@ class EventController extends BaseApiController
         );
     }
 
+
+    public function invoices(Request $request)
+    {
+        $q = EventRegistration::query()->with(['event', 'occurrence', 'user'])->where('payment_status', 'paid')->latest('created_at');
+        if ($request->filled('payment_status')) $q->where('payment_status', $request->input('payment_status'));
+        if ($request->filled('event_id')) $q->where('event_id', $request->input('event_id'));
+        if ($request->filled('occurrence_id')) $q->where('occurrence_id', $request->input('occurrence_id'));
+        if ($request->filled('user_id')) $q->where('user_id', $request->input('user_id'));
+        if ($request->filled('visitor_email')) $q->where('visitor_email', $request->input('visitor_email'));
+
+        $items = $q->paginate(max(1, min((int) $request->input('per_page', 20), 100)));
+
+        return $this->success([
+            'total' => $items->total(),
+            'items' => $items->getCollection()->map(fn(EventRegistration $r) => $this->invoiceListItem($r))->values(),
+            'pagination' => [
+                'current_page' => $items->currentPage(),
+                'last_page' => $items->lastPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+            ],
+        ], 'Event invoices fetched successfully.');
+    }
+
+    public function invoiceDetails(Request $request, string $registrationId)
+    {
+        $r = EventRegistration::query()->with(['event', 'occurrence', 'user'])->findOrFail($registrationId);
+        if ($r->user_id && $request->user() && $r->user_id !== $request->user()->id && ! $this->events->canViewAttendance($r->event, $request->user())) {
+            return $this->error('You are not authorized to view this invoice.', 403);
+        }
+
+        return $this->success(array_merge($this->invoiceListItem($r), [
+            'event' => [
+                'title' => $r->event?->title,
+                'location_text' => $r->event?->location_text,
+                'mode' => $r->event?->mode,
+                'start_at' => optional($r->occurrence?->start_at)->toISOString(),
+                'end_at' => optional($r->occurrence?->end_at)->toISOString(),
+            ],
+            'qr_code_url' => $r->qr_code_url ?: app(EventQrService::class)->url($r->qr_code_path),
+            'invoice_sync_error' => $r->zoho_invoice_sync_error,
+        ]), 'Event invoice fetched successfully.');
+    }
+
+    private function invoiceListItem(EventRegistration $registration): array
+    {
+        $attendeeName = $registration->user?->display_name ?: trim(($registration->user?->first_name ?? '').' '.($registration->user?->last_name ?? '')) ?: $registration->visitor_name;
+        $email = $registration->user?->email ?: $registration->visitor_email;
+        $phone = $registration->user?->phone ?: $registration->visitor_phone;
+
+        return [
+            'registration_id' => $registration->id,
+            'event_id' => $registration->event_id,
+            'event_title' => $registration->event?->title,
+            'occurrence_id' => $registration->occurrence_id,
+            'attendee_name' => $attendeeName,
+            'email' => $email,
+            'phone' => $phone,
+            'payment_status' => $registration->payment_status,
+            'payment_gateway' => $registration->payment_gateway,
+            'zoho_payment_link_id' => $registration->zoho_payment_link_id,
+            'amount' => $registration->amount !== null ? (string) $registration->amount : null,
+            'currency' => $registration->currency ?? 'INR',
+            'zoho_invoice_id' => $registration->zoho_invoice_id,
+            'zoho_invoice_number' => $registration->zoho_invoice_number,
+            'zoho_invoice_status' => $registration->zoho_invoice_status,
+            'zoho_invoice_url' => $registration->zoho_invoice_url,
+            'zoho_invoice_pdf_url' => $registration->zoho_invoice_pdf_url,
+            'zoho_invoice_sync_error' => $registration->zoho_invoice_sync_error,
+            'zoho_payment_id' => $registration->zoho_payment_id,
+            'paid_at' => optional($registration->payment_completed_at)->toISOString(),
+            'qr_code_url' => $registration->qr_code_url ?: app(EventQrService::class)->url($registration->qr_code_path),
+            'created_at' => optional($registration->created_at)->toISOString(),
+        ];
+    }
+
     private function invoicePayload(EventRegistration $registration): array
     {
         return [
@@ -285,6 +381,7 @@ class EventController extends BaseApiController
             'zoho_invoice_number' => $registration->zoho_invoice_number ?? null,
             'invoice_url' => $registration->zoho_invoice_url ?? null,
             'invoice_pdf_url' => $registration->zoho_invoice_pdf_url ?? null,
+            'zoho_invoice_status' => $registration->zoho_invoice_status ?? null,
         ];
     }
 

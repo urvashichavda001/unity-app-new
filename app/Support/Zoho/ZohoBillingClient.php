@@ -24,7 +24,7 @@ class ZohoBillingClient
             ->asJson()
             ->withHeaders([
                 'Authorization' => 'Zoho-oauthtoken ' . $token,
-                'X-com-zoho-subscriptions-organizationid' => (string) config('zoho_billing.org_id'),
+                'X-com-zoho-subscriptions-organizationid' => (string) (config('services.zoho.billing_org_id') ?: config('zoho_billing.org_id') ?: env('ZOHO_BILLING_ORG_ID')),
                 'Content-Type' => 'application/json',
             ]);
 
@@ -100,7 +100,7 @@ class ZohoBillingClient
             ->retry(config('zoho_billing.http_retry_times', 2), config('zoho_billing.http_retry_sleep_ms', 200))
             ->withHeaders([
                 'Authorization' => 'Zoho-oauthtoken ' . $token,
-                'X-com-zoho-subscriptions-organizationid' => (string) config('zoho_billing.org_id'),
+                'X-com-zoho-subscriptions-organizationid' => (string) (config('services.zoho.billing_org_id') ?: config('zoho_billing.org_id') ?: env('ZOHO_BILLING_ORG_ID')),
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/pdf',
             ])
