@@ -93,6 +93,7 @@ class EventZohoInvoiceSyncService
 
             $status = strtolower((string) data_get($invoice, 'status', ''));
             $balance = (float) (data_get($invoice, 'balance') ?? data_get($invoice, 'balance_due') ?? 0);
+            Log::info('zoho_invoice_status_before_payment_apply', $context + ['invoice_status' => $status, 'invoice_balance' => $balance]);
             if ($status === 'draft') {
                 Log::info('zoho_invoice_convert_to_open_no_body_start', $context);
                 try {
@@ -108,6 +109,8 @@ class EventZohoInvoiceSyncService
                 $invoice = is_array($invoiceResponse['invoice'] ?? null) ? $invoiceResponse['invoice'] : $invoiceResponse;
                 $status = strtolower((string) data_get($invoice, 'status', ''));
                 $balance = (float) (data_get($invoice, 'balance') ?? data_get($invoice, 'balance_due') ?? 0);
+            } else {
+                Log::info('zoho_skip_convert_invoice_not_draft', $context + ['invoice_status' => $status, 'invoice_balance' => $balance]);
             }
 
             $paymentApplied = false;
@@ -126,28 +129,38 @@ class EventZohoInvoiceSyncService
             }
             if ($balance > 0 && ! in_array($status, ['paid', 'closed'], true)) {
                 if (! empty($matchedPaymentId)) {
-                    $paymentApply = $this->applyPaymentToInvoice($matchedPaymentId, $registration, $invoice);
-                    $paymentApplied = (bool) ($paymentApply['payment_applied'] ?? false);
+                    try {
+                        $paymentApply = $this->applyPaymentToInvoice($matchedPaymentId, $registration, $invoice);
+                        $paymentApplied = (bool) ($paymentApply['payment_applied'] ?? false);
+                    } catch (\Throwable $paymentException) {
+                        Log::error('zoho_payment_apply_failed', $context + ['payment_id' => $matchedPaymentId, 'error' => $paymentException->getMessage()]);
+                        $creditApplied = $this->applyCreditsToInvoice((string) $registration->zoho_invoice_id, (float) $balance, $registration, $invoice);
+                        $paymentApplied = $creditApplied;
+                    }
                 }
             }
 
             $finalInvoiceResponse = $this->zohoBillingClient->request('GET', '/invoices/'.$registration->zoho_invoice_id);
-            Log::info('zoho_invoice_final_fetch', $context + ['response' => $finalInvoiceResponse]);
+            Log::info('zoho_invoice_final_fetch_after_payment_apply', $context + ['response' => $finalInvoiceResponse]);
             $finalInvoice = is_array($finalInvoiceResponse['invoice'] ?? null) ? $finalInvoiceResponse['invoice'] : $finalInvoiceResponse;
             Log::info('zoho_invoice_finalize_success', $context + ['payment_id' => $matchedPaymentId]);
 
+            $finalStatus = strtolower((string) data_get($finalInvoice, 'status', ''));
+            $finalBalance = (float) (data_get($finalInvoice, 'balance') ?? data_get($finalInvoice, 'balance_due') ?? 0);
             return [
                 'invoice_id' => (string) data_get($finalInvoice, 'invoice_id', $registration->zoho_invoice_id),
                 'invoice_number' => (string) (data_get($finalInvoice, 'invoice_number') ?? $registration->zoho_invoice_number),
                 'status' => (string) data_get($finalInvoice, 'status', ''),
-                'balance' => (float) (data_get($finalInvoice, 'balance') ?? data_get($finalInvoice, 'balance_due') ?? 0),
+                'balance' => $finalBalance,
                 'total' => (float) (data_get($finalInvoice, 'total') ?? 0),
                 'amount_paid' => (float) (data_get($finalInvoice, 'amount_paid') ?? 0),
                 'invoice_url' => data_get($finalInvoice, 'invoice_url') ?? data_get($finalInvoice, 'url'),
                 'invoice_pdf_url' => data_get($finalInvoice, 'invoice_pdf_url') ?? data_get($finalInvoice, 'pdf_url'),
                 'payment_id' => $matchedPaymentId,
-                'payment_applied' => $paymentApplied || ((float) (data_get($finalInvoice, 'balance') ?? 0) <= 0) || in_array(strtolower((string) data_get($finalInvoice, 'status', '')), ['paid', 'closed'], true),
-                'sync_error' => null,
+                'payment_applied' => $paymentApplied || ($finalBalance <= 0) || in_array($finalStatus, ['paid', 'closed'], true),
+                'sync_error' => (($finalBalance <= 0) || in_array($finalStatus, ['paid', 'closed'], true))
+                    ? null
+                    : 'Payment is paid but could not be applied to invoice. Zoho response: status='.$finalStatus.' balance='.$finalBalance,
             ];
         } catch (\Throwable $e) {
             Log::error('zoho_invoice_finalize_failed', $context + ['error' => $e->getMessage()]);
@@ -255,7 +268,7 @@ class EventZohoInvoiceSyncService
     {
         Log::info('zoho_payment_fetch_start', ['payment_id' => $paymentId]);
         $response = $this->zohoBillingClient->request('GET', '/payments/'.$paymentId);
-        Log::info('zoho_payment_fetch_success', ['payment_id' => $paymentId, 'response' => $response]);
+        Log::info('zoho_payment_fetch_response', ['payment_id' => $paymentId, 'response' => $response]);
         return is_array($response['payment'] ?? null) ? $response['payment'] : $response;
     }
 
@@ -286,8 +299,37 @@ class EventZohoInvoiceSyncService
         ], fn ($v) => $v !== null && $v !== '');
         Log::info('zoho_payment_apply_payload', ['payment_id' => $paymentId, 'payload' => $payload]);
         $response = $this->zohoBillingClient->putZohoJsonString('/payments/'.$paymentId, $payload);
-        Log::info('zoho_payment_apply_success', ['payment_id' => $paymentId, 'response' => $response]);
+        Log::info('zoho_payment_apply_response', ['payment_id' => $paymentId, 'response' => $response]);
         return ['payment_applied' => true, 'payment' => is_array($response['payment'] ?? null) ? $response['payment'] : $response];
+    }
+
+    private function applyCreditsToInvoice(string $invoiceId, float $amount, EventRegistration $registration, array $invoice): bool
+    {
+        $availableCredits = (float) (data_get($invoice, 'unused_credits_receivable_amount') ?? data_get($invoice, 'contact.unused_customer_credits') ?? 0);
+        if ($availableCredits <= 0 || $amount <= 0) {
+            return false;
+        }
+        $applyAmount = min($availableCredits, $amount);
+        $context = [
+            'registration_id' => (string) $registration->id,
+            'invoice_id' => $invoiceId,
+            'invoice_status' => data_get($invoice, 'status'),
+            'invoice_balance' => (float) (data_get($invoice, 'balance') ?? data_get($invoice, 'balance_due') ?? 0),
+            'customer_id' => $registration->zoho_customer_id,
+            'payment_id' => $registration->zoho_payment_id,
+            'payment_amount' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
+        ];
+        Log::info('zoho_invoice_credit_apply_start', $context);
+        $payload = ['credits' => [['credit_id' => (string) ($registration->zoho_payment_id ?? ''), 'amount_applied' => $applyAmount]]];
+        Log::info('zoho_invoice_credit_apply_payload', $context + ['payload' => $payload]);
+        try {
+            $response = $this->zohoBillingClient->postZohoAction('/invoices/'.$invoiceId.'/credits', $payload);
+            Log::info('zoho_invoice_credit_apply_response', $context + ['response' => $response]);
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('zoho_invoice_credit_apply_failed', $context + ['error' => $e->getMessage()]);
+            return false;
+        }
     }
 
     private function filterRegistrationColumns(array $data): array

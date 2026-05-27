@@ -42,22 +42,24 @@ class SyncPaidEventInvoices extends Command
 
             if (empty($result['sync_error'])) {
                 $this->info(sprintf(
-                    'OK registration_id=%s invoice_id=%s payment_id=%s old_status=%s final_status=%s payment_applied=%s',
+                    'OK registration_id=%s invoice_id=%s payment_id=%s old_status=%s final_status=%s final_balance=%s payment_applied=%s',
                     (string) $registration->id,
                     (string) ($result['invoice_id'] ?? $registration->zoho_invoice_id),
                     (string) ($result['payment_id'] ?? $registration->zoho_payment_id),
                     $oldStatus,
                     (string) ($result['status'] ?? 'unknown'),
+                    (string) ($result['balance'] ?? 'n/a'),
                     ($result['payment_applied'] ?? false) ? 'true' : 'false'
                 ));
             } else {
                 $this->error(sprintf(
-                    'FAIL registration_id=%s invoice_id=%s payment_id=%s old_status=%s final_status=%s payment_applied=%s error=%s',
+                    'FAIL registration_id=%s invoice_id=%s payment_id=%s old_status=%s final_status=%s final_balance=%s payment_applied=%s error=%s',
                     (string) $registration->id,
                     (string) ($result['invoice_id'] ?? $registration->zoho_invoice_id),
                     (string) ($result['payment_id'] ?? $registration->zoho_payment_id),
                     $oldStatus,
                     (string) ($result['status'] ?? 'unknown'),
+                    (string) ($result['balance'] ?? 'n/a'),
                     ($result['payment_applied'] ?? false) ? 'true' : 'false',
                     (string) $result['sync_error']
                 ));

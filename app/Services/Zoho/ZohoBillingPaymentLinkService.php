@@ -152,22 +152,31 @@ class ZohoBillingPaymentLinkService
     public function markRegistrationPaid(EventRegistration $registration, array $paymentLinkData, ?array $rawPayload = null): EventRegistration
     {
         $status = strtolower((string) (data_get($paymentLinkData, 'status') ?? ''));
-        $alreadyPaid = ($registration->payment_status ?? null) === 'paid';
-        if (! $alreadyPaid && ! in_array($status, ['paid', 'success', 'succeeded'], true)) {
-            return $registration;
-        }
-
         $paymentId = data_get($paymentLinkData, 'customer_payments.0.payment_id')
             ?? data_get($paymentLinkData, 'payments.0.payment_id')
             ?? data_get($paymentLinkData, 'payment_id')
             ?? data_get($paymentLinkData, 'transaction_id');
-        if (! empty($paymentId) && empty($registration->zoho_payment_id)) {
+        Log::info('zoho_payment_id_save_attempt', [
+            'registration_id' => (string) $registration->id,
+            'invoice_id' => $registration->zoho_invoice_id,
+            'customer_id' => $registration->zoho_customer_id,
+            'payment_id' => $paymentId,
+            'payment_amount' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
+        ]);
+        if (in_array($status, ['paid', 'success', 'succeeded'], true) && ! empty($paymentId)) {
             $registration->forceFill($this->filter([
                 'zoho_payment_id' => $paymentId,
                 'zoho_payment_status' => 'paid',
+                'payment_status' => 'paid',
+                'status' => 'registered',
             ]))->save();
             Log::info('zoho_payment_id_saved_from_payment_link', ['registration_id' => (string) $registration->id, 'payment_id' => $paymentId]);
             $registration->refresh();
+        }
+
+        $alreadyPaid = ($registration->payment_status ?? null) === 'paid';
+        if (! $alreadyPaid && ! in_array($status, ['paid', 'success', 'succeeded'], true)) {
+            return $registration;
         }
 
         if (! $alreadyPaid) {
