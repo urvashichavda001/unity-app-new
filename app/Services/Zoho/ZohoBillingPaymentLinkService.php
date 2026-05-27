@@ -158,12 +158,19 @@ class ZohoBillingPaymentLinkService
         }
 
         if (! $alreadyPaid) {
+            $paymentId = data_get($paymentLinkData, 'customer_payments.0.payment_id')
+                ?? data_get($paymentLinkData, 'payments.0.payment_id')
+                ?? data_get($paymentLinkData, 'payment_id')
+                ?? data_get($paymentLinkData, 'transaction_id');
+            $paymentDate = data_get($paymentLinkData, 'customer_payments.0.payment_date')
+                ?? data_get($paymentLinkData, 'payments.0.payment_date')
+                ?? data_get($paymentLinkData, 'payment_date');
             $registration->forceFill($this->filter([
                 'status' => 'registered',
                 'payment_status' => 'paid',
                 'zoho_payment_status' => 'paid',
-                'payment_completed_at' => now(),
-                'zoho_payment_id' => data_get($paymentLinkData, 'payments.0.payment_id') ?? data_get($paymentLinkData, 'payment_id') ?? data_get($paymentLinkData, 'transaction_id'),
+                'payment_completed_at' => $registration->payment_completed_at ?: ($paymentDate ? now()->parse((string) $paymentDate) : now()),
+                'zoho_payment_id' => $paymentId,
                 'webhook_payload' => $rawPayload ?? $paymentLinkData,
                 'zoho_payment_webhook_payload' => $rawPayload ?? $paymentLinkData,
             ]))->save();

@@ -29,6 +29,7 @@ class SyncPaidEventInvoices extends Command
 
         $items = $query->get();
         foreach ($items as $registration) {
+            $oldStatus = (string) ($registration->zoho_invoice_status ?? '');
             $result = $service->finalizeAndApplyPaymentToEventInvoice($registration);
             $registration->forceFill(array_filter([
                 'zoho_invoice_status' => $result['status'] ?? $registration->zoho_invoice_status,
@@ -40,9 +41,26 @@ class SyncPaidEventInvoices extends Command
             ], fn ($value, $key) => Schema::hasColumn('event_registrations', $key), ARRAY_FILTER_USE_BOTH))->save();
 
             if (empty($result['sync_error'])) {
-                $this->info('OK: '.$registration->id.' invoice='.(string) ($result['invoice_id'] ?? $registration->zoho_invoice_id).' status='.(string) ($result['status'] ?? 'unknown'));
+                $this->info(sprintf(
+                    'OK registration_id=%s invoice_id=%s payment_id=%s old_status=%s final_status=%s payment_applied=%s',
+                    (string) $registration->id,
+                    (string) ($result['invoice_id'] ?? $registration->zoho_invoice_id),
+                    (string) ($result['payment_id'] ?? $registration->zoho_payment_id),
+                    $oldStatus,
+                    (string) ($result['status'] ?? 'unknown'),
+                    ($result['payment_applied'] ?? false) ? 'true' : 'false'
+                ));
             } else {
-                $this->error('FAIL: '.$registration->id.' error='.$result['sync_error']);
+                $this->error(sprintf(
+                    'FAIL registration_id=%s invoice_id=%s payment_id=%s old_status=%s final_status=%s payment_applied=%s error=%s',
+                    (string) $registration->id,
+                    (string) ($result['invoice_id'] ?? $registration->zoho_invoice_id),
+                    (string) ($result['payment_id'] ?? $registration->zoho_payment_id),
+                    $oldStatus,
+                    (string) ($result['status'] ?? 'unknown'),
+                    ($result['payment_applied'] ?? false) ? 'true' : 'false',
+                    (string) $result['sync_error']
+                ));
             }
         }
 
