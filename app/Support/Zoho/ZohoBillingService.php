@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Membership\MembershipWelcomeEmailService;
 use App\Support\Membership\MembershipUpdater;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -517,6 +518,30 @@ class ZohoBillingService
             'hostedpage_id' => $hostedPageId,
             'checkout_url' => $checkoutUrl,
         ];
+    }
+
+    public function createPaymentForInvoice(array $payload): array
+    {
+        try {
+            return $this->client->request('POST', '/payments', $payload);
+        } catch (Throwable $e) {
+            if (! str_contains(strtolower($e->getMessage()), '1038')) {
+                throw $e;
+            }
+            $token = app(ZohoBillingTokenService::class)->getAccessToken();
+            $orgId = (string) (config('services.zoho.billing_org_id') ?: config('zoho_billing.org_id') ?: env('ZOHO_BILLING_ORG_ID'));
+            $url = rtrim((string) config('zoho_billing.base_url'), '/') . '/payments';
+            $response = Http::withHeaders([
+                'Authorization' => 'Zoho-oauthtoken ' . $token,
+                'X-com-zoho-subscriptions-organizationid' => $orgId,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])->withBody(json_encode($payload, JSON_UNESCAPED_SLASHES), 'application/json')->post($url);
+            if (! $response->successful()) {
+                throw new RuntimeException('Zoho API request failed code '.(data_get($response->json(), 'code') ?? '').': '.(data_get($response->json(), 'message') ?? $response->body()));
+            }
+            return $response->json() ?? [];
+        }
     }
 
     public function getHostedPage(string $hostedpageId): array
