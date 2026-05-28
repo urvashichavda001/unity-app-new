@@ -76,10 +76,15 @@ class ZohoBillingPaymentLinkService
             ]);
         }
 
+        $description = 'Event Registration - '.($event->title ?? 'Event')
+            .' | registration_id='.(string) $registration->id
+            .' | event_id='.(string) $registration->event_id
+            .' | occurrence_id='.(string) $registration->occurrence_id;
+
         $payload = [
             'customer_id' => (string) $customerId,
             'payment_amount' => (float) ($registration->payment_amount ?? $registration->amount ?? 0),
-            'description' => 'Event Registration - '.($event->title ?? 'Event'),
+            'description' => $description,
             'expiry_time' => now()->addDays(15)->format('Y-m-d'),
         ];
 
