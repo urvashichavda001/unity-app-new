@@ -470,6 +470,12 @@ Route::prefix('v1')->group(function () {
     Route::get('/events/invoices/{registration_id}', [EventController::class, 'invoiceDetails'])->whereUuid('registration_id');
         Route::get('/events/{event_id}/attendance', [EventController::class, 'attendance'])->whereUuid('event_id');
         Route::post('/events/{event_id}/occurrences/{occurrence_id}/register', [EventController::class, 'register'])->whereUuid('event_id')->whereUuid('occurrence_id');
+        Route::post('/events/{event_id}/occurrences/{occurrence_id}/registration-request', [EventController::class, 'createRegistrationRequest'])->whereUuid('event_id')->whereUuid('occurrence_id');
+        Route::get('/events/registration-requests/my', [EventController::class, 'myRegistrationRequests']);
+        Route::post('/events/registration-requests/{request_id}/cancel', [EventController::class, 'cancelRegistrationRequest'])->whereUuid('request_id');
+        Route::get('/admin/event-registration-requests', [EventController::class, 'adminRegistrationRequests']);
+        Route::post('/admin/event-registration-requests/{request_id}/approve', [EventController::class, 'approveRegistrationRequest'])->whereUuid('request_id');
+        Route::post('/admin/event-registration-requests/{request_id}/reject', [EventController::class, 'rejectRegistrationRequest'])->whereUuid('request_id');
         Route::get('/events/{id}', [EventController::class, 'show'])->whereUuid('id');
         Route::post('/events', [EventController::class, 'store']);
         Route::post('/events/{id}/rsvp', [EventController::class, 'rsvp'])->whereUuid('id');

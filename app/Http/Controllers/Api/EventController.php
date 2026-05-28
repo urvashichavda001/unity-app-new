@@ -17,6 +17,7 @@ use App\Models\CircleMember;
 use App\Models\Event;
 use App\Models\EventOccurrence;
 use App\Models\EventRegistration;
+use App\Models\EventRegistrationRequest;
 use App\Models\EventRsvp;
 use App\Services\Events\EventCheckinService;
 use App\Services\Events\EventPaymentService;
@@ -96,6 +97,42 @@ class EventController extends BaseApiController
         }
         $membership = $memberQuery->first();
         if (! $membership) {
+            Log::info('cross_circle_registration_attempt', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
+            $req = EventRegistrationRequest::query()
+                ->where('event_id', $event->id)->where('occurrence_id', $occurrence->id)->where('user_id', $user->id)
+                ->whereIn('status', ['pending','approved','rejected'])->latest('created_at')->first();
+            if (! $req) {
+                Log::info('cross_circle_request_required', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
+                return $this->error('You are not a member of this event circle. Please submit a registration request for admin approval.', 403, [
+                    'request_required' => true,
+                    'request_status' => 'not_requested',
+                ]);
+            }
+            if ($req->status === 'pending') {
+                return $this->error('Your registration request is pending admin approval.', 403, [
+                    'request_required' => true,
+                    'request_status' => 'pending',
+                    'request_id' => $req->id,
+                ]);
+            }
+            if ($req->status === 'rejected') {
+                return $this->error('Your registration request was rejected by admin.', 403, [
+                    'request_required' => true,
+                    'request_status' => 'rejected',
+                ]);
+            }
+            // approved -> allow paid registration flow
+            $registration = $this->registrations->registerMember(
+                $event, $occurrence, $user, $request->input('source', 'app')
+            );
+            $registration->forceFill(['registration_type' => 'cross_circle_member', 'registration_request_id' => $req->id])->save();
+            $req->forceFill(['registration_id' => $registration->id])->save();
+            $registration = $this->payments->applyInitialPaymentState($registration->fresh(['event','occurrence','user']), $event, 'cross_circle_member');
+            $registration = $this->payments->attachCheckout($registration);
+            Log::info('cross_circle_approved_registration_payment_link_created', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId, 'registration_id' => (string) $registration->id]);
+            return $this->success($this->payments->responsePayload($registration), 'Payment is required to complete registration.', 201);
+        }
+        if (! $membership) {
             Log::warning('member_event_circle_check_failed', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
             return $this->error('You are not allowed to register for this event because you are not a member of this circle.', 403);
         }
@@ -123,6 +160,79 @@ class EventController extends BaseApiController
         Log::info('member_event_registration_success', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId, 'registration_id' => (string) $registration->id]);
 
         return $this->success($this->payments->responsePayload($registration), 'Event registration successful.', 201);
+    }
+
+    public function createRegistrationRequest(Request $request, string $eventId, string $occurrenceId)
+    {
+        $user = $request->user();
+        $event = Event::query()->findOrFail($eventId);
+        $occurrence = EventOccurrence::query()->where('event_id', $event->id)->findOrFail($occurrenceId);
+        $eventCircleId = $event->circle_id;
+        $sameCircle = CircleMember::query()->where('circle_id', $eventCircleId)->where('user_id', $user->id)->whereNull('deleted_at')->whereIn('status', ['approved','active'])->exists();
+        if ($sameCircle) return $this->success([], 'You are already a member of this circle. You can register directly.');
+        $existingReg = EventRegistration::query()->where('occurrence_id',$occurrence->id)->where('user_id',$user->id)->where('status','!=','cancelled')->whereNull('deleted_at')->first();
+        if ($existingReg) return $this->success(['registration_id'=>$existingReg->id], 'You are already registered for this event.');
+        $existing = EventRegistrationRequest::query()->where('event_id',$event->id)->where('occurrence_id',$occurrence->id)->where('user_id',$user->id)->whereIn('status',['pending','approved'])->latest('created_at')->first();
+        if ($existing) {
+            Log::info('cross_circle_registration_request_existing', ['user_id'=>$user->id,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'request_id'=>$existing->id,'status'=>$existing->status]);
+            return $this->success(['request_id'=>$existing->id,'status'=>$existing->status,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'user_id'=>$user->id], $existing->status === 'approved' ? 'Your request is approved. You can register now.' : 'Your registration request is pending admin approval.');
+        }
+        $req = EventRegistrationRequest::query()->create([
+            'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'user_id'=>$user->id,'event_circle_id'=>$eventCircleId,'status'=>'pending','request_reason'=>$request->input('request_reason'),
+        ]);
+        Log::info('cross_circle_registration_request_created', ['user_id'=>$user->id,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'request_id'=>$req->id]);
+        return $this->success(['request_id'=>$req->id,'status'=>$req->status,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'user_id'=>$user->id], 'Registration request submitted successfully. Please wait for admin approval.');
+    }
+
+    public function myRegistrationRequests(Request $request)
+    {
+        $items = EventRegistrationRequest::query()
+            ->where('user_id', $request->user()->id)
+            ->with(['event', 'occurrence'])
+            ->latest('created_at')
+            ->get()
+            ->map(fn ($r) => [
+                'request_id' => $r->id,
+                'event_id' => $r->event_id,
+                'occurrence_id' => $r->occurrence_id,
+                'status' => $r->status,
+                'admin_note' => $r->admin_note,
+                'registration_id' => $r->registration_id,
+                'created_at' => optional($r->created_at)->toISOString(),
+            ]);
+        return $this->success(['items' => $items], 'Registration requests fetched successfully.');
+    }
+
+    public function adminRegistrationRequests(Request $request)
+    {
+        $q = EventRegistrationRequest::query()->with(['event','occurrence','user']);
+        foreach (['status','event_id','occurrence_id','user_id'] as $f) {
+            if ($request->filled($f)) $q->where($f, $request->input($f));
+        }
+        return $this->success(['items' => $q->latest('created_at')->get()], 'Event registration requests fetched successfully.');
+    }
+
+    public function approveRegistrationRequest(Request $request, string $requestId)
+    {
+        $r = EventRegistrationRequest::query()->findOrFail($requestId);
+        $r->forceFill(['status' => 'approved', 'admin_note' => $request->input('admin_note'), 'approved_by_user_id' => $request->user()->id, 'approved_at' => now()])->save();
+        Log::info('cross_circle_registration_request_approved', ['request_id' => $r->id, 'user_id' => $r->user_id, 'event_id' => $r->event_id, 'occurrence_id' => $r->occurrence_id]);
+        return $this->success($r, 'Registration request approved successfully.');
+    }
+
+    public function rejectRegistrationRequest(Request $request, string $requestId)
+    {
+        $r = EventRegistrationRequest::query()->findOrFail($requestId);
+        $r->forceFill(['status' => 'rejected', 'admin_note' => $request->input('admin_note'), 'rejected_by_user_id' => $request->user()->id, 'rejected_at' => now()])->save();
+        Log::info('cross_circle_registration_request_rejected', ['request_id' => $r->id, 'user_id' => $r->user_id, 'event_id' => $r->event_id, 'occurrence_id' => $r->occurrence_id]);
+        return $this->success($r, 'Registration request rejected successfully.');
+    }
+
+    public function cancelRegistrationRequest(Request $request, string $requestId)
+    {
+        $r = EventRegistrationRequest::query()->where('user_id', $request->user()->id)->where('status', 'pending')->findOrFail($requestId);
+        $r->forceFill(['status' => 'cancelled'])->save();
+        return $this->success($r, 'Registration request cancelled successfully.');
     }
 
     public function visitorRegister(VisitorEventRegistrationRequest $request, string $eventId, string $occurrenceId)

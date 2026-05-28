@@ -47,6 +47,7 @@ class EventRegistration extends Model
         'attendance_source',
         'metadata',
         'registration_type',
+        'registration_request_id',
         'payment_completed_at',
         'zoho_invoice_number',
         'zoho_invoice_status',
