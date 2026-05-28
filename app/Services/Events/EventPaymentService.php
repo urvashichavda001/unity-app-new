@@ -95,6 +95,7 @@ class EventPaymentService
 
         $payload = [
             'registration_id' => $registration->id,
+            'registration_type' => $registration->registration_type ?? null,
             'status' => ! $zohoLinkFailed,
             'success' => ! $zohoLinkFailed,
             'payment_required' => $requiresPayment,

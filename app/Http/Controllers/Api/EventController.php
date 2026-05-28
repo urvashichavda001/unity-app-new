@@ -96,46 +96,71 @@ class EventController extends BaseApiController
             });
         }
         $membership = $memberQuery->first();
+        $eligibilityContext = ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId];
+        Log::info('event_register_eligibility_check_start', $eligibilityContext);
+
         if (! $membership) {
-            Log::info('cross_circle_registration_attempt', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
-            $req = EventRegistrationRequest::query()
-                ->where('event_id', $event->id)->where('occurrence_id', $occurrence->id)->where('user_id', $user->id)
-                ->whereIn('status', ['pending','approved','rejected'])->latest('created_at')->first();
-            if (! $req) {
-                Log::info('cross_circle_request_required', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
-                return $this->error('You are not a member of this event circle. Please submit a registration request for admin approval.', 403, [
-                    'request_required' => true,
-                    'request_status' => 'not_requested',
-                ]);
+            Log::info('cross_circle_registration_attempt', $eligibilityContext);
+            $approvedRequest = EventRegistrationRequest::query()
+                ->where('event_id', $event->id)
+                ->where('occurrence_id', $occurrence->id)
+                ->where('user_id', $user->id)
+                ->where('status', 'approved')
+                ->whereNull('deleted_at')
+                ->latest('approved_at')
+                ->latest('created_at')
+                ->first();
+
+            if ($approvedRequest) {
+                Log::info('event_register_approved_cross_circle_request_true', $eligibilityContext + ['request_id' => $approvedRequest->id, 'request_status' => $approvedRequest->status]);
+                Log::info('cross_circle_registration_after_approval_start', $eligibilityContext + ['request_id' => $approvedRequest->id, 'request_status' => $approvedRequest->status]);
+                $registration = $this->registrations->registerApprovedCrossCircleMember(
+                    $event,
+                    $occurrence,
+                    $user,
+                    (string) $approvedRequest->id,
+                    $request->input('source', 'app')
+                );
+                $approvedRequest->forceFill(['registration_id' => $registration->id])->save();
+                Log::info('cross_circle_registration_after_approval_payment_link_created', $eligibilityContext + ['request_id' => $approvedRequest->id, 'request_status' => $approvedRequest->status, 'registration_id' => (string) $registration->id]);
+                Log::info('cross_circle_approved_registration_payment_link_created', $eligibilityContext + ['request_id' => $approvedRequest->id, 'registration_id' => (string) $registration->id]);
+
+                return $this->success($this->payments->responsePayload($registration), 'Payment is required to complete registration.', 201);
             }
-            if ($req->status === 'pending') {
+
+            $req = EventRegistrationRequest::query()
+                ->where('event_id', $event->id)
+                ->where('occurrence_id', $occurrence->id)
+                ->where('user_id', $user->id)
+                ->whereIn('status', ['pending', 'rejected'])
+                ->whereNull('deleted_at')
+                ->latest('created_at')
+                ->first();
+
+            if ($req && $req->status === 'pending') {
+                Log::info('event_register_eligibility_failed_pending_request', $eligibilityContext + ['request_id' => $req->id, 'request_status' => $req->status]);
                 return $this->error('Your registration request is pending admin approval.', 403, [
                     'request_required' => true,
                     'request_status' => 'pending',
                     'request_id' => $req->id,
                 ]);
             }
-            if ($req->status === 'rejected') {
+            if ($req && $req->status === 'rejected') {
+                Log::info('event_register_eligibility_failed_rejected_request', $eligibilityContext + ['request_id' => $req->id, 'request_status' => $req->status]);
                 return $this->error('Your registration request was rejected by admin.', 403, [
                     'request_required' => true,
                     'request_status' => 'rejected',
                 ]);
             }
-            // approved -> allow paid registration flow
-            $registration = $this->registrations->registerMember(
-                $event, $occurrence, $user, $request->input('source', 'app')
-            );
-            $registration->forceFill(['registration_type' => 'cross_circle_member', 'registration_request_id' => $req->id])->save();
-            $req->forceFill(['registration_id' => $registration->id])->save();
-            $registration = $this->payments->applyInitialPaymentState($registration->fresh(['event','occurrence','user']), $event, 'cross_circle_member');
-            $registration = $this->payments->attachCheckout($registration);
-            Log::info('cross_circle_approved_registration_payment_link_created', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId, 'registration_id' => (string) $registration->id]);
-            return $this->success($this->payments->responsePayload($registration), 'Payment is required to complete registration.', 201);
+
+            Log::info('event_register_eligibility_failed_no_request', $eligibilityContext);
+            Log::info('cross_circle_request_required', $eligibilityContext);
+            return $this->error('You are not a member of this event circle. Please submit a registration request for admin approval.', 403, [
+                'request_required' => true,
+                'request_status' => 'not_requested',
+            ]);
         }
-        if (! $membership) {
-            Log::warning('member_event_circle_check_failed', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
-            return $this->error('You are not allowed to register for this event because you are not a member of this circle.', 403);
-        }
+        Log::info('event_register_same_circle_member_true', $eligibilityContext);
         Log::info('member_event_circle_check_passed', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
 
         $existing = EventRegistration::query()

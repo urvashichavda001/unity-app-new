@@ -61,6 +61,49 @@ class EventRegistrationService
         );
     }
 
+
+    public function registerApprovedCrossCircleMember(Event $event, EventOccurrence $occurrence, User $user, string $requestId, string $source = 'app'): EventRegistration
+    {
+        if ($occurrence->event_id !== $event->id) {
+            throw ValidationException::withMessages(['occurrence_id' => 'Occurrence does not belong to this event.']);
+        }
+
+        $existing = EventRegistration::query()
+            ->where('occurrence_id', $occurrence->id)
+            ->where('user_id', $user->id)
+            ->where('status', '!=', 'cancelled')
+            ->whereNull('deleted_at')
+            ->first();
+
+        if ($existing) {
+            $updates = $this->filterRegistrationColumns([
+                'registration_type' => 'cross_circle_member',
+                'registration_request_id' => $requestId,
+            ]);
+            if (! empty($updates)) {
+                $existing->forceFill($updates)->save();
+            }
+
+            if ((bool) ($existing->payment_required ?? false) && ($existing->payment_status ?? null) === 'pending') {
+                return $this->payments->attachCheckout($existing->fresh(['event.circle', 'occurrence', 'user']));
+            }
+
+            return $existing->fresh(['event.circle', 'occurrence', 'user']);
+        }
+
+        return $this->createRegistration(
+            $event,
+            $occurrence,
+            [
+                'user_id' => $user->id,
+                'source' => $source,
+                'registration_type' => 'cross_circle_member',
+                'registration_request_id' => $requestId,
+            ],
+            true
+        );
+    }
+
     public function registerVisitor(Event $event, EventOccurrence $occurrence, array $data): EventRegistration
     {
         if ($occurrence->event_id !== $event->id) {
