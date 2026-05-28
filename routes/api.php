@@ -681,6 +681,25 @@ Route::prefix('v1')->group(function () {
     Route::post('/zoho/webhook', [ZohoWebhookController::class, 'handle']);
     Route::post('/payments/zoho/webhook', [ZohoWebhookController::class, 'handle']);
     Route::get('/zoho/webhook-health', [ZohoWebhookController::class, 'health']);
+    Route::match(['GET', 'POST', 'HEAD', 'OPTIONS'], '/zoho/webhook/verify-public', function (\Illuminate\Http\Request $request) {
+        \Illuminate\Support\Facades\Log::info('Zoho public verify endpoint hit', [
+            'method' => $request->method(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'content_type' => $request->header('Content-Type'),
+            'query_keys' => array_keys($request->query()),
+            'body_preview' => mb_substr((string) $request->getContent(), 0, 500),
+        ]);
+
+        if ($request->isMethod('HEAD')) {
+            return response('', 200);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Zoho public verify endpoint reachable.',
+        ], 200);
+    });
     Route::match(['GET', 'HEAD', 'OPTIONS'], '/billing/zoho/webhook', [ZohoBillingWebhookController::class, 'verify']);
     Route::post('/billing/zoho/webhook', [ZohoBillingWebhookController::class, 'handle']);
     Route::post('/webhooks/zoho/circle-subscription', [ZohoBillingWebhookController::class, 'handleCircleSubscription']);
