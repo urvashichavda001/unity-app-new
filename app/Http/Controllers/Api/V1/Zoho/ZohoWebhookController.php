@@ -3,17 +3,14 @@
 namespace App\Http\Controllers\Api\V1\Zoho;
 
 use App\Http\Controllers\Controller;
-use App\Services\Zoho\ZohoEventPaymentService;
-use App\Support\Zoho\ZohoBillingService;
+use App\Jobs\ProcessZohoWebhookJob;
+use App\Models\ZohoWebhookLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ZohoWebhookController extends Controller
 {
-    public function __construct(private readonly ZohoBillingService $zohoBillingService, private readonly ZohoEventPaymentService $zohoEventPaymentService)
-    {
-    }
 
     public function handle(Request $request)
     {
@@ -57,32 +54,34 @@ class ZohoWebhookController extends Controller
         }
 
         Log::info('Zoho webhook received', [
-            'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
-            'event_id' => $event['event_id'] ?? ($event['eventId'] ?? null),
-            'keys' => array_keys($event),
-            'raw_preview' => mb_substr((string) $raw, 0, 1000),
+            'headers' => $request->headers->all(),
+            'payload' => $event,
         ]);
 
-        $ok = false;
-
         try {
-            $this->zohoEventPaymentService->syncPaidPaymentFromWebhook($event);
-            $ok = $this->zohoBillingService->applyWebhookEvent($event);
+            $webhookLog = ZohoWebhookLog::query()->create([
+                'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
+                'module' => data_get($event, 'module'),
+                'zoho_record_id' => data_get($event, 'id') ?? data_get($event, 'entity_id'),
+                'subscription_id' => data_get($event, 'subscription.subscription_id') ?? data_get($event, 'subscription_id'),
+                'hostedpage_id' => data_get($event, 'hostedpage.hostedpage_id') ?? data_get($event, 'hostedpage_id'),
+                'invoice_id' => data_get($event, 'invoice.invoice_id') ?? data_get($event, 'invoice_id'),
+                'payment_id' => data_get($event, 'payment.payment_id') ?? data_get($event, 'payment_id'),
+                'payload' => $event,
+                'status' => 'pending',
+            ]);
+
+            ProcessZohoWebhookJob::dispatch($webhookLog->id)->afterResponse();
         } catch (Throwable $throwable) {
-            Log::error('Zoho webhook processing failed', [
+            Log::error('Zoho webhook enqueue failed', [
                 'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
                 'message' => $throwable->getMessage(),
             ]);
         }
 
-        Log::info('Zoho webhook handled', [
-            'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
-            'ok' => $ok,
-        ]);
-
         return response()->json([
             'success' => true,
-            'handled' => $ok,
+            'message' => 'Webhook received',
         ], 200);
     }
 }
