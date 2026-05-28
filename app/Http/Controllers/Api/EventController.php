@@ -230,27 +230,70 @@ class EventController extends BaseApiController
 
     public function adminRegistrationRequests(Request $request)
     {
-        $q = EventRegistrationRequest::query()->with(['event','occurrence','user']);
-        foreach (['status','event_id','occurrence_id','user_id'] as $f) {
-            if ($request->filled($f)) $q->where($f, $request->input($f));
-        }
-        return $this->success(['items' => $q->latest('created_at')->get()], 'Event registration requests fetched successfully.');
+        $query = EventRegistrationRequest::query()
+            ->with(['event.circle', 'occurrence', 'user.circleMemberships.circle', 'registration'])
+            ->when($request->status, fn ($q, $v) => $q->where('status', $v))
+            ->when($request->event_id, fn ($q, $v) => $q->where('event_id', $v))
+            ->when($request->occurrence_id, fn ($q, $v) => $q->where('occurrence_id', $v))
+            ->when($request->user_id, fn ($q, $v) => $q->where('user_id', $v))
+            ->when($request->search, function ($q, $term): void {
+                $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $term).'%';
+                $q->where(function ($inner) use ($like): void {
+                    $inner->where('request_reason', 'ilike', $like)
+                        ->orWhere('admin_note', 'ilike', $like)
+                        ->orWhereHas('user', function ($userQuery) use ($like): void {
+                            $userQuery->where('display_name', 'ilike', $like)
+                                ->orWhere('first_name', 'ilike', $like)
+                                ->orWhere('last_name', 'ilike', $like)
+                                ->orWhere('email', 'ilike', $like)
+                                ->orWhere('phone', 'ilike', $like)
+                                ->orWhere('company_name', 'ilike', $like);
+                        })
+                        ->orWhereHas('event', fn ($eventQuery) => $eventQuery->where('title', 'ilike', $like));
+                });
+            });
+
+        $summary = [
+            'pending' => EventRegistrationRequest::query()->where('status', 'pending')->count(),
+            'approved' => EventRegistrationRequest::query()->where('status', 'approved')->count(),
+            'rejected' => EventRegistrationRequest::query()->where('status', 'rejected')->count(),
+            'total' => EventRegistrationRequest::query()->count(),
+        ];
+
+        $items = $query->latest('created_at')
+            ->paginate(max(1, min((int) $request->input('per_page', 20), 100)))
+            ->withQueryString();
+
+        return $this->success([
+            'summary' => $summary,
+            'items' => $items->getCollection()->map(fn (EventRegistrationRequest $joiningRequest) => $this->eventJoiningRequestPayload($joiningRequest))->values(),
+            'pagination' => [
+                'current_page' => $items->currentPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+                'last_page' => $items->lastPage(),
+            ],
+        ], 'Event joining requests fetched successfully.');
     }
+
 
     public function approveRegistrationRequest(Request $request, string $requestId)
     {
         $r = EventRegistrationRequest::query()->findOrFail($requestId);
-        $r->forceFill(['status' => 'approved', 'admin_note' => $request->input('admin_note'), 'approved_by_user_id' => $request->user()->id, 'approved_at' => now()])->save();
+        $r->forceFill(['status' => 'approved', 'admin_note' => $request->input('admin_note', 'Approved for cross-circle event registration.'), 'approved_by_user_id' => $request->user()->id, 'approved_at' => now()])->save();
         Log::info('cross_circle_registration_request_approved', ['request_id' => $r->id, 'user_id' => $r->user_id, 'event_id' => $r->event_id, 'occurrence_id' => $r->occurrence_id]);
-        return $this->success($r, 'Registration request approved successfully.');
+        $r->load(['event.circle', 'occurrence', 'user.circleMemberships.circle', 'registration']);
+        return $this->success($this->eventJoiningRequestPayload($r), 'Registration request approved successfully.');
     }
 
     public function rejectRegistrationRequest(Request $request, string $requestId)
     {
+        $data = $request->validate(['admin_note' => ['required', 'string', 'max:2000']]);
         $r = EventRegistrationRequest::query()->findOrFail($requestId);
-        $r->forceFill(['status' => 'rejected', 'admin_note' => $request->input('admin_note'), 'rejected_by_user_id' => $request->user()->id, 'rejected_at' => now()])->save();
+        $r->forceFill(['status' => 'rejected', 'admin_note' => $data['admin_note'], 'rejected_by_user_id' => $request->user()->id, 'rejected_at' => now()])->save();
         Log::info('cross_circle_registration_request_rejected', ['request_id' => $r->id, 'user_id' => $r->user_id, 'event_id' => $r->event_id, 'occurrence_id' => $r->occurrence_id]);
-        return $this->success($r, 'Registration request rejected successfully.');
+        $r->load(['event.circle', 'occurrence', 'user.circleMemberships.circle', 'registration']);
+        return $this->success($this->eventJoiningRequestPayload($r), 'Registration request rejected successfully.');
     }
 
     public function cancelRegistrationRequest(Request $request, string $requestId)
@@ -645,6 +688,55 @@ class EventController extends BaseApiController
             'paid_at' => optional($registration->payment_completed_at)->toISOString(),
             'qr_code_url' => $registration->qr_code_url ?: app(EventQrService::class)->url($registration->qr_code_path),
             'created_at' => optional($registration->created_at)->toISOString(),
+        ];
+    }
+
+    private function eventJoiningRequestPayload(EventRegistrationRequest $joiningRequest): array
+    {
+        $user = $joiningRequest->user;
+        $userCircle = $user?->circleMemberships?->first()?->circle;
+        $event = $joiningRequest->event;
+        $occurrence = $joiningRequest->occurrence;
+        $registration = $joiningRequest->registration;
+
+        return [
+            'id' => $joiningRequest->id,
+            'status' => $joiningRequest->status,
+            'request_reason' => $joiningRequest->request_reason,
+            'admin_note' => $joiningRequest->admin_note,
+            'created_at' => optional($joiningRequest->created_at)->toISOString(),
+            'approved_at' => optional($joiningRequest->approved_at)->toISOString(),
+            'rejected_at' => optional($joiningRequest->rejected_at)->toISOString(),
+            'user' => [
+                'id' => $user?->id,
+                'display_name' => $user?->display_name ?: trim(($user?->first_name ?? '').' '.($user?->last_name ?? '')),
+                'email' => $user?->email,
+                'phone' => $user?->phone,
+                'company_name' => $user?->company_name,
+                'city' => $user?->city ?? $user?->city_of_residence,
+            ],
+            'user_circle' => $userCircle ? ['id' => $userCircle->id, 'name' => $userCircle->name] : null,
+            'event_circle' => $event?->circle ? ['id' => $event->circle->id, 'name' => $event->circle->name] : null,
+            'event' => [
+                'id' => $event?->id,
+                'title' => $event?->title,
+                'event_type' => $event?->event_type,
+                'mode' => $event?->mode,
+                'location_text' => $event?->location_text,
+            ],
+            'occurrence' => [
+                'id' => $occurrence?->id,
+                'start_at' => optional($occurrence?->start_at)->toISOString(),
+                'end_at' => optional($occurrence?->end_at)->toISOString(),
+            ],
+            'registration' => $registration ? [
+                'id' => $registration->id,
+                'registration_type' => $registration->registration_type,
+                'payment_status' => $registration->payment_status,
+                'payment_required' => (bool) ($registration->payment_required ?? false),
+                'qr_code_url' => $registration->qr_code_url,
+                'checkin_status' => $registration->checkin_status,
+            ] : null,
         ];
     }
 

@@ -148,6 +148,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::put('/circles/{circle}/members/{circleMember}', [CircleMemberController::class, 'update'])->name('circles.members.update');
         Route::delete('/circles/{circle}/members/{circleMember}', [CircleMemberController::class, 'destroy'])->name('circles.members.destroy');
         Route::get('/events', [EventManagementController::class, 'index'])->name('events.index');
+        Route::get('/event-joining-requests', [EventManagementController::class, 'joiningRequests'])->name('event-joining-requests.index');
+        Route::post('/event-joining-requests/{id}/approve', [EventManagementController::class, 'approveJoiningRequest'])->whereUuid('id')->name('event-joining-requests.approve');
+        Route::post('/event-joining-requests/{id}/reject', [EventManagementController::class, 'rejectJoiningRequest'])->whereUuid('id')->name('event-joining-requests.reject');
         Route::get('/events/create', [EventManagementController::class, 'create'])->name('events.create');
         Route::post('/events', [EventManagementController::class, 'store'])->name('events.store');
         Route::get('/events/{id}', [EventManagementController::class, 'show'])->name('events.show');

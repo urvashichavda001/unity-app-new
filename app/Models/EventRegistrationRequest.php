@@ -37,4 +37,21 @@ class EventRegistrationRequest extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+
+    public function registration(): BelongsTo
+    {
+        return $this->belongsTo(EventRegistration::class, 'registration_id');
+    }
+
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by_user_id');
+    }
+
+    public function rejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by_user_id');
+    }
+
 }

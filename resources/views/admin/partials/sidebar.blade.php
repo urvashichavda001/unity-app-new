@@ -16,7 +16,7 @@
             ['icon' => 'bi-heart-pulse', 'label' => 'Life Impact', 'route' => 'admin.life-impact.index'],
             ['icon' => 'bi-envelope-paper', 'label' => 'Email Logs', 'route' => 'admin.email-logs.index'],
             ...($isGlobalAdmin ? [
-                ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*']],
+                ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*', 'admin.event-joining-requests.*']],
                 ['icon' => 'bi-images', 'label' => 'Event Gallery', 'route' => 'admin.event-gallery.index'],
                 ['icon' => 'bi-tags', 'label' => 'Circle Categories', 'route' => 'admin.categories.index'],
                 ['icon' => 'bi-megaphone', 'label' => 'Ads', 'route' => 'admin.ads.index', 'active_routes' => ['admin.ads.*']],
@@ -34,7 +34,7 @@
             ['icon' => 'bi-heart-pulse', 'label' => 'Life Impact', 'route' => 'admin.life-impact.index'],
             ['icon' => 'bi-envelope-paper', 'label' => 'Email Logs', 'route' => 'admin.email-logs.index'],
             ...($isGlobalAdmin ? [
-                ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*']],
+                ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*', 'admin.event-joining-requests.*']],
                 ['icon' => 'bi-images', 'label' => 'Event Gallery', 'route' => 'admin.event-gallery.index'],
                 ['icon' => 'bi-tags', 'label' => 'Circle Categories', 'route' => 'admin.categories.index'],
                 ['icon' => 'bi-megaphone', 'label' => 'Ads', 'route' => 'admin.ads.index', 'active_routes' => ['admin.ads.*']],
@@ -42,7 +42,7 @@
             ] : []),
             ['icon' => 'bi-wallet2', 'label' => 'Wallet & Finance', 'route' => 'admin.execution.finance'],
             ['icon' => 'bi-chat-dots', 'label' => 'Posts & Moderation', 'route' => '#'],
-            ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*']],
+            ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*', 'admin.event-joining-requests.*']],
             ['icon' => 'bi-calendar-event', 'label' => 'Events', 'route' => 'admin.execution.events'],
             ['icon' => 'bi-people-fill', 'label' => 'Referrals & Visitors', 'route' => '#'],
             ['icon' => 'bi-life-preserver', 'label' => 'Support & Feedback', 'route' => '#'],
@@ -87,6 +87,7 @@
 
     $pendingRequestsMenu = [
         ['label' => 'Visitor Registrations', 'route' => 'admin.visitor-registrations.index'],
+        ['label' => 'Event Joining Requests', 'route' => 'admin.event-joining-requests.index'],
         ['label' => 'Coin Claims', 'route' => 'admin.coin-claims.index'],
         ['label' => 'Circle Joining Requests', 'route' => 'admin.circle-joining-requests.index'],
         ['label' => 'Pending Impacts', 'route' => 'admin.impacts.pending'],
@@ -96,6 +97,7 @@
     $pendingRequestsActive =
         request()->routeIs('admin.visitor-registrations.*') ||
         request()->routeIs('admin.coin-claims.*') ||
+        request()->routeIs('admin.event-joining-requests.*') ||
         request()->routeIs('admin.circle-joining-requests.*') ||
         request()->routeIs('admin.impacts.pending');
 
@@ -105,6 +107,12 @@
         ['label' => 'Pamphlets', 'route' => 'admin.campaign-pamphlets.index'],
     ];
     $campaignsActive = request()->routeIs('admin.campaigns.*') || request()->routeIs('admin.campaign-pamphlets.*') || request()->routeIs('admin.execution.communications');
+    $eventsManagementMenu = [
+        ['label' => 'Events', 'route' => 'admin.events.index'],
+        ['label' => 'Event Joining Requests', 'route' => 'admin.event-joining-requests.index'],
+    ];
+    $eventsManagementActive = request()->routeIs('admin.events.*') || request()->routeIs('admin.event-joining-requests.*');
+    $navItems = array_values(array_filter($navItems, fn ($item) => ($item['label'] ?? null) !== 'Events Management'));
 @endphp
 
 <aside class="admin-sidebar d-flex flex-column">
@@ -214,6 +222,24 @@
                 </div>
             </li>
 
+            @if ($isGlobalAdmin)
+                <li class="nav-item menu-parent {{ $eventsManagementActive ? 'open' : '' }}">
+                    <a class="nav-link d-flex justify-content-between align-items-center {{ $eventsManagementActive ? 'active' : '' }}" data-bs-toggle="collapse" href="#eventsManagementSubmenu" role="button" aria-expanded="{{ $eventsManagementActive ? 'true' : 'false' }}" aria-controls="eventsManagementSubmenu">
+                        <span><i class="bi bi-calendar-check me-2"></i>Events Management</span>
+                        <i class="bi bi-chevron-right menu-arrow"></i>
+                    </a>
+                    <div class="collapse {{ $eventsManagementActive ? 'show' : '' }}" id="eventsManagementSubmenu">
+                        <ul class="nav flex-column ms-3">
+                            @foreach ($eventsManagementMenu as $eventItem)
+                                <li class="nav-item">
+                                    <a class="nav-link {{ request()->routeIs($eventItem['route']) ? 'active' : '' }}" href="{{ route($eventItem['route']) }}">{{ $eventItem['label'] }}</a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </li>
+            @endif
+
             @foreach ($navItems as $item)
                 @if ($item['label'] === 'Notifications & Email')
                     <li class="nav-item menu-parent {{ $campaignsActive ? 'open' : '' }}">
@@ -261,7 +287,7 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            ['activitiesSubmenu', 'postsSubmenu', 'pendingRequestsSubmenu', 'leadsSubmenu', 'campaignsSubmenu'].forEach((submenuId) => {
+            ['activitiesSubmenu', 'postsSubmenu', 'pendingRequestsSubmenu', 'leadsSubmenu', 'campaignsSubmenu', 'eventsManagementSubmenu'].forEach((submenuId) => {
                 const submenu = document.getElementById(submenuId);
                 if (!submenu) {
                     return;

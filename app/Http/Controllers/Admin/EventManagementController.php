@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Circle;
 use App\Models\Event;
 use App\Models\EventRegistration;
+use App\Models\EventRegistrationRequest;
 use App\Services\Events\EventOccurrenceGeneratorService;
 use App\Services\Events\EventService;
 use App\Services\Events\EventZohoInvoiceSyncService;
@@ -40,6 +41,81 @@ class EventManagementController extends Controller
             ->withQueryString();
 
         return view('admin.events.index', ['events' => $events, 'circles' => Circle::query()->orderBy('name')->get(['id', 'name'])]);
+    }
+
+
+    public function joiningRequests(Request $request): View
+    {
+        $status = $request->input('status', 'pending');
+        $query = EventRegistrationRequest::query()
+            ->with([
+                'user.circleMemberships.circle',
+                'event.circle',
+                'occurrence',
+                'registration',
+                'approvedBy',
+                'rejectedBy',
+            ])
+            ->when($status !== 'all' && $status !== '', fn ($q) => $q->where('status', $status))
+            ->when($request->event_id, fn ($q, $v) => $q->where('event_id', $v))
+            ->when($request->user_id, fn ($q, $v) => $q->where('user_id', $v))
+            ->when($request->date_from, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
+            ->when($request->date_to, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($request->search, function ($q, $term): void {
+                $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $term).'%';
+                $q->where(function ($inner) use ($like): void {
+                    $inner->where('request_reason', 'ilike', $like)
+                        ->orWhereHas('user', function ($userQuery) use ($like): void {
+                            $userQuery->where('display_name', 'ilike', $like)
+                                ->orWhere('first_name', 'ilike', $like)
+                                ->orWhere('last_name', 'ilike', $like)
+                                ->orWhere('email', 'ilike', $like)
+                                ->orWhere('phone', 'ilike', $like)
+                                ->orWhere('company_name', 'ilike', $like);
+                        })
+                        ->orWhereHas('event', fn ($eventQuery) => $eventQuery->where('title', 'ilike', $like));
+                });
+            });
+
+        $summaryBase = EventRegistrationRequest::query();
+        $summary = [
+            'pending' => (clone $summaryBase)->where('status', 'pending')->count(),
+            'approved' => (clone $summaryBase)->where('status', 'approved')->count(),
+            'rejected' => (clone $summaryBase)->where('status', 'rejected')->count(),
+            'total' => (clone $summaryBase)->count(),
+        ];
+
+        $requests = $query->latest('created_at')->paginate((int) $request->input('per_page', 20))->withQueryString();
+        $events = Event::query()->orderBy('title')->get(['id', 'title']);
+
+        return view('admin.events.joining-requests', compact('requests', 'summary', 'events', 'status'));
+    }
+
+    public function approveJoiningRequest(Request $request, string $id): RedirectResponse
+    {
+        $joiningRequest = EventRegistrationRequest::query()->findOrFail($id);
+        $joiningRequest->forceFill([
+            'status' => 'approved',
+            'admin_note' => $request->input('admin_note', 'Approved for cross-circle event registration.'),
+            'approved_by_user_id' => auth('admin')->id(),
+            'approved_at' => now(),
+        ])->save();
+
+        return back()->with('success', 'Registration request approved successfully.');
+    }
+
+    public function rejectJoiningRequest(Request $request, string $id): RedirectResponse
+    {
+        $data = $request->validate(['admin_note' => ['required', 'string', 'max:2000']]);
+        $joiningRequest = EventRegistrationRequest::query()->findOrFail($id);
+        $joiningRequest->forceFill([
+            'status' => 'rejected',
+            'admin_note' => $data['admin_note'],
+            'rejected_by_user_id' => auth('admin')->id(),
+            'rejected_at' => now(),
+        ])->save();
+
+        return back()->with('success', 'Registration request rejected successfully.');
     }
 
     public function create(): View
