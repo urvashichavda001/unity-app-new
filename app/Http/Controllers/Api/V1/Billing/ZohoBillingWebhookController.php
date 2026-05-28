@@ -33,6 +33,26 @@ class ZohoBillingWebhookController extends Controller
     ) {
     }
 
+
+    public function verify(Request $request)
+    {
+        Log::info('Zoho billing webhook verification hit', [
+            'method' => $request->getMethod(),
+            'endpoint' => $request->path(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        if ($request->isMethod('HEAD')) {
+            return response('', Response::HTTP_OK);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Zoho billing webhook endpoint reachable.',
+        ], Response::HTTP_OK);
+    }
+
     public function handle(Request $request)
     {
         if (! $this->isValidWebhook($request)) {

@@ -7,6 +7,7 @@ use App\Services\Zoho\ZohoEventPaymentService;
 use App\Support\Zoho\ZohoBillingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class ZohoWebhookController extends Controller
@@ -15,26 +16,69 @@ class ZohoWebhookController extends Controller
     {
     }
 
+    /**
+     * Zoho Billing may perform reachability checks during webhook save using methods
+     * different from actual POST webhook delivery. POST remains secured by token.
+     */
+    public function verify(Request $request)
+    {
+        $headerToken = (string) ($request->header('X-Webhook-Token') ?? $request->header('x-webhook-token') ?? '');
+        $queryToken = (string) ($request->query('token') ?? '');
+
+        Log::info('Zoho webhook verification hit', [
+            'method' => $request->getMethod(),
+            'endpoint' => $request->path(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'content_type' => $request->header('Content-Type'),
+            'has_header_token' => trim($headerToken) !== '',
+            'has_query_token' => trim($queryToken) !== '',
+            'header_token_length' => strlen(trim($headerToken)),
+            'query_token_length' => strlen(trim($queryToken)),
+        ]);
+
+        if ($request->isMethod('HEAD')) {
+            return response('', Response::HTTP_OK);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Zoho webhook endpoint reachable.',
+        ], Response::HTTP_OK);
+    }
+
+    public function health()
+    {
+        $configuredSecret = trim((string) (
+            config('services.zoho.webhook_token')
+            ?: config('zoho_billing.webhook_secret')
+            ?: env('ZOHO_WEBHOOK_TOKEN')
+            ?: ''
+        ));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Zoho webhook health OK',
+            'token_configured' => $configuredSecret !== '',
+            'token_length' => strlen($configuredSecret),
+        ], Response::HTTP_OK);
+    }
+
     public function handle(Request $request)
     {
-        $token = $request->header('X-Webhook-Token') ?? $request->header('x-webhook-token');
-        $configuredSecret = (string) (config('services.zoho.webhook_token', '') ?: config('zoho_billing.webhook_secret', ''));
+        $receivedToken = trim((string) (
+            $request->header('X-Webhook-Token')
+            ?: $request->header('x-webhook-token')
+            ?: $request->query('token')
+            ?: ''
+        ));
 
-        if ($configuredSecret === '' || ! is_string($token) || ! hash_equals($configuredSecret, $token)) {
-            Log::warning('Zoho webhook unauthorized token mismatch', [
-                'ip' => $request->ip(),
-                'headers' => [
-                    'x-webhook-token' => $request->header('X-Webhook-Token') ?? $request->header('x-webhook-token'),
-                    'user-agent' => $request->userAgent(),
-                    'content-type' => $request->header('Content-Type'),
-                ],
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized webhook request.',
-            ], 401);
-        }
+        $configuredSecret = trim((string) (
+            config('services.zoho.webhook_token')
+            ?: config('zoho_billing.webhook_secret')
+            ?: env('ZOHO_WEBHOOK_TOKEN')
+            ?: ''
+        ));
 
         $raw = $request->getContent();
         $event = $request->all();
@@ -44,16 +88,54 @@ class ZohoWebhookController extends Controller
             $event = is_array($decoded) ? $decoded : $event;
         }
 
-        if (! is_array($event) || $event === []) {
-            Log::error('Zoho webhook invalid payload, skipping', [
+        Log::info('Zoho webhook request received', [
+            'method' => $request->getMethod(),
+            'endpoint' => $request->path(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'content_type' => $request->header('Content-Type'),
+            'has_header_token' => trim((string) ($request->header('X-Webhook-Token') ?? $request->header('x-webhook-token') ?? '')) !== '',
+            'has_query_token' => trim((string) ($request->query('token') ?? '')) !== '',
+            'received_token_length' => strlen($receivedToken),
+            'configured_token_length' => strlen($configuredSecret),
+            'raw_payload_preview' => mb_substr((string) $raw, 0, 1000),
+            'parsed_payload_keys' => is_array($event) ? array_keys($event) : [],
+        ]);
+
+        if ($configuredSecret === '') {
+            Log::error('Zoho webhook configured secret missing', [
+                'endpoint' => $request->path(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Zoho webhook secret is not configured.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        if ($receivedToken === '' || ! hash_equals($configuredSecret, $receivedToken)) {
+            Log::warning('Zoho webhook unauthorized token mismatch', [
                 'ip' => $request->ip(),
-                'raw_preview' => mb_substr((string) $raw, 0, 1000),
+                'received_token_length' => strlen($receivedToken),
+                'configured_token_length' => strlen($configuredSecret),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized webhook request.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (! is_array($event) || $event === []) {
+            Log::info('Zoho webhook empty payload, acknowledged', [
+                'endpoint' => $request->path(),
             ]);
 
             return response()->json([
                 'success' => true,
+                'message' => 'Webhook received',
                 'handled' => false,
-            ], 200);
+            ], Response::HTTP_OK);
         }
 
         Log::info('Zoho webhook received', [
@@ -73,6 +155,11 @@ class ZohoWebhookController extends Controller
                 'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
                 'message' => $throwable->getMessage(),
             ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Webhook received',
+            ], Response::HTTP_OK);
         }
 
         Log::info('Zoho webhook handled', [
@@ -82,7 +169,8 @@ class ZohoWebhookController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Webhook received',
             'handled' => $ok,
-        ], 200);
+        ], Response::HTTP_OK);
     }
 }

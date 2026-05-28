@@ -675,8 +675,13 @@ Route::prefix('v1')->group(function () {
     Route::get('/zoho/plans', [ZohoPlansController::class, 'index']);
     Route::post('/webhooks/razorpay', [RazorpayWebhookController::class, 'handle']);
     Route::post('/payments/razorpay/webhook', [RazorpayWebhookController::class, 'handle']);
+    // Zoho Billing may perform reachability checks with GET/HEAD/OPTIONS during webhook save.
+    // Keep POST secured with token validation in controller while verification methods return 200.
+    Route::match(['GET', 'HEAD', 'OPTIONS'], '/zoho/webhook', [ZohoWebhookController::class, 'verify']);
     Route::post('/zoho/webhook', [ZohoWebhookController::class, 'handle']);
     Route::post('/payments/zoho/webhook', [ZohoWebhookController::class, 'handle']);
+    Route::get('/zoho/webhook-health', [ZohoWebhookController::class, 'health']);
+    Route::match(['GET', 'HEAD', 'OPTIONS'], '/billing/zoho/webhook', [ZohoBillingWebhookController::class, 'verify']);
     Route::post('/billing/zoho/webhook', [ZohoBillingWebhookController::class, 'handle']);
     Route::post('/webhooks/zoho/circle-subscription', [ZohoBillingWebhookController::class, 'handleCircleSubscription']);
     Route::get('/billing/checkout/{hostedpage_id}/status', [BillingCheckoutController::class, 'status']);
