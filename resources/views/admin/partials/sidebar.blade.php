@@ -4,7 +4,6 @@
     $isSuper = \App\Support\AdminAccess::isSuper($adminUser);
     $isCircleScoped = \App\Support\AdminAccess::isCircleScoped($adminUser);
     $isGlobalAdmin = \App\Support\AdminAccess::isGlobalAdmin($adminUser);
-    $showRestrictedAdminMenus = ! $isCircleScoped;
 
     $dashboardItem = $isCircleScoped
         ? null
@@ -14,6 +13,7 @@
         ? [
             ['icon' => 'bi-people', 'label' => 'Peers', 'route' => 'admin.users.index'],
             ['icon' => 'bi-coin', 'label' => 'Coins', 'route' => 'admin.coins.index'],
+            ['icon' => 'bi-envelope-paper', 'label' => 'Email Logs', 'route' => 'admin.email-logs.index'],
             ['icon' => 'bi-heart-pulse', 'label' => 'Life Impact', 'route' => 'admin.life-impact.index'],
             ...($isGlobalAdmin ? [
                 ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*', 'admin.event-joining-requests.*']],
@@ -31,7 +31,7 @@
             ['icon' => 'bi-diagram-3', 'label' => 'Circles', 'route' => 'admin.circles.index'],
             ['icon' => 'bi-megaphone', 'label' => 'Circulars', 'route' => 'admin.circulars.index'],
             ['icon' => 'bi-coin', 'label' => 'Coins', 'route' => 'admin.coins.index'],
-            ...($showRestrictedAdminMenus ? [['icon' => 'bi-envelope-paper', 'label' => 'Email Logs', 'route' => 'admin.email-logs.index']] : []),
+            ['icon' => 'bi-envelope-paper', 'label' => 'Email Logs', 'route' => 'admin.email-logs.index'],
             ['icon' => 'bi-heart-pulse', 'label' => 'Life Impact', 'route' => 'admin.life-impact.index'],
             ...($isGlobalAdmin ? [
                 ['icon' => 'bi-calendar-check', 'label' => 'Events Management', 'route' => 'admin.events.index', 'active_routes' => ['admin.events.*', 'admin.event-joining-requests.*']],
@@ -77,13 +77,13 @@
     ] : [];
     $postsActive = request()->routeIs('admin.posts.*') || request()->routeIs('admin.post-reports.*');
 
-    $leadsMenu = $showRestrictedAdminMenus ? [
+    $leadsMenu = [
         ['label' => 'Entrepreneur Certification', 'route' => 'admin.leads.entrepreneur-certification.index'],
         ['label' => 'Leadership Certification', 'route' => 'admin.leads.leadership-certification.index'],
         ['label' => 'Partner With Us', 'route' => 'admin.leads.partner-with-us.index'],
         ['label' => 'Become Speaker', 'route' => 'admin.leads.become-speaker.index'],
         ['label' => 'Become Mentor', 'route' => 'admin.leads.become-mentor.index'],
-    ] : [];
+    ];
 
     $pendingRequestsMenu = $isCircleScoped ? [
         ['label' => 'Visitor Registrations', 'route' => 'admin.visitor-registrations.index'],
