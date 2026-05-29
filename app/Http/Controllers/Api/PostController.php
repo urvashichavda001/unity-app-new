@@ -6,6 +6,7 @@ use App\Http\Requests\Post\StorePostCommentRequest;
 use App\Http\Requests\Post\StorePostRequest;
 use App\Http\Resources\PostResource;
 use App\Http\Resources\PostCommentResource;
+use App\Models\ActivityCreative;
 use App\Models\Circle;
 use App\Models\CircleMember;
 use App\Models\Connection;
@@ -122,6 +123,23 @@ class PostController extends BaseApiController
         $authorIds = $pageRows->pluck('author_id')->filter()->unique()->values()->all();
         $circleIds = $pageRows->pluck('circle_id')->filter()->unique()->values()->all();
         $impactedPeerIds = $pageRows->pluck('impacted_peer_id')->filter()->unique()->values()->all();
+        $postIds = $pageRows
+            ->filter(fn ($row) => (string) ($row->source_type ?? '') === 'post')
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $activityCreativesByPostId = ActivityCreative::query()
+            ->whereIn('post_id', $postIds)
+            ->where('status', 'active')
+            ->whereNull('deleted_at')
+            ->latest('created_at')
+            ->get(['id', 'post_id', 'activity_type', 'activity_id', 'title', 'description', 'creative_file_id', 'creative_url'])
+            ->groupBy(fn (ActivityCreative $creative): string => (string) $creative->post_id)
+            ->map(fn ($creatives) => $creatives->first());
 
         $authors = User::query()
             ->whereIn('id', $authorIds)
@@ -203,9 +221,12 @@ class PostController extends BaseApiController
             }
         }
 
-        $postItems = $pageRows->map(function ($row) use ($authors, $circles, $impactedPeers, $p2pMeetingsById, $fallbackP2pMeetingIdByPostId) {
+        $postItems = $pageRows->map(function ($row) use ($authors, $circles, $impactedPeers, $p2pMeetingsById, $fallbackP2pMeetingIdByPostId, $activityCreativesByPostId) {
             $author = $authors->get((string) $row->author_id);
             $circle = $row->circle_id ? $circles->get((string) $row->circle_id) : null;
+            $activityCreative = (string) ($row->source_type ?? '') === 'post'
+                ? $activityCreativesByPostId->get((string) $row->id)
+                : null;
 
             $item = [
                 'type' => (string) $row->source_type,
@@ -215,6 +236,7 @@ class PostController extends BaseApiController
                 'tags' => $this->decodeJsonColumn($row->tags),
                 'visibility' => (string) $row->visibility,
                 'moderation_status' => (string) $row->moderation_status,
+                'activity_creative' => $this->formatActivityCreative($activityCreative),
                 'author' => $author ? [
                     'id' => (string) $author->id,
                     'display_name' => $author->display_name,
@@ -295,6 +317,23 @@ class PostController extends BaseApiController
                 'total' => $posts->total(),
             ],
         ]);
+    }
+
+    private function formatActivityCreative(?ActivityCreative $creative): ?array
+    {
+        if (! $creative) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $creative->id,
+            'activity_type' => $creative->activity_type,
+            'activity_id' => $creative->activity_id,
+            'title' => $creative->title,
+            'description' => $creative->description,
+            'creative_file_id' => $creative->creative_file_id,
+            'creative_url' => $creative->creative_url,
+        ];
     }
 
     private function formatToIstDateTime(mixed $value): ?string
