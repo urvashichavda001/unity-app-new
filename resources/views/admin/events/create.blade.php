@@ -101,24 +101,6 @@
         </div>
 
         <div class="card mb-3">
-            <div class="card-header fw-semibold">E. Registration & QR Settings</div>
-            <div class="card-body row g-3">
-                <div class="col-md-4"><label class="form-label">Registration Limit</label><input class="form-control" type="number" name="registration_limit" value="{{ old('registration_limit', $event->registration_limit ?? '') }}" placeholder="Leave blank for unlimited"></div>
-                <div class="col-md-4"><label class="form-label">Ticket Price</label><input class="form-control" type="number" step="0.01" name="ticket_price" value="{{ old('ticket_price', $event->ticket_price ?? '') }}"><div class="form-text">Paid events will use Zoho checkout. QR will be generated only after successful payment.</div></div>
-                <div class="col-md-4"><label class="form-label">Zoho Form URL</label><input class="form-control" name="zoho_form_url" value="{{ old('zoho_form_url', $event->zoho_form_url ?? data_get($metadata, 'zoho_form_url')) }}"></div>
-                @foreach([
-                    'qr_checkin_enabled' => ['QR Check-in', 'Members will get a QR code after registration. Scan it at the event entry.'],
-                    'visitor_registration_enabled' => ['Visitor Registration', 'Allow non-members/visitors to register for this event.'],
-                    'member_registration_enabled' => ['Member Registration', 'Allow Unity members to register from the app.'],
-                    'is_paid' => ['Paid', 'Enable this if the event requires payment.'],
-                ] as $name => [$label, $help])
-                    <div class="col-md-6"><div class="form-check border rounded p-3 h-100"><input type="hidden" name="{{ $name }}" value="0"><input class="form-check-input ms-0 me-2" type="checkbox" name="{{ $name }}" value="1" id="{{ $name }}" @checked(old($name, $event->{$name} ?? ($name !== 'is_paid')))><label class="form-check-label fw-semibold" for="{{ $name }}">{{ $label }}</label><div class="small text-muted mt-1">{{ $help }}</div></div></div>
-                @endforeach
-            </div>
-        </div>
-
-        {{-- Sections F-J must stay after E. Registration & QR Settings and before the final action buttons. --}}
-        <div class="card mb-3">
             <div class="card-header fw-semibold">F. Event Image</div>
             <div class="card-body row g-3">
                 @if($isEdit && !empty($event->banner_url))
@@ -174,6 +156,23 @@
                 <div class="col-md-3"><label class="form-label">Organizer Phone</label><input class="form-control" name="organizer_phone" value="{{ old('organizer_phone', data_get($organizer, 'phone')) }}"></div>
                 <div class="col-md-3"><label class="form-label">Organizer Email</label><input class="form-control" type="email" name="organizer_email" value="{{ old('organizer_email', data_get($organizer, 'email')) }}"></div>
                 <div class="col-md-3"><label class="form-label">Organizer Website</label><input class="form-control" name="organizer_website" value="{{ old('organizer_website', data_get($organizer, 'website')) }}"></div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header fw-semibold">E. Registration & QR Settings</div>
+            <div class="card-body row g-3">
+                <div class="col-md-4"><label class="form-label">Registration Limit</label><input class="form-control" type="number" name="registration_limit" value="{{ old('registration_limit', $event->registration_limit ?? '') }}" placeholder="Leave blank for unlimited"></div>
+                <div class="col-md-4"><label class="form-label">Ticket Price</label><input class="form-control" type="number" step="0.01" name="ticket_price" value="{{ old('ticket_price', $event->ticket_price ?? '') }}"><div class="form-text">Paid events will use Zoho checkout. QR will be generated only after successful payment.</div></div>
+                <div class="col-md-4"><label class="form-label">Zoho Form URL</label><input class="form-control" name="zoho_form_url" value="{{ old('zoho_form_url', $event->zoho_form_url ?? data_get($metadata, 'zoho_form_url')) }}"></div>
+                @foreach([
+                    'qr_checkin_enabled' => ['QR Check-in', 'Members will get a QR code after registration. Scan it at the event entry.'],
+                    'visitor_registration_enabled' => ['Visitor Registration', 'Allow non-members/visitors to register for this event.'],
+                    'member_registration_enabled' => ['Member Registration', 'Allow Unity members to register from the app.'],
+                    'is_paid' => ['Paid', 'Enable this if the event requires payment.'],
+                ] as $name => [$label, $help])
+                    <div class="col-md-6"><div class="form-check border rounded p-3 h-100"><input type="hidden" name="{{ $name }}" value="0"><input class="form-check-input ms-0 me-2" type="checkbox" name="{{ $name }}" value="1" id="{{ $name }}" @checked(old($name, $event->{$name} ?? ($name !== 'is_paid')))><label class="form-check-label fw-semibold" for="{{ $name }}">{{ $label }}</label><div class="small text-muted mt-1">{{ $help }}</div></div></div>
+                @endforeach
             </div>
         </div>
 
