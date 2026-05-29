@@ -244,22 +244,13 @@ class CircleJoinRequestsController extends Controller
 
     private function canAccessRecord($admin, $actor, CircleJoinRequest $record): bool
     {
-        if (AdminAccess::isGlobalAdmin($admin)) {
+        if (AdminAccess::isSuper($admin)) {
             return true;
         }
 
-        $allowedCircleIds = AdminAccess::allowedCircleIds($admin);
+        $allowedCircleIds = array_map('strval', AdminAccess::allowedCircleIds($admin));
 
-        if (! in_array($record->circle_id, $allowedCircleIds, true)) {
-            return false;
-        }
-
-        if (! $record->relationLoaded('circle')) {
-            $record->load('circle');
-        }
-
-        return (string) $record->circle?->director_user_id === (string) $actor->id
-            || (string) $record->circle?->industry_director_user_id === (string) $actor->id;
+        return in_array((string) $record->circle_id, $allowedCircleIds, true);
     }
 
     private function canApproveCd($admin, $actor, CircleJoinRequest $record): bool
