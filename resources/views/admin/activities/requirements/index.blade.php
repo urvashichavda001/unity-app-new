@@ -188,7 +188,7 @@
                         @php
                             $actorName = $displayName($requirement->actor_display_name ?? null, $requirement->actor_first_name ?? null, $requirement->actor_last_name ?? null);
                             $mediaInfo = $mediaSummary($requirement->media ?? null);
-                            $mediaId = $firstMediaId($requirement->media ?? null);
+                            $mediaUrl = \App\Support\MediaFileUrl::first($requirement->media ?? null);
                             $regionFilter = $decodeFilter($requirement->region_filter ?? null);
                             $categoryFilter = $decodeFilter($requirement->category_filter ?? null);
                             $regionLabel = $regionFilter['region_label'] ?? $regionFilter['region_name'] ?? $regionFilter['city_name'] ?? null;
@@ -208,9 +208,9 @@
                             <td>{{ $categoryLabel ?: '—' }}</td>
                             <td>{{ $requirement->status ?? '—' }}</td>
                             <td>
-                                @if ($mediaInfo['has'] && $mediaId)
+                                @if ($mediaInfo['has'] && $mediaUrl)
                                     <span class="badge bg-success">Yes ({{ $mediaInfo['count'] }})</span>
-                                    <a href="{{ url('/api/v1/files/' . $mediaId) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                    <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
                                 @else
                                     <span class="text-muted">No</span>
                                 @endif

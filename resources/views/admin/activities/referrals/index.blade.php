@@ -169,12 +169,11 @@
                                     <span class="badge bg-success">Yes</span>
                                     @if (!empty($referral->media_reference))
                                         @php
-                                            $mediaReference = (string) $referral->media_reference;
-                                            $mediaUrl = str_starts_with($mediaReference, 'http://') || str_starts_with($mediaReference, 'https://')
-                                                ? $mediaReference
-                                                : url('/api/v1/files/' . $mediaReference);
+                                            $mediaUrl = \App\Support\MediaFileUrl::resolve($referral->media_reference);
                                         @endphp
-                                        <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                        @if ($mediaUrl)
+                                            <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                        @endif
                                     @endif
                                 @else
                                     <span class="text-muted">No</span>

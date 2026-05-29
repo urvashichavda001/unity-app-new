@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Support\AdminCircleScope;
+use App\Support\MediaFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -463,11 +464,7 @@ class ActivitiesReferralsController extends Controller
 
     private function mediaReferenceForExport($value): string
     {
-        if ($value === null) {
-            return '';
-        }
-
-        return (string) $value;
+        return MediaFileUrl::resolve($value) ?? ($value === null ? '' : (string) $value);
     }
 
     private function parseDayBoundary($value, bool $endOfDay): ?Carbon

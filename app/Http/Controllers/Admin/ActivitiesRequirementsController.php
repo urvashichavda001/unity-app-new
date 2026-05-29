@@ -6,9 +6,9 @@ use Carbon\Carbon;
 use App\Http\Controllers\Controller;
 use App\Models\Requirement;
 use App\Support\AdminCircleScope;
+use App\Support\MediaFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
@@ -335,16 +335,7 @@ class ActivitiesRequirementsController extends Controller
 
     private function mediaUrls($media): string
     {
-        $urls = [];
-
-        foreach ($this->normalizeMedia($media) as $item) {
-            $url = $this->resolveMediaUrl($item);
-            if ($url) {
-                $urls[] = $url;
-            }
-        }
-
-        return implode(',', $urls);
+        return implode(',', MediaFileUrl::all($media));
     }
 
     private function mediaJson($media): string
@@ -374,38 +365,6 @@ class ActivitiesRequirementsController extends Controller
         }
 
         return [$media];
-    }
-
-    private function resolveMediaUrl($item): ?string
-    {
-        if (is_array($item)) {
-            $url = $item['url'] ?? null;
-            $id = $item['id'] ?? null;
-
-            if ($url) {
-                return $url;
-            }
-
-            if ($id && Str::isUuid($id)) {
-                return url('/api/v1/files/' . $id);
-            }
-
-            return $id ?: null;
-        }
-
-        if (is_string($item)) {
-            if (str_starts_with($item, 'http://') || str_starts_with($item, 'https://')) {
-                return $item;
-            }
-
-            if (Str::isUuid($item)) {
-                return url('/api/v1/files/' . $item);
-            }
-
-            return $item;
-        }
-
-        return null;
     }
 
     private function stringifyField($value): string

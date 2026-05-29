@@ -8,6 +8,7 @@ use App\Events\ActivityCreated;
 use App\Models\Post;
 use App\Models\Requirement;
 use App\Services\Coins\CoinsService;
+use App\Support\MediaFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -21,13 +22,13 @@ class RequirementController extends BaseApiController
         }
 
         return collect($media)->map(function ($item) {
-            $id   = $item['id']   ?? null;
+            $id = $item['file_id'] ?? $item['fileId'] ?? $item['id'] ?? null;
             $type = $item['type'] ?? 'image';
 
             return [
-                'id'   => $id,
+                'id' => $id,
                 'type' => $type,
-                'url'  => $id ? url('/api/v1/files/' . $id) : null,
+                'url' => MediaFileUrl::resolve($item),
             ];
         })->all();
     }
@@ -88,8 +89,9 @@ class RequirementController extends BaseApiController
         $media = null;
         if (! empty($data['media_id'])) {
             $media = [[
-                'id' => $data['media_id'],
+                'file_id' => $data['media_id'],
                 'type' => 'image',
+                'url' => MediaFileUrl::fileUrl($data['media_id']),
             ]];
         }
 

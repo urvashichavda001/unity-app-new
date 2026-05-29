@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use Carbon\Carbon;
 use App\Http\Controllers\Controller;
 use App\Support\AdminCircleScope;
+use App\Support\MediaFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -362,7 +363,7 @@ class ActivitiesBusinessDealsController extends Controller
 
     private function mediaReferenceForExport($value): string
     {
-        return $value === null ? '' : (string) $value;
+        return MediaFileUrl::resolve($value) ?? ($value === null ? '' : (string) $value);
     }
 
     private function parseInputDate(string $value): ?Carbon

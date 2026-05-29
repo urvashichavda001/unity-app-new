@@ -239,7 +239,7 @@
                     if (typeof item === 'string') {
                         url = item;
                     } else if (item && typeof item === 'object') {
-                        url = item.url || item.id || null;
+                        url = item.url || item.file_url || item.media_url || item.file_id || item.fileId || item.media_file_id || item.id || null;
                     }
 
                     if (!url) {

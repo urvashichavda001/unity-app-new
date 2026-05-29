@@ -51,14 +51,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 ? $e->getStatusCode()
                 : 500;
 
-            return response()->json([
+            $payload = [
                 'status' => false,
-                'message' => $e->getMessage(),
-                'exception' => get_class($e),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+                'message' => $e->getMessage() ?: 'Something went wrong.',
                 'data' => null,
                 'meta' => null,
-            ], $statusCode);
+            ];
+
+            if (config('app.debug')) {
+                $payload['exception'] = get_class($e);
+                $payload['file'] = $e->getFile();
+                $payload['line'] = $e->getLine();
+            }
+
+            return response()->json($payload, $statusCode);
         });
     })->create();

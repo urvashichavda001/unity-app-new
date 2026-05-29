@@ -11,6 +11,7 @@ use App\Support\Media\Probe;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Support\Str;
 use App\Exceptions\MediaProcessingException;
 use Illuminate\Support\Facades\Log;
@@ -28,12 +29,16 @@ class FileController extends BaseApiController
      */
     public function show(string $id)
     {
-        $file = File::findOrFail($id);
+        $file = File::query()->find($id);
+
+        if (! $file) {
+            throw new NotFoundHttpException('File not found.');
+        }
 
         $disk = config('filesystems.default', 'public');
 
         if (! $file->s3_key || ! Storage::disk($disk)->exists($file->s3_key)) {
-            abort(404, 'File not found');
+            throw new NotFoundHttpException('File record exists, but the uploaded file is missing from storage.');
         }
 
         $mime = $file->mime_type

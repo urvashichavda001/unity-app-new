@@ -38,29 +38,8 @@
             return ['has' => true, 'count' => 1];
         };
 
-        $firstMediaId = function ($media): ?string {
-            if (! $media) {
-                return null;
-            }
+        $firstMediaUrl = fn ($media): ?string => \App\Support\MediaFileUrl::first($media);
 
-            $decoded = is_string($media) ? json_decode($media, true) : $media;
-            $items = is_array($decoded) ? array_values($decoded) : [$decoded];
-            $first = $items[0] ?? null;
-
-            if (is_string($first)) {
-                return $first;
-            }
-
-            if (is_array($first)) {
-                return $first['file_id'] ?? $first['fileId'] ?? $first['id'] ?? null;
-            }
-
-            if (is_object($first)) {
-                return $first->file_id ?? $first->fileId ?? $first->id ?? null;
-            }
-
-            return null;
-        };
     @endphp
 
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
@@ -159,7 +138,7 @@
                             $actorName = $displayName($testimonial->actor_display_name ?? null, $testimonial->actor_first_name ?? null, $testimonial->actor_last_name ?? null);
                             $peerName = $displayName($testimonial->peer_display_name ?? null, $testimonial->peer_first_name ?? null, $testimonial->peer_last_name ?? null);
                             $mediaInfo = $mediaSummary($testimonial->media ?? null);
-                            $mediaId = $firstMediaId($testimonial->media ?? null);
+                            $mediaUrl = $firstMediaUrl($testimonial->media ?? null);
                         @endphp
                         <tr>
                             <td>
@@ -178,9 +157,9 @@
                             </td>
                             <td class="text-muted">{{ $testimonial->content ?? '—' }}</td>
                             <td>
-                                @if ($mediaInfo['has'] && $mediaId)
+                                @if ($mediaInfo['has'] && $mediaUrl)
                                     <span class="badge bg-success">Yes ({{ $mediaInfo['count'] }})</span>
-                                    <a href="{{ url('/api/v1/files/' . $mediaId) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                    <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
                                 @else
                                     <span class="text-muted">No</span>
                                 @endif

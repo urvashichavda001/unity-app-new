@@ -4,38 +4,7 @@
 
 @section('content')
     @php
-        $resolveFileUrl = function ($value) {
-            if (! $value) {
-                return null;
-            }
-
-            if (is_string($value) && (str_starts_with($value, 'http://') || str_starts_with($value, 'https://'))) {
-                return $value;
-            }
-
-            if (is_string($value) && \Illuminate\Support\Str::isUuid($value)) {
-                return url('/api/v1/files/' . $value);
-            }
-
-            return null;
-        };
-
-        $extractMediaUrl = function ($media) use ($resolveFileUrl) {
-            if (! $media) {
-                return null;
-            }
-
-            if (is_array($media)) {
-                $first = $media[0] ?? null;
-                if (is_array($first)) {
-                    $id = $first['id'] ?? null;
-                    $url = $first['url'] ?? null;
-                    return $resolveFileUrl($url ?: $id);
-                }
-            }
-
-            return $resolveFileUrl($media);
-        };
+        $extractMediaUrl = fn ($media): ?string => \App\Support\MediaFileUrl::first($media);
 
         $decodeFilter = function ($value): array {
             if (is_array($value)) {
