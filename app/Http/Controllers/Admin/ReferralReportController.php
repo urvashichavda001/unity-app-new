@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\AdminCircleScope;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -179,6 +181,7 @@ class ReferralReportController extends Controller
             ->when($this->hasUserColumn('company_name'), fn ($query) => $query->groupBy('referrer.company_name'));
 
         $this->applySummaryFilters($query, $filters);
+        $this->applyScopeToReferralQuery($query);
 
         if ($applySorting) {
             $direction = ($filters['direction'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
@@ -193,12 +196,16 @@ class ReferralReportController extends Controller
 
     private function detailQuery(string $referrerUserId, array $filters): Builder
     {
-        return DB::table('referraldata as rd')
+        $query = DB::table('referraldata as rd')
             ->leftJoin('users as referred', function ($join): void {
                 $join->on(DB::raw('rd.referred_user_id::text'), '=', DB::raw('referred.id::text'));
             })
             ->whereRaw('rd.referrer_user_id::text = ?', [$referrerUserId])
             ->selectRaw($this->detailSelectSql());
+
+        $this->applyScopeToReferralQuery($query);
+
+        return $query;
     }
 
     private function referredUsersForSummaryRows(array $referrerUserIds, array $filters): \Illuminate\Support\Collection
@@ -216,6 +223,7 @@ class ReferralReportController extends Controller
 
         $this->applyReferralDataFilters($query, $filters);
         $this->applyReferredUserFilters($query, $filters);
+        $this->applyScopeToReferralQuery($query);
 
         return $query
             ->orderByDesc(DB::raw($this->referralDateExpression()))
@@ -236,8 +244,35 @@ class ReferralReportController extends Controller
             ->selectRaw($this->exportRowsSelectSql());
 
         $this->applySummaryFilters($query, $filters);
+        $this->applyScopeToReferralQuery($query);
 
         return $query;
+    }
+
+
+    private function applyScopeToReferralQuery(Builder $query): void
+    {
+        $admin = Auth::guard('admin')->user();
+
+        if (! \App\Support\AdminAccess::isCircleScoped($admin)) {
+            return;
+        }
+
+        $circleIds = AdminCircleScope::allowedCircleIds($admin);
+
+        if ($circleIds === []) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereExists(function (Builder $subQuery) use ($circleIds): void {
+            $subQuery->selectRaw('1')
+                ->from('circle_members as cm_scope')
+                ->whereRaw('cm_scope.user_id::text = rd.referrer_user_id::text')
+                ->where('cm_scope.status', 'approved')
+                ->whereNull('cm_scope.deleted_at')
+                ->whereIn('cm_scope.circle_id', $circleIds);
+        });
     }
 
     private function applySummaryFilters(Builder $query, array $filters): void

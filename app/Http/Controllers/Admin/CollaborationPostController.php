@@ -62,7 +62,7 @@ class CollaborationPostController extends Controller
             'filters' => $filters,
             'statuses' => $statuses,
             'types' => $types,
-            'circles' => DB::table('circles')->select(['id','name'])->orderBy('name')->get(),
+            'circles' => AdminCircleScope::circleOptions(Auth::guard('admin')->user()),
             'rowsPerPage' => $rowsPerPage,
             'total' => $posts->total(),
             'from' => $posts->firstItem(),
@@ -280,14 +280,7 @@ class CollaborationPostController extends Controller
             }
         }
 
-        if (! empty($filters['circle_id'])) {
-            $query->whereExists(function ($sub) use ($filters) {
-                $sub->selectRaw('1')
-                    ->from('circle_members as cm_filter')
-                    ->whereColumn('cm_filter.user_id', 'collaboration_posts.user_id')
-                    ->where('cm_filter.circle_id', $filters['circle_id']);
-            });
-        }
+        AdminCircleScope::applyRequestedCircleFilter($query, Auth::guard('admin')->user(), 'collaboration_posts.user_id', $filters['circle_id']);
 
         if ($filters['status'] !== '') {
             $query->where('status', $filters['status']);

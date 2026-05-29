@@ -39,9 +39,13 @@
         </div>
         <div class="d-flex flex-column align-items-end gap-2 ms-auto">
             <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                <a href="{{ route('admin.users.import') }}" class="btn btn-outline-primary btn-sm">Import</a>
+                @if($canEditUsers)
+                    <a href="{{ route('admin.users.import') }}" class="btn btn-outline-primary btn-sm">Import</a>
+                @endif
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="exportCsvBtn">Export CSV</button>
-                <a href="{{ route('admin.users.create') }}" class="btn btn-primary btn-sm">Add Peer</a>
+                @if($canEditUsers)
+                    <a href="{{ route('admin.users.create') }}" class="btn btn-primary btn-sm">Add Peer</a>
+                @endif
             </div>
             <div class="d-flex align-items-end gap-2 flex-wrap justify-content-end">
                 <div class="d-flex flex-column gap-1" style="min-width: 200px;">

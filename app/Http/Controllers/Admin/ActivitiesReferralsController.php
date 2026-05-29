@@ -306,14 +306,7 @@ class ActivitiesReferralsController extends Controller
         $query->when($from, fn ($inner) => $inner->where('activity.created_at', '>=', $from))
             ->when($to, fn ($inner) => $inner->where('activity.created_at', '<=', $to));
 
-        if (! empty($filters['circle_id'])) {
-            $query->whereExists(function ($sub) use ($filters) {
-                $sub->selectRaw('1')
-                    ->from('circle_members as cm_filter')
-                    ->whereColumn('cm_filter.user_id', 'actor.id')
-                    ->where('cm_filter.circle_id', $filters['circle_id']);
-            });
-        }
+        AdminCircleScope::applyRequestedCircleFilter($query, auth('admin')->user(), 'actor.id', $filters['circle_id']);
 
         $this->applyScopeToActivityQuery($query, 'activity.from_user_id', 'activity.to_user_id');
 
@@ -329,14 +322,7 @@ class ActivitiesReferralsController extends Controller
             ->whereNull('activity.deleted_at')
             ->where('activity.is_deleted', false);
 
-        if (! empty($filters['circle_id'])) {
-            $query->whereExists(function ($sub) use ($filters) {
-                $sub->selectRaw('1')
-                    ->from('circle_members as cm_filter')
-                    ->whereColumn('cm_filter.user_id', 'actor.id')
-                    ->where('cm_filter.circle_id', $filters['circle_id']);
-            });
-        }
+        AdminCircleScope::applyRequestedCircleFilter($query, auth('admin')->user(), 'actor.id', $filters['circle_id']);
 
         $this->applyScopeToActivityQuery($query, 'activity.from_user_id', 'activity.to_user_id');
 
@@ -370,10 +356,7 @@ class ActivitiesReferralsController extends Controller
 
     private function circleOptions()
     {
-        return DB::table('circles')
-            ->select(['id', 'name'])
-            ->orderBy('name')
-            ->get();
+        return AdminCircleScope::circleOptions(auth('admin')->user());
     }
 
     private function referralTypeOptions()

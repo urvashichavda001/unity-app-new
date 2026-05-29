@@ -120,14 +120,7 @@ class ActivitiesVisitorRegistrationController extends Controller
             $query->where('created_at', '<=', $toAt);
         }
 
-        if ($request->filled('circle_id')) {
-            $query->whereExists(function ($sub) use ($request) {
-                $sub->selectRaw('1')
-                    ->from('circle_members as cm_filter')
-                    ->whereColumn('cm_filter.user_id', 'peer.id')
-                    ->where('cm_filter.circle_id', $request->query('circle_id'));
-            });
-        }
+        AdminCircleScope::applyRequestedCircleFilter($query, Auth::guard('admin')->user(), 'peer.id', $request->query('circle_id'));
 
         AdminCircleScope::applyToActivityQuery($query, Auth::guard('admin')->user(), 'visitor_registrations.user_id', null);
 
@@ -161,7 +154,7 @@ class ActivitiesVisitorRegistrationController extends Controller
 
     private function circleOptions()
     {
-        return DB::table('circles')->select(['id','name'])->orderBy('name')->get();
+        return AdminCircleScope::circleOptions(Auth::guard('admin')->user());
     }
 
     private function parseDayBoundary($value, bool $endOfDay): ?Carbon

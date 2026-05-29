@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\Membership\MembershipWelcomeEmailService;
 use App\Services\Users\PublicProfileSlugService;
 use App\Support\AdminAccess;
+use App\Support\AdminCircleScope;
 use App\Support\Zoho\ZohoBillingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -67,7 +68,7 @@ class UsersController extends Controller
             ->sort()
             ->values();
 
-        $circles = Circle::query()->orderBy('name')->get(['id', 'name']);
+        $circles = AdminCircleScope::circleOptions(Auth::guard('admin')->user());
         $q = $filters['search'] ?? '';
         $circleId = $filters['circle_id'] ?? 'all';
 
@@ -85,6 +86,8 @@ class UsersController extends Controller
 
     public function create(): View
     {
+        abort_unless(AdminAccess::canEditUsers(Auth::guard('admin')->user()), 403);
+
         $user = new User();
         $cities = City::query()->orderBy('name')->get();
         $membershipStatuses = $this->membershipStatuses();
@@ -101,6 +104,8 @@ class UsersController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        abort_unless(AdminAccess::canEditUsers(Auth::guard('admin')->user()), 403);
+
         $membershipStatuses = $this->membershipStatuses();
 
         $request->merge([
@@ -928,11 +933,15 @@ class UsersController extends Controller
 
     public function importForm(): View
     {
+        abort_unless(AdminAccess::canEditUsers(Auth::guard('admin')->user()), 403);
+
         return view('admin.users.import');
     }
 
     public function import(Request $request): View
     {
+        abort_unless(AdminAccess::canEditUsers(Auth::guard('admin')->user()), 403);
+
         $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt'],
         ]);
@@ -1546,12 +1555,16 @@ class UsersController extends Controller
         }
 
         if ($circleId !== '' && $circleId !== 'all') {
-            $query->whereHas('circleMembers', function ($circleMembersQuery) use ($circleId, $joinedStatus) {
-                $circleMembersQuery
-                    ->where('circle_id', $circleId)
-                    ->where('status', $joinedStatus)
-                    ->whereNull('deleted_at');
-            });
+            if ($isCircleScoped && is_array($allowedCircleIds) && ! in_array($circleId, $allowedCircleIds, true)) {
+                $query->whereRaw('1=0');
+            } else {
+                $query->whereHas('circleMembers', function ($circleMembersQuery) use ($circleId, $joinedStatus) {
+                    $circleMembersQuery
+                        ->where('circle_id', $circleId)
+                        ->where('status', $joinedStatus)
+                        ->whereNull('deleted_at');
+                });
+            }
         }
 
         if ($membership && $membership !== 'all') {
