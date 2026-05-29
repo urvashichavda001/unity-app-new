@@ -59,6 +59,7 @@
                     @forelse ($items as $requirement)
                         @php
                             $attachmentUrl = $extractMediaUrl($requirement->media ?? null);
+                            $hasAttachment = count(\App\Support\MediaFileUrl::normalize($requirement->media ?? null)) > 0;
                             $regionFilter = $decodeFilter($requirement->region_filter ?? null);
                             $categoryFilter = $decodeFilter($requirement->category_filter ?? null);
                             $regionLabel = $regionFilter['region_label'] ?? $regionFilter['region_name'] ?? $regionFilter['city_name'] ?? null;
@@ -83,6 +84,8 @@
                             <td>
                                 @if ($attachmentUrl)
                                     <a href="{{ $attachmentUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">View</a>
+                                @elseif ($hasAttachment)
+                                    <span class="text-warning small">Missing file</span>
                                 @else
                                     —
                                 @endif

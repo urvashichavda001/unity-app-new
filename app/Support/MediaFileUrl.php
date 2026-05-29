@@ -55,7 +55,7 @@ class MediaFileUrl
                 }
             }
 
-            foreach (['file_id', 'fileId', 'media_file_id', 'attachment_file_id', 'image_file_id', 'photo_file_id'] as $key) {
+            foreach (['file_id', 'fileId', 'uploaded_file_id', 'uploadedFileId', 'media_file_id', 'attachment_file_id', 'image_file_id', 'photo_file_id'] as $key) {
                 $url = self::fileUrl($item[$key] ?? null);
 
                 if ($url !== null) {
@@ -127,7 +127,9 @@ class MediaFileUrl
             return null;
         }
 
-        if (! File::query()->whereKey($value)->exists()) {
+        $file = File::query()->find($value);
+
+        if (! $file || ! FileStorageLocator::locate($file)) {
             return null;
         }
 

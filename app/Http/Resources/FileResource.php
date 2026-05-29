@@ -2,8 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Support\FileStorageLocator;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class FileResource extends JsonResource
 {
@@ -11,8 +11,8 @@ class FileResource extends JsonResource
     {
         $url = null;
 
-        if ($this->s3_key) {
-            $url = Storage::url($this->s3_key);
+        if ($this->s3_key && FileStorageLocator::locate($this->resource)) {
+            $url = url('/api/v1/files/' . $this->id);
         }
 
         return [

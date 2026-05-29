@@ -124,42 +124,7 @@
                             $isActive = $isImpact
                                 ? ! is_null($post->timeline_posted_at ?? null)
                                 : $post->deleted_at === null;
-                            $mediaUrl = (function ($media) {
-                                if (empty($media)) {
-                                    return null;
-                                }
-
-                                $items = [];
-
-                                if (is_array($media)) {
-                                    $items = $media;
-                                } elseif (is_object($media)) {
-                                    $items = data_get($media, 'items', []);
-                                }
-
-                                if (! is_array($items)) {
-                                    return null;
-                                }
-
-                                $imageItem = collect($items)->first(function ($item) {
-                                    return data_get($item, 'type') === 'image';
-                                });
-
-                                $candidate = $imageItem ?? (collect($items)->first() ?? []);
-                                $url = data_get($candidate, 'url');
-
-                                if ($url) {
-                                    return $url;
-                                }
-
-                                $id = data_get($candidate, 'id') ?? data_get($candidate, 'file_id');
-
-                                if ($id) {
-                                    return url('/api/v1/files/' . $id);
-                                }
-
-                                return data_get($candidate, 'path');
-                            })($post->media ?? null);
+                            $mediaUrl = \App\Support\MediaFileUrl::first($post->media ?? null);
                             $isCompletedCollaboration = ! $isImpact
                                 && ($post->source_type ?? null) === 'collaboration_post'
                                 && ($post->source_event ?? null) === 'completed';

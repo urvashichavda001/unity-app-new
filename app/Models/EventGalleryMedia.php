@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MediaFileUrl;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -39,7 +40,7 @@ class EventGalleryMedia extends Model
             return null;
         }
 
-        return '/api/v1/files/' . $this->file_id;
+        return MediaFileUrl::fileUrl($this->file_id);
     }
 
     public function getThumbnailUrlAttribute(): ?string
@@ -48,6 +49,6 @@ class EventGalleryMedia extends Model
             return null;
         }
 
-        return '/api/v1/files/' . $this->thumbnail_file_id;
+        return MediaFileUrl::fileUrl($this->thumbnail_file_id);
     }
 }

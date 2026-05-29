@@ -208,9 +208,13 @@
                             <td>{{ $categoryLabel ?: '—' }}</td>
                             <td>{{ $requirement->status ?? '—' }}</td>
                             <td>
-                                @if ($mediaInfo['has'] && $mediaUrl)
+                                @if ($mediaInfo['has'])
                                     <span class="badge bg-success">Yes ({{ $mediaInfo['count'] }})</span>
-                                    <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                    @if ($mediaUrl)
+                                        <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                    @else
+                                        <span class="text-warning small ms-2">Missing file</span>
+                                    @endif
                                 @else
                                     <span class="text-muted">No</span>
                                 @endif

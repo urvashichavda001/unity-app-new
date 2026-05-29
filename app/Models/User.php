@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\CoinMilestoneResolver;
 use App\Support\ContributionMilestoneResolver;
+use App\Support\MediaFileUrl;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -794,7 +795,7 @@ class User extends Authenticatable
             return null;
         }
 
-        return url('/api/v1/files/' . $this->profile_photo_file_id);
+        return MediaFileUrl::fileUrl($this->profile_photo_file_id);
     }
 
     public function getProfileVideoUrlAttribute(): ?string
@@ -803,7 +804,7 @@ class User extends Authenticatable
             return null;
         }
 
-        return url('/api/v1/files/' . $this->profile_video_id);
+        return MediaFileUrl::fileUrl($this->profile_video_id);
     }
 
     public function isFreeMember(): bool

@@ -15,9 +15,9 @@ use App\Models\Testimonial;
 use App\Models\User;
 use App\Models\VisitorRegistration;
 use App\Support\AdminCircleScope;
+use App\Support\MediaFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
@@ -949,7 +949,7 @@ class ActivitiesController extends Controller
             if (is_array($decoded)) {
                 $first = $decoded[0] ?? null;
                 if (is_array($first)) {
-                    return $this->formatAttachmentUrl($first['url'] ?? $first['id'] ?? null);
+                    return $this->formatAttachmentUrl($first);
                 }
             }
 
@@ -961,18 +961,6 @@ class ActivitiesController extends Controller
 
     private function formatAttachmentUrl($value): ?string
     {
-        if (! $value) {
-            return null;
-        }
-
-        if (is_string($value) && (str_starts_with($value, 'http://') || str_starts_with($value, 'https://'))) {
-            return $value;
-        }
-
-        if (is_string($value) && Str::isUuid($value)) {
-            return url('/api/v1/files/' . $value);
-        }
-
-        return null;
+        return MediaFileUrl::resolve($value);
     }
 }

@@ -42,6 +42,7 @@
                     @forelse ($items as $testimonial)
                         @php
                             $attachmentUrl = $extractMediaUrl($testimonial->media ?? null);
+                            $hasAttachment = count(\App\Support\MediaFileUrl::normalize($testimonial->media ?? null)) > 0;
                         @endphp
                         <tr>
                             <td>
@@ -52,6 +53,8 @@
                             <td>
                                 @if ($attachmentUrl)
                                     <a href="{{ $attachmentUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">View</a>
+                                @elseif ($hasAttachment)
+                                    <span class="text-warning small">Missing file</span>
                                 @else
                                     —
                                 @endif

@@ -2,19 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\MediaProcessingException;
 use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\FileResource;
 use App\Models\File;
 use App\Models\FileModel;
 use App\Services\Media\MediaProcessor;
+use App\Support\FileStorageLocator;
 use App\Support\Media\Probe;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
-use Illuminate\Support\Str;
-use App\Exceptions\MediaProcessingException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class FileController extends BaseApiController
 {
@@ -35,18 +36,20 @@ class FileController extends BaseApiController
             throw new NotFoundHttpException('File not found.');
         }
 
-        $disk = config('filesystems.default', 'public');
+        $location = FileStorageLocator::locate($file);
 
-        if (! $file->s3_key || ! Storage::disk($disk)->exists($file->s3_key)) {
+        if (! $location) {
             throw new NotFoundHttpException('File record exists, but the uploaded file is missing from storage.');
         }
 
+        $storage = Storage::disk($location['disk']);
+        $path = $location['path'];
         $mime = $file->mime_type
-            ?: Storage::disk($disk)->mimeType($file->s3_key)
+            ?: $storage->mimeType($path)
             ?: 'application/octet-stream';
 
-        return Storage::disk($disk)->response(
-            $file->s3_key,
+        return $storage->response(
+            $path,
             null,
             [
                 'Content-Type'  => $mime,

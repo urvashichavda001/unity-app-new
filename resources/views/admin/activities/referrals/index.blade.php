@@ -173,6 +173,8 @@
                                         @endphp
                                         @if ($mediaUrl)
                                             <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary ms-2">View</a>
+                                        @else
+                                            <span class="text-warning small ms-2">Missing file</span>
                                         @endif
                                     @endif
                                 @else
