@@ -31,7 +31,7 @@
                         <td>{{ $event->title }}</td><td>{{ $event->event_type }}</td><td>{{ $event->circle?->name ?? '-' }}</td><td>{{ $event->mode }}</td>
                         <td>{{ optional($event->start_at)->format('d M Y h:i A') }}</td><td>{{ $event->recurrence_type ?? 'none' }}</td>
                         <td>{{ $event->registered_count ?? 0 }}</td><td>{{ $event->checked_in_count ?? 0 }}</td><td>{{ $event->status ?? 'scheduled' }}</td>
-                        <td><a class="btn btn-sm btn-outline-primary" href="{{ route('admin.events.show', $event->id) }}">View</a> <a class="btn btn-sm btn-outline-success" href="{{ route('admin.events.attendance', $event->id) }}">Attendance</a></td>
+                        <td><a class="btn btn-sm btn-outline-primary" href="{{ route('admin.events.show', $event->id) }}">View</a> <a class="btn btn-sm btn-outline-secondary" href="{{ route('admin.events.edit', $event->id) }}">Edit</a> <a class="btn btn-sm btn-outline-success" href="{{ route('admin.events.attendance', $event->id) }}">Attendance</a></td>
                     </tr>
                 @empty
                     <tr><td colspan="10" class="text-center text-muted py-4">No events found.</td></tr>

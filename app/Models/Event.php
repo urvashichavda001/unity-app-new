@@ -73,6 +73,7 @@ class Event extends Model
         'qr_checkin_enabled' => 'boolean',
         'feedback_sent' => 'boolean',
         'gallery_published' => 'boolean',
+        'agenda' => 'array',
         'speakers' => 'array',
         'metadata' => 'array',
         'recurrence_ends_at' => 'datetime',

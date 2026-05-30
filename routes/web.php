@@ -153,6 +153,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('/event-joining-requests/{id}/reject', [EventManagementController::class, 'rejectJoiningRequest'])->whereUuid('id')->name('event-joining-requests.reject');
         Route::get('/events/create', [EventManagementController::class, 'create'])->name('events.create');
         Route::post('/events', [EventManagementController::class, 'store'])->name('events.store');
+        Route::get('/events/{id}/edit', [EventManagementController::class, 'edit'])->name('events.edit');
+        Route::put('/events/{id}', [EventManagementController::class, 'update'])->name('events.update');
         Route::get('/events/{id}', [EventManagementController::class, 'show'])->name('events.show');
         Route::get('/events/{id}/attendance', [EventManagementController::class, 'attendance'])->name('events.attendance');
         Route::post('/events/registrations/{registration_id}/sync-zoho-invoice', [EventManagementController::class, 'syncZohoInvoice'])->name('events.registrations.sync-zoho-invoice');

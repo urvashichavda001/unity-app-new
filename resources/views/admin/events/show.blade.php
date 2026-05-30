@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h4 mb-0">{{ $event->title }}</h1><a href="{{ route('admin.events.index') }}" class="btn btn-outline-secondary">Back</a></div>
+    <div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h4 mb-0">{{ $event->title }}</h1><div class="d-flex gap-2"><a href="{{ route('admin.events.edit', $event->id) }}" class="btn btn-outline-primary">Edit</a><a href="{{ route('admin.events.index') }}" class="btn btn-outline-secondary">Back</a></div></div>
     <div class="card mb-3"><div class="card-body">
         <div class="row g-3">
             <div class="col-md-3"><strong>Type:</strong> {{ $event->event_type }}</div>

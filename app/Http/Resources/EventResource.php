@@ -39,6 +39,9 @@ class EventResource extends JsonResource
             }
         }
 
+        $metadata = is_string($this->metadata) ? json_decode($this->metadata, true) : $this->metadata;
+        $metadata = is_array($metadata) ? $metadata : [];
+
         return [
             'id' => $this->id,
             'circle_id' => $this->circle_id,
@@ -52,6 +55,8 @@ class EventResource extends JsonResource
             'agenda' => $this->agenda,
             'speakers' => $this->speakers,
             'banner_url' => $this->banner_url,
+            'what_youll_gain' => array_values((array) data_get($metadata, 'what_youll_gain', [])),
+            'organizer' => data_get($metadata, 'organizer'),
             'visibility' => $this->visibility,
             'is_paid' => (bool) $this->is_paid,
             'metadata' => $this->metadata,

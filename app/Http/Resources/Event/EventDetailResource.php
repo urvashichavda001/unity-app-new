@@ -10,7 +10,8 @@ class EventDetailResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $zohoFormUrl = $this->zoho_form_url ?? data_get($this->metadata, 'zoho_form_url');
+        $metadata = $this->normalizedMetadata($this->metadata);
+        $zohoFormUrl = $this->zoho_form_url ?? data_get($metadata, 'zoho_form_url');
         $visitorRegistrationEnabled = app(EventService::class)->visitorRegistrationEnabled($this->resource);
 
         $event = [
@@ -26,16 +27,18 @@ class EventDetailResource extends JsonResource
             'location_text' => $this->location_text,
             'location' => [
                 'text' => $this->location_text,
-                'venue_name' => $this->metadata['venue_name'] ?? null,
-                'address_line' => $this->metadata['address_line'] ?? null,
-                'city' => $this->metadata['city'] ?? null,
-                'state' => $this->metadata['state'] ?? null,
-                'google_maps_url' => $this->metadata['google_maps_url'] ?? null,
+                'venue_name' => $metadata['venue_name'] ?? null,
+                'address_line' => $metadata['address_line'] ?? null,
+                'city' => $metadata['city'] ?? null,
+                'state' => $metadata['state'] ?? null,
+                'google_maps_url' => $metadata['google_maps_url'] ?? null,
             ],
             'online_meeting_url' => $this->online_meeting_url ?? null,
             'agenda' => $this->agenda,
             'speakers' => $this->speakers,
             'banner_url' => $this->banner_url,
+            'what_youll_gain' => array_values((array) data_get($metadata, 'what_youll_gain', [])),
+            'organizer' => data_get($metadata, 'organizer'),
             'visibility' => $this->visibility,
             'is_paid' => (bool) $this->is_paid,
             'ticket_price' => (string) ($this->ticket_price ?? '0.00'),
@@ -69,5 +72,19 @@ class EventDetailResource extends JsonResource
             'occurrences' => EventOccurrenceListResource::collection($this->whenLoaded('occurrences')),
             'upcoming_occurrences' => EventOccurrenceListResource::collection($this->whenLoaded('occurrences')),
         ];
+    }
+
+    private function normalizedMetadata(mixed $metadata): array
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        if (is_object($metadata)) {
+            $metadata = (array) $metadata;
+        }
+
+        return is_array($metadata) ? $metadata : [];
     }
 }

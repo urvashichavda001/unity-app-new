@@ -1,9 +1,10 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Create Event')
+@section('title', isset($event) ? 'Edit Event' : 'Create Event')
 
 @section('content')
 @php
+    $event = $event ?? null;
     $eventTypes = [
         'circle_meeting' => 'Circle Meeting',
         'global_event' => 'Global Event',
@@ -13,29 +14,40 @@
     $days = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
     $weeks = [1 => 'First', 2 => 'Second', 3 => 'Third', 4 => 'Fourth', 5 => 'Last'];
     $months = [1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April', 5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August', 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'];
+    $isEdit = isset($event);
+    $metadata = $isEdit ? ($event->metadata ?? []) : [];
+    $metadata = is_string($metadata) ? (json_decode($metadata, true) ?: []) : ((array) $metadata);
+    $agendaRows = old('agenda', $isEdit ? ($event->agenda ?: []) : []);
+    $agendaRows = count($agendaRows ?: []) ? $agendaRows : [['time' => '', 'title' => '']];
+    $speakerRows = old('speakers', $isEdit ? ($event->speakers ?: []) : []);
+    $speakerRows = count($speakerRows ?: []) ? $speakerRows : [['name' => '', 'designation' => '', 'company' => '', 'initials' => '', 'photo_url' => '']];
+    $gainRows = old('what_youll_gain', data_get($metadata, 'what_youll_gain', []));
+    $gainRows = count($gainRows ?: []) ? $gainRows : [''];
+    $organizer = data_get($metadata, 'organizer', []);
 @endphp
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h1 class="h4 mb-0">Create Event</h1>
+            <h1 class="h4 mb-0">{{ $isEdit ? 'Edit Event' : 'Create Event' }}</h1>
             <p class="text-muted mb-0">Use this guided form to publish an event and generate upcoming meetings automatically.</p>
         </div>
         <a href="{{ route('admin.events.index') }}" class="btn btn-outline-secondary">Back</a>
     </div>
 
-    <form method="POST" action="{{ route('admin.events.store') }}" id="eventCreateForm">
+    <form method="POST" action="{{ $isEdit ? route('admin.events.update', $event->id) : route('admin.events.store') }}" id="eventCreateForm" enctype="multipart/form-data">
         @csrf
+        @if($isEdit) @method('PUT') @endif
         @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
         <div class="card mb-3">
             <div class="card-header fw-semibold">A. Basic Event Details</div>
             <div class="card-body row g-3">
-                <div class="col-md-6"><label class="form-label">Event Title</label><input class="form-control" name="title" value="{{ old('title') }}" required placeholder="e.g. Winners Circle Weekly Meeting"></div>
-                <div class="col-md-3"><label class="form-label">Event Type</label><select class="form-select" name="event_type" required>@foreach($eventTypes as $value => $label)<option value="{{ $value }}" @selected(old('event_type')===$value)>{{ $label }}</option>@endforeach</select></div>
-                <div class="col-md-3"><label class="form-label">Category</label><input class="form-control" name="event_category" value="{{ old('event_category') }}" placeholder="training, workshop, networking"></div>
-                <div class="col-md-4"><label class="form-label">Circle</label><select class="form-select" name="circle_id"><option value="">No specific circle</option>@foreach($circles as $circle)<option value="{{ $circle->id }}" @selected(old('circle_id')===$circle->id)>{{ $circle->name }}</option>@endforeach</select></div>
-                <div class="col-md-3"><label class="form-label">Event Mode</label><select class="form-select" name="mode" id="modeSelect">@foreach(['offline' => 'Offline / Venue', 'online' => 'Online', 'hybrid' => 'Hybrid'] as $value => $label)<option value="{{ $value }}" @selected(old('mode','offline')===$value)>{{ $label }}</option>@endforeach</select></div>
-                <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3" placeholder="What should attendees know about this event?">{{ old('description') }}</textarea></div>
+                <div class="col-md-6"><label class="form-label">Event Title</label><input class="form-control" name="title" value="{{ old('title', $event->title ?? '') }}" required placeholder="e.g. Winners Circle Weekly Meeting"></div>
+                <div class="col-md-3"><label class="form-label">Event Type</label><select class="form-select" name="event_type" required>@foreach($eventTypes as $value => $label)<option value="{{ $value }}" @selected(old('event_type', $event->event_type ?? null)===$value)>{{ $label }}</option>@endforeach</select></div>
+                <div class="col-md-3"><label class="form-label">Category</label><input class="form-control" name="event_category" value="{{ old('event_category', $event->event_category ?? '') }}" placeholder="training, workshop, networking"></div>
+                <div class="col-md-4"><label class="form-label">Circle</label><select class="form-select" name="circle_id"><option value="">No specific circle</option>@foreach($circles as $circle)<option value="{{ $circle->id }}" @selected(old('circle_id', $event->circle_id ?? null)===$circle->id)>{{ $circle->name }}</option>@endforeach</select></div>
+                <div class="col-md-3"><label class="form-label">Event Mode</label><select class="form-select" name="mode" id="modeSelect">@foreach(['offline' => 'Offline / Venue', 'online' => 'Online', 'hybrid' => 'Hybrid'] as $value => $label)<option value="{{ $value }}" @selected(old('mode', $event->mode ?? 'offline')===$value)>{{ $label }}</option>@endforeach</select></div>
+                <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3" placeholder="What should attendees know about this event?">{{ old('description', $event->description ?? '') }}</textarea></div>
             </div>
         </div>
 
@@ -47,8 +59,8 @@
                 <div class="col-md-3"><label class="form-label">Start Time</label><input class="form-control" type="time" id="startTime" required></div>
                 <div class="col-md-3"><label class="form-label">End Date</label><input class="form-control" type="date" id="endDate"></div>
                 <div class="col-md-3"><label class="form-label">End Time</label><input class="form-control" type="time" id="endTime"></div>
-                <input type="hidden" name="start_at" id="startAtHidden" value="{{ old('start_at') }}">
-                <input type="hidden" name="end_at" id="endAtHidden" value="{{ old('end_at') }}">
+                <input type="hidden" name="start_at" id="startAtHidden" value="{{ old('start_at', optional($event->start_at ?? null)->format('Y-m-d\TH:i')) }}">
+                <input type="hidden" name="end_at" id="endAtHidden" value="{{ old('end_at', optional($event->end_at ?? null)->format('Y-m-d\TH:i')) }}">
                 <div class="col-12"><div class="text-danger small d-none" id="dateTimeError">End date/time must be after the start date/time.</div></div>
             </div>
         </div>
@@ -57,31 +69,31 @@
             <div class="card-header fw-semibold">C. Location / Online Details</div>
             <div class="card-body row g-3">
                 <div class="col-12 physical-location-fields"><small class="text-muted">For in-person events, add venue details. These are also saved in event metadata.</small></div>
-                <div class="col-md-4 physical-location-fields"><label class="form-label">Venue Name</label><input class="form-control" name="venue_name" value="{{ old('venue_name') }}" placeholder="Hotel / Hall / Office"></div>
-                <div class="col-md-8 physical-location-fields"><label class="form-label">Address Line</label><input class="form-control" name="address_line" value="{{ old('address_line') }}" placeholder="Street address"></div>
-                <div class="col-md-3 physical-location-fields"><label class="form-label">City</label><input class="form-control" name="city" value="{{ old('city') }}"></div>
-                <div class="col-md-3 physical-location-fields"><label class="form-label">State</label><input class="form-control" name="state" value="{{ old('state') }}"></div>
-                <div class="col-md-6 physical-location-fields"><label class="form-label">Google Maps URL</label><input class="form-control" name="google_maps_url" value="{{ old('google_maps_url') }}" placeholder="Paste Google Maps link"></div>
-                <div class="col-12 physical-location-fields"><label class="form-label">Location Summary</label><input class="form-control" name="location_text" value="{{ old('location_text') }}" placeholder="Shown in app. Leave blank to auto-combine venue and address."></div>
-                <div class="col-12 online-fields"><label class="form-label">Online Meeting URL</label><input class="form-control" name="online_meeting_url" value="{{ old('online_meeting_url') }}" placeholder="Zoom / Google Meet / Teams link"></div>
+                <div class="col-md-4 physical-location-fields"><label class="form-label">Venue Name</label><input class="form-control" name="venue_name" value="{{ old('venue_name', data_get($metadata, 'venue_name')) }}" placeholder="Hotel / Hall / Office"></div>
+                <div class="col-md-8 physical-location-fields"><label class="form-label">Address Line</label><input class="form-control" name="address_line" value="{{ old('address_line', data_get($metadata, 'address_line')) }}" placeholder="Street address"></div>
+                <div class="col-md-3 physical-location-fields"><label class="form-label">City</label><input class="form-control" name="city" value="{{ old('city', data_get($metadata, 'city')) }}"></div>
+                <div class="col-md-3 physical-location-fields"><label class="form-label">State</label><input class="form-control" name="state" value="{{ old('state', data_get($metadata, 'state')) }}"></div>
+                <div class="col-md-6 physical-location-fields"><label class="form-label">Google Maps URL</label><input class="form-control" name="google_maps_url" value="{{ old('google_maps_url', data_get($metadata, 'google_maps_url')) }}" placeholder="Paste Google Maps link"></div>
+                <div class="col-12 physical-location-fields"><label class="form-label">Location Summary</label><input class="form-control" name="location_text" value="{{ old('location_text', $event->location_text ?? '') }}" placeholder="Shown in app. Leave blank to auto-combine venue and address."></div>
+                <div class="col-12 online-fields"><label class="form-label">Online Meeting URL</label><input class="form-control" name="online_meeting_url" value="{{ old('online_meeting_url', $event->online_meeting_url ?? '') }}" placeholder="Zoom / Google Meet / Teams link"></div>
             </div>
         </div>
 
         <div class="card mb-3">
             <div class="card-header fw-semibold">D. Recurrence</div>
             <div class="card-body row g-3">
-                <div class="col-md-4"><label class="form-label">Repeat</label><select class="form-select" name="recurrence_type" id="recurrenceType"><option value="none">One-time Event</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
-                <div class="col-md-4 recurrence-common"><label class="form-label">Repeat every</label><div class="input-group"><input class="form-control" type="number" min="1" name="recurrence_interval" id="recurrenceInterval" value="{{ old('recurrence_interval', 1) }}"><span class="input-group-text" id="intervalUnit">week(s)</span></div></div>
-                <div class="col-md-4 recurrence-common"><label class="form-label">Repeat Until</label><input class="form-control" type="date" name="recurrence_ends_at" id="recurrenceEndsAt" value="{{ old('recurrence_ends_at') }}"></div>
+                <div class="col-md-4"><label class="form-label">Repeat</label><select class="form-select" name="recurrence_type" id="recurrenceType">@foreach(['none' => 'One-time Event', 'weekly' => 'Weekly', 'monthly' => 'Monthly', 'yearly' => 'Yearly'] as $value => $label)<option value="{{ $value }}" @selected(old('recurrence_type', $event->recurrence_type ?? 'none') === $value)>{{ $label }}</option>@endforeach</select></div>
+                <div class="col-md-4 recurrence-common"><label class="form-label">Repeat every</label><div class="input-group"><input class="form-control" type="number" min="1" name="recurrence_interval" id="recurrenceInterval" value="{{ old('recurrence_interval', $event->recurrence_interval ?? 1) }}"><span class="input-group-text" id="intervalUnit">week(s)</span></div></div>
+                <div class="col-md-4 recurrence-common"><label class="form-label">Repeat Until</label><input class="form-control" type="date" name="recurrence_ends_at" id="recurrenceEndsAt" value="{{ old('recurrence_ends_at', optional($event->recurrence_ends_at ?? null)->format('Y-m-d')) }}"></div>
 
-                <div class="col-md-4 weekly-fields recurrence-fields"><label class="form-label">Repeat on</label><select class="form-select" name="recurrence_day_of_week" id="dayOfWeek">@foreach($days as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
+                <div class="col-md-4 weekly-fields recurrence-fields"><label class="form-label">Repeat on</label><select class="form-select" name="recurrence_day_of_week" id="dayOfWeek">@foreach($days as $value => $label)<option value="{{ $value }}" @selected((int) old('recurrence_day_of_week', $event->recurrence_day_of_week ?? 1) === $value)>{{ $label }}</option>@endforeach</select></div>
 
                 <div class="col-12 monthly-fields recurrence-fields"><label class="form-label d-block">Monthly pattern</label><div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="monthly_pattern" id="monthlyFixed" value="fixed" checked><label class="form-check-label" for="monthlyFixed">On a fixed day of month</label></div><div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="monthly_pattern" id="monthlyWeekday" value="weekday"><label class="form-check-label" for="monthlyWeekday">On a week/day pattern</label></div></div>
-                <div class="col-md-4 monthly-fixed-fields recurrence-fields"><label class="form-label">Day of month</label><select class="form-select" name="recurrence_day_of_month" id="dayOfMonth"><option value="">Select day</option>@for($i=1;$i<=31;$i++)<option value="{{ $i }}">{{ $i }}</option>@endfor</select></div>
-                <div class="col-md-4 monthly-weekday-fields recurrence-fields"><label class="form-label">Week of month</label><select class="form-select" name="recurrence_week_of_month" id="weekOfMonth"><option value="">Select week</option>@foreach($weeks as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
+                <div class="col-md-4 monthly-fixed-fields recurrence-fields"><label class="form-label">Day of month</label><select class="form-select" name="recurrence_day_of_month" id="dayOfMonth"><option value="">Select day</option>@for($i=1;$i<=31;$i++)<option value="{{ $i }}" @selected((int) old('recurrence_day_of_month', $event->recurrence_day_of_month ?? 0) === $i)>{{ $i }}</option>@endfor</select></div>
+                <div class="col-md-4 monthly-weekday-fields recurrence-fields"><label class="form-label">Week of month</label><select class="form-select" name="recurrence_week_of_month" id="weekOfMonth"><option value="">Select week</option>@foreach($weeks as $value => $label)<option value="{{ $value }}" @selected((int) old('recurrence_week_of_month', $event->recurrence_week_of_month ?? 0) === $value)>{{ $label }}</option>@endforeach</select></div>
                 <div class="col-md-4 monthly-weekday-fields recurrence-fields"><label class="form-label">Day</label><select class="form-select" id="monthlyDayOfWeek">@foreach($days as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
 
-                <div class="col-md-4 yearly-fields recurrence-fields"><label class="form-label">Month</label><select class="form-select" name="recurrence_month" id="recurrenceMonth"><option value="">Select month</option>@foreach($months as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></div>
+                <div class="col-md-4 yearly-fields recurrence-fields"><label class="form-label">Month</label><select class="form-select" name="recurrence_month" id="recurrenceMonth"><option value="">Select month</option>@foreach($months as $value => $label)<option value="{{ $value }}" @selected((int) old('recurrence_month', $event->recurrence_month ?? 0) === $value)>{{ $label }}</option>@endforeach</select></div>
                 <div class="col-md-4 yearly-fields recurrence-fields"><label class="form-label">Day of month</label><select class="form-select" id="yearlyDayOfMonth">@for($i=1;$i<=31;$i++)<option value="{{ $i }}">{{ $i }}</option>@endfor</select></div>
 
                 <div class="col-12"><div class="alert alert-info mb-0" id="recurrencePreview">This is a one-time event.</div></div>
@@ -89,23 +101,82 @@
         </div>
 
         <div class="card mb-3">
+            <div class="card-header fw-semibold">F. Event Image</div>
+            <div class="card-body row g-3">
+                @if($isEdit && !empty($event->banner_url))
+                    <div class="col-12"><img src="{{ $event->banner_url }}" alt="Current event banner" class="img-fluid rounded border" style="max-height: 180px;"></div>
+                @endif
+                <div class="col-md-6"><label class="form-label">Upload Banner Image</label><input class="form-control" type="file" name="banner" accept="image/*"><div class="form-text">Optional. Maximum 5MB.</div></div>
+                <div class="col-md-6"><label class="form-label">Banner URL</label><input class="form-control" name="banner_url" value="{{ old('banner_url', $event->banner_url ?? '') }}" placeholder="https://... or /api/v1/files/..."></div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">G. Event Agenda</span><button type="button" class="btn btn-sm btn-outline-primary" id="addAgendaRow">Add Agenda Row</button></div>
+            <div class="card-body" id="agendaRows">
+                @foreach($agendaRows as $index => $row)
+                    <div class="row g-2 align-items-end agenda-row mb-2 repeat-row">
+                        <div class="col-md-3"><label class="form-label">Time</label><input type="time" class="form-control" name="agenda[{{ $index }}][time]" value="{{ $row['time'] ?? '' }}"></div>
+                        <div class="col-md-7"><label class="form-label">Title</label><input type="text" class="form-control" name="agenda[{{ $index }}][title]" value="{{ $row['title'] ?? '' }}" placeholder="Registration & Networking"></div>
+                        <div class="col-md-2"><button type="button" class="btn btn-outline-danger remove-agenda-row remove-row text-nowrap w-100">Remove</button></div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">H. Featured Speakers</span><button type="button" class="btn btn-sm btn-outline-primary" id="addSpeakerRow">Add Speaker Row</button></div>
+            <div class="card-body" id="speakerRows">
+                @foreach($speakerRows as $index => $row)
+                    <div class="row g-2 align-items-end mb-2 repeat-row">
+                        <div class="col-md-3"><label class="form-label">Name</label><input class="form-control" name="speakers[{{ $index }}][name]" value="{{ $row['name'] ?? '' }}"></div>
+                        <div class="col-md-2"><label class="form-label">Designation</label><input class="form-control" name="speakers[{{ $index }}][designation]" value="{{ $row['designation'] ?? '' }}"></div>
+                        <div class="col-md-2"><label class="form-label">Company</label><input class="form-control" name="speakers[{{ $index }}][company]" value="{{ $row['company'] ?? '' }}"></div>
+                        <div class="col-md-1"><label class="form-label">Initials</label><input class="form-control" name="speakers[{{ $index }}][initials]" value="{{ $row['initials'] ?? '' }}"></div>
+                        <div class="col-md-3"><label class="form-label">Photo URL</label><input class="form-control" name="speakers[{{ $index }}][photo_url]" value="{{ $row['photo_url'] ?? '' }}"></div>
+                        <div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100 remove-row">Remove</button></div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">I. What You'll Gain</span><button type="button" class="btn btn-sm btn-outline-primary" id="addGainRow">Add Gain Row</button></div>
+            <div class="card-body" id="gainRows">
+                @foreach($gainRows as $index => $gain)
+                    <div class="row g-2 align-items-end mb-2 repeat-row"><div class="col-md-11"><label class="form-label">Benefit</label><input class="form-control" name="what_youll_gain[{{ $index }}]" value="{{ $gain }}" placeholder="Network with 100+ curated MSME leaders"></div><div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100 remove-row">Remove</button></div></div>
+                @endforeach
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header fw-semibold">J. Organizer Details</div>
+            <div class="card-body row g-3">
+                <div class="col-md-3"><label class="form-label">Organizer Name</label><input class="form-control" name="organizer_name" value="{{ old('organizer_name', data_get($organizer, 'name')) }}"></div>
+                <div class="col-md-3"><label class="form-label">Organizer Phone</label><input class="form-control" name="organizer_phone" value="{{ old('organizer_phone', data_get($organizer, 'phone')) }}"></div>
+                <div class="col-md-3"><label class="form-label">Organizer Email</label><input class="form-control" type="email" name="organizer_email" value="{{ old('organizer_email', data_get($organizer, 'email')) }}"></div>
+                <div class="col-md-3"><label class="form-label">Organizer Website</label><input class="form-control" name="organizer_website" value="{{ old('organizer_website', data_get($organizer, 'website')) }}"></div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
             <div class="card-header fw-semibold">E. Registration & QR Settings</div>
             <div class="card-body row g-3">
-                <div class="col-md-4"><label class="form-label">Registration Limit</label><input class="form-control" type="number" name="registration_limit" value="{{ old('registration_limit') }}" placeholder="Leave blank for unlimited"></div>
-                <div class="col-md-4"><label class="form-label">Ticket Price</label><input class="form-control" type="number" step="0.01" name="ticket_price" value="{{ old('ticket_price') }}"><div class="form-text">Paid events will use Zoho checkout. QR will be generated only after successful payment.</div></div>
-                <div class="col-md-4"><label class="form-label">Zoho Form URL</label><input class="form-control" name="zoho_form_url" value="{{ old('zoho_form_url') }}"></div>
+                <div class="col-md-4"><label class="form-label">Registration Limit</label><input class="form-control" type="number" name="registration_limit" value="{{ old('registration_limit', $event->registration_limit ?? '') }}" placeholder="Leave blank for unlimited"></div>
+                <div class="col-md-4"><label class="form-label">Ticket Price</label><input class="form-control" type="number" step="0.01" name="ticket_price" value="{{ old('ticket_price', $event->ticket_price ?? '') }}"><div class="form-text">Paid events will use Zoho checkout. QR will be generated only after successful payment.</div></div>
+                <div class="col-md-4"><label class="form-label">Zoho Form URL</label><input class="form-control" name="zoho_form_url" value="{{ old('zoho_form_url', $event->zoho_form_url ?? data_get($metadata, 'zoho_form_url')) }}"></div>
                 @foreach([
                     'qr_checkin_enabled' => ['QR Check-in', 'Members will get a QR code after registration. Scan it at the event entry.'],
                     'visitor_registration_enabled' => ['Visitor Registration', 'Allow non-members/visitors to register for this event.'],
                     'member_registration_enabled' => ['Member Registration', 'Allow Unity members to register from the app.'],
                     'is_paid' => ['Paid', 'Enable this if the event requires payment.'],
                 ] as $name => [$label, $help])
-                    <div class="col-md-6"><div class="form-check border rounded p-3 h-100"><input type="hidden" name="{{ $name }}" value="0"><input class="form-check-input ms-0 me-2" type="checkbox" name="{{ $name }}" value="1" id="{{ $name }}" @checked(old($name, $name !== 'is_paid'))><label class="form-check-label fw-semibold" for="{{ $name }}">{{ $label }}</label><div class="small text-muted mt-1">{{ $help }}</div></div></div>
+                    <div class="col-md-6"><div class="form-check border rounded p-3 h-100"><input type="hidden" name="{{ $name }}" value="0"><input class="form-check-input ms-0 me-2" type="checkbox" name="{{ $name }}" value="1" id="{{ $name }}" @checked(old($name, $event->{$name} ?? ($name !== 'is_paid')))><label class="form-check-label fw-semibold" for="{{ $name }}">{{ $label }}</label><div class="small text-muted mt-1">{{ $help }}</div></div></div>
                 @endforeach
             </div>
         </div>
 
-        <div class="d-flex justify-content-end gap-2 mb-4"><a href="{{ route('admin.events.index') }}" class="btn btn-outline-secondary">Cancel</a><button class="btn btn-primary btn-lg">Create Event</button></div>
+        <div class="d-flex justify-content-end gap-2 mb-4"><a href="{{ route('admin.events.index') }}" class="btn btn-outline-secondary">Cancel</a><button class="btn btn-primary btn-lg">{{ $isEdit ? 'Update Event' : 'Create Event' }}</button></div>
     </form>
 </div>
 
@@ -120,6 +191,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const days = @json($days);
     const weeks = @json($weeks);
     const months = @json($months);
+
+    function initDateTimeFields() {
+        const startAt = document.getElementById('startAtHidden').value;
+        const endAt = document.getElementById('endAtHidden').value;
+        if (startAt) { const [d, t] = startAt.split('T'); document.getElementById('startDate').value = d || ''; document.getElementById('startTime').value = (t || '').slice(0,5); }
+        if (endAt) { const [d, t] = endAt.split('T'); document.getElementById('endDate').value = d || ''; document.getElementById('endTime').value = (t || '').slice(0,5); }
+    }
+
+    function addRepeatRow(containerId, html) {
+        const container = document.getElementById(containerId);
+        const index = container.querySelectorAll('.repeat-row').length;
+        container.insertAdjacentHTML('beforeend', html.replaceAll('__INDEX__', index));
+    }
+
+    document.getElementById('addAgendaRow').addEventListener('click', () => addRepeatRow('agendaRows', '<div class="row g-2 align-items-end agenda-row mb-2 repeat-row"><div class="col-md-3"><label class="form-label">Time</label><input type="time" class="form-control" name="agenda[__INDEX__][time]"></div><div class="col-md-7"><label class="form-label">Title</label><input type="text" class="form-control" name="agenda[__INDEX__][title]" placeholder="Registration & Networking"></div><div class="col-md-2"><button type="button" class="btn btn-outline-danger remove-agenda-row remove-row text-nowrap w-100">Remove</button></div></div>'));
+    document.getElementById('addSpeakerRow').addEventListener('click', () => addRepeatRow('speakerRows', '<div class="row g-2 align-items-end mb-2 repeat-row"><div class="col-md-3"><label class="form-label">Name</label><input class="form-control" name="speakers[__INDEX__][name]"></div><div class="col-md-2"><label class="form-label">Designation</label><input class="form-control" name="speakers[__INDEX__][designation]"></div><div class="col-md-2"><label class="form-label">Company</label><input class="form-control" name="speakers[__INDEX__][company]"></div><div class="col-md-1"><label class="form-label">Initials</label><input class="form-control" name="speakers[__INDEX__][initials]"></div><div class="col-md-3"><label class="form-label">Photo URL</label><input class="form-control" name="speakers[__INDEX__][photo_url]"></div><div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100 remove-row">Remove</button></div></div>'));
+    document.getElementById('addGainRow').addEventListener('click', () => addRepeatRow('gainRows', '<div class="row g-2 align-items-end mb-2 repeat-row"><div class="col-md-11"><label class="form-label">Benefit</label><input class="form-control" name="what_youll_gain[__INDEX__]" placeholder="Network with 100+ curated MSME leaders"></div><div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100 remove-row">Remove</button></div></div>'));
+    document.addEventListener('click', (event) => { if (event.target.classList.contains('remove-row')) event.target.closest('.repeat-row')?.remove(); });
 
     const toggle = (selector, show) => document.querySelectorAll(selector).forEach(el => el.classList.toggle('d-none', !show));
     const ordinal = n => ({1:'First',2:'Second',3:'Third',4:'Fourth',5:'Last'}[n] || n);
@@ -185,6 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (invalid) e.preventDefault();
     });
 
+    initDateTimeFields();
     updateMode(); updateRecurrence();
 });
 </script>

@@ -19,7 +19,9 @@ class EventOccurrenceListResource extends JsonResource
         $eventService = app(EventService::class);
         $canRegister = $eventService->canRegister($event, $request->user());
         $showOnlineUrl = (bool) $registration || (bool) ($event->is_public ?? false) || $event->visibility === 'public';
-        $zohoFormUrl = $event->zoho_form_url ?? data_get($event->metadata, 'zoho_form_url');
+        $metadata = is_string($event->metadata) ? json_decode($event->metadata, true) : $event->metadata;
+        $metadata = is_array($metadata) ? $metadata : [];
+        $zohoFormUrl = $event->zoho_form_url ?? data_get($metadata, 'zoho_form_url');
         $visitorRegistrationEnabled = $eventService->visitorRegistrationEnabled($event);
 
         return [
@@ -38,13 +40,18 @@ class EventOccurrenceListResource extends JsonResource
             'location_text' => $event->location_text,
             'location' => [
                 'text' => $event->location_text,
-                'venue_name' => $event->metadata['venue_name'] ?? null,
-                'address_line' => $event->metadata['address_line'] ?? null,
-                'city' => $event->metadata['city'] ?? null,
-                'state' => $event->metadata['state'] ?? null,
-                'google_maps_url' => $event->metadata['google_maps_url'] ?? null,
+                'venue_name' => $metadata['venue_name'] ?? null,
+                'address_line' => $metadata['address_line'] ?? null,
+                'city' => $metadata['city'] ?? null,
+                'state' => $metadata['state'] ?? null,
+                'google_maps_url' => $metadata['google_maps_url'] ?? null,
             ],
             'online_meeting_url' => $showOnlineUrl ? ($event->online_meeting_url ?? null) : null,
+            'banner_url' => $event->banner_url,
+            'agenda' => $event->agenda,
+            'speakers' => $event->speakers,
+            'what_youll_gain' => array_values((array) data_get($metadata, 'what_youll_gain', [])),
+            'organizer' => data_get($metadata, 'organizer'),
             'is_paid' => (bool) $event->is_paid,
             'ticket_price' => (string) ($event->ticket_price ?? '0.00'),
             'registration_limit' => $limit,

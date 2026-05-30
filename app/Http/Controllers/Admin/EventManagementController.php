@@ -7,6 +7,7 @@ use App\Models\Circle;
 use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationRequest;
+use App\Models\FileModel;
 use App\Services\Events\EventOccurrenceGeneratorService;
 use App\Services\Events\EventService;
 use App\Services\Events\EventZohoInvoiceSyncService;
@@ -14,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class EventManagementController extends Controller
@@ -123,9 +125,19 @@ class EventManagementController extends Controller
         return view('admin.events.create', ['circles' => Circle::query()->orderBy('name')->get(['id', 'name'])]);
     }
 
+    public function edit(string $id): View
+    {
+        $event = Event::query()->findOrFail($id);
+
+        return view('admin.events.create', [
+            'event' => $event,
+            'circles' => Circle::query()->orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
-        $data = $this->validated($request);
+        $data = $this->prepareEventData($request, $this->validated($request));
         $event = DB::transaction(function () use ($data): Event {
             $event = Event::query()->create($this->filterColumns($this->withDefaults($data)));
             $this->occurrences->generate($event);
@@ -134,6 +146,20 @@ class EventManagementController extends Controller
         });
 
         return redirect()->route('admin.events.show', $event)->with('success', 'Event created successfully.');
+    }
+
+    public function update(Request $request, string $id): RedirectResponse
+    {
+        $event = Event::query()->findOrFail($id);
+        $data = $this->prepareEventData($request, $this->validated($request), $event);
+
+        DB::transaction(function () use ($event, $data): void {
+            $event->fill($this->filterColumns($this->withDefaults($data)));
+            $event->save();
+            $this->occurrences->regenerateFuture($event);
+        });
+
+        return redirect()->route('admin.events.show', $event)->with('success', 'Event updated successfully.');
     }
 
     public function show(string $id): View
@@ -192,7 +218,52 @@ class EventManagementController extends Controller
             'visitor_registration_enabled' => ['nullable', 'boolean'],
             'member_registration_enabled' => ['nullable', 'boolean'],
             'zoho_form_url' => ['nullable', 'string', 'max:2000'],
+            'banner' => ['nullable', 'image', 'max:5120'],
+            'banner_url' => ['nullable', 'string', 'max:2000'],
+            'agenda' => ['nullable', 'array'],
+            'agenda.*.time' => ['nullable', 'string', 'max:100'],
+            'agenda.*.title' => ['nullable', 'string', 'max:255'],
+            'speakers' => ['nullable', 'array'],
+            'speakers.*.name' => ['nullable', 'string', 'max:255'],
+            'speakers.*.designation' => ['nullable', 'string', 'max:255'],
+            'speakers.*.company' => ['nullable', 'string', 'max:255'],
+            'speakers.*.initials' => ['nullable', 'string', 'max:20'],
+            'speakers.*.photo_url' => ['nullable', 'string', 'max:2000'],
+            'what_youll_gain' => ['nullable', 'array'],
+            'what_youll_gain.*' => ['nullable', 'string', 'max:500'],
+            'organizer_name' => ['nullable', 'string', 'max:255'],
+            'organizer_phone' => ['nullable', 'string', 'max:50'],
+            'organizer_email' => ['nullable', 'email', 'max:255'],
+            'organizer_website' => ['nullable', 'string', 'max:255'],
         ]);
+    }
+
+    private function prepareEventData(Request $request, array $data, ?Event $event = null): array
+    {
+        $data['agenda'] = $this->cleanAgenda($data['agenda'] ?? []);
+        $data['speakers'] = $this->cleanSpeakers($data['speakers'] ?? []);
+
+        if ($request->hasFile('banner')) {
+            $data['banner_url'] = $this->storeBanner($request);
+        } elseif (array_key_exists('banner_url', $data)) {
+            $data['banner_url'] = $data['banner_url'] ?: null;
+        } elseif ($event) {
+            $data['banner_url'] = $event->banner_url;
+        }
+
+        $metadata = $this->normalizeMetadata($event?->metadata ?? ($data['metadata'] ?? []));
+        $metadata['what_youll_gain'] = $this->cleanGains($data['what_youll_gain'] ?? []);
+        $metadata['organizer'] = [
+            'name' => $data['organizer_name'] ?? null,
+            'phone' => $data['organizer_phone'] ?? null,
+            'email' => $data['organizer_email'] ?? null,
+            'website' => $data['organizer_website'] ?? null,
+        ];
+        $data['metadata'] = $metadata;
+
+        unset($data['banner'], $data['what_youll_gain'], $data['organizer_name'], $data['organizer_phone'], $data['organizer_email'], $data['organizer_website']);
+
+        return $data;
     }
 
     private function withDefaults(array $data): array
@@ -235,6 +306,60 @@ class EventManagementController extends Controller
         }
 
         return $data;
+    }
+
+    private function cleanAgenda(array $rows): array
+    {
+        return collect($rows)->map(fn ($row) => [
+            'time' => trim((string) ($row['time'] ?? '')),
+            'title' => trim((string) ($row['title'] ?? '')),
+        ])->filter(fn ($row) => $row['time'] !== '' || $row['title'] !== '')->values()->all();
+    }
+
+    private function cleanSpeakers(array $rows): array
+    {
+        return collect($rows)->map(fn ($row) => [
+            'name' => trim((string) ($row['name'] ?? '')),
+            'designation' => trim((string) ($row['designation'] ?? '')),
+            'company' => trim((string) ($row['company'] ?? '')),
+            'initials' => trim((string) ($row['initials'] ?? '')),
+            'photo_url' => filled($row['photo_url'] ?? null) ? trim((string) $row['photo_url']) : null,
+        ])->filter(fn ($row) => $row['name'] !== '' || $row['designation'] !== '' || $row['company'] !== '' || $row['initials'] !== '' || filled($row['photo_url']))->values()->all();
+    }
+
+    private function cleanGains(array $rows): array
+    {
+        return collect($rows)->map(fn ($row) => trim((string) $row))->filter(fn ($row) => $row !== '')->values()->all();
+    }
+
+    private function normalizeMetadata(mixed $metadata): array
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        if (is_object($metadata)) {
+            $metadata = (array) $metadata;
+        }
+
+        return is_array($metadata) ? $metadata : [];
+    }
+
+    private function storeBanner(Request $request): string
+    {
+        $path = $request->file('banner')->store('events/banners', 'public');
+
+        $file = new FileModel();
+        $file->s3_key = $path;
+        $file->mime_type = Storage::disk('public')->mimeType($path);
+        $file->size_bytes = Storage::disk('public')->size($path);
+        [$width, $height] = @getimagesize(Storage::disk('public')->path($path)) ?: [null, null];
+        $file->width = $width;
+        $file->height = $height;
+        $file->save();
+
+        return url('/api/v1/files/'.$file->id);
     }
 
     private function filterColumns(array $data): array

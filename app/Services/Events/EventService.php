@@ -301,6 +301,54 @@ class EventService
         ];
     }
 
+    private function normalizeMetadata(mixed $metadata): array
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        if (is_object($metadata)) {
+            $metadata = (array) $metadata;
+        }
+
+        return is_array($metadata) ? $metadata : [];
+    }
+
+    private function normalizeRows(mixed $rows): array
+    {
+        if (is_string($rows)) {
+            $decoded = json_decode($rows, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    private function cleanTextRows(array $rows): array
+    {
+        return collect($rows)->map(fn ($row) => trim((string) $row))->filter(fn ($row) => $row !== '')->values()->all();
+    }
+
+    private function cleanAgenda(array $rows): array
+    {
+        return collect($rows)->map(fn ($row) => [
+            'time' => trim((string) ($row['time'] ?? '')),
+            'title' => trim((string) ($row['title'] ?? '')),
+        ])->filter(fn ($row) => $row['time'] !== '' || $row['title'] !== '')->values()->all();
+    }
+
+    private function cleanSpeakers(array $rows): array
+    {
+        return collect($rows)->map(fn ($row) => [
+            'name' => trim((string) ($row['name'] ?? '')),
+            'designation' => trim((string) ($row['designation'] ?? '')),
+            'company' => trim((string) ($row['company'] ?? '')),
+            'initials' => trim((string) ($row['initials'] ?? '')),
+            'photo_url' => filled($row['photo_url'] ?? null) ? trim((string) $row['photo_url']) : null,
+        ])->filter(fn ($row) => $row['name'] !== '' || $row['designation'] !== '' || $row['company'] !== '' || $row['initials'] !== '' || filled($row['photo_url']))->values()->all();
+    }
+
     public function filterEventColumns(array $data): array
     {
         return array_filter($data, fn ($value, $key) => Schema::hasColumn('events', $key), ARRAY_FILTER_USE_BOTH);
@@ -314,8 +362,39 @@ class EventService
         if ($actor && empty($data['organizer_user_id'])) {
             $data['organizer_user_id'] = $actor->id;
         }
-        if (! empty($data['zoho_form_url'])) {
-            $data['metadata'] = array_merge((array) ($data['metadata'] ?? []), ['zoho_form_url' => $data['zoho_form_url']]);
+        $hasMetadataInput = array_key_exists('metadata', $data)
+            || ! empty($data['zoho_form_url'])
+            || array_key_exists('what_youll_gain', $data)
+            || array_key_exists('organizer_name', $data)
+            || array_key_exists('organizer_phone', $data)
+            || array_key_exists('organizer_email', $data)
+            || array_key_exists('organizer_website', $data);
+
+        if ($hasMetadataInput) {
+            $metadata = $this->normalizeMetadata($data['metadata'] ?? []);
+            if (! empty($data['zoho_form_url'])) {
+                $metadata['zoho_form_url'] = $data['zoho_form_url'];
+            }
+            if (array_key_exists('what_youll_gain', $data)) {
+                $metadata['what_youll_gain'] = $this->cleanTextRows((array) $data['what_youll_gain']);
+                unset($data['what_youll_gain']);
+            }
+            if (array_key_exists('organizer_name', $data) || array_key_exists('organizer_phone', $data) || array_key_exists('organizer_email', $data) || array_key_exists('organizer_website', $data)) {
+                $metadata['organizer'] = [
+                    'name' => $data['organizer_name'] ?? null,
+                    'phone' => $data['organizer_phone'] ?? null,
+                    'email' => $data['organizer_email'] ?? null,
+                    'website' => $data['organizer_website'] ?? null,
+                ];
+                unset($data['organizer_name'], $data['organizer_phone'], $data['organizer_email'], $data['organizer_website']);
+            }
+            $data['metadata'] = $metadata;
+        }
+        if (array_key_exists('agenda', $data)) {
+            $data['agenda'] = $this->cleanAgenda($this->normalizeRows($data['agenda']));
+        }
+        if (array_key_exists('speakers', $data)) {
+            $data['speakers'] = $this->cleanSpeakers($this->normalizeRows($data['speakers']));
         }
 
         if ($withDefaults) {
