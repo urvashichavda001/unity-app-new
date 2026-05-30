@@ -8,6 +8,7 @@ use App\Models\EventAttendance;
 use App\Models\EventRegistration;
 use App\Models\EventScannerAuthorization;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,35 +28,33 @@ class ScannerAttendanceController extends BaseApiController
         }
 
         $result = DB::transaction(function () use ($validated, $event, $request): array {
-            $registration = EventRegistration::query()
+            $registration = $this->registrationQueryForEvent($event)
                 ->with(['user', 'event'])
                 ->where('qr_token', $validated['qr_token'])
                 ->lockForUpdate()
                 ->first();
 
-            if (! $registration || $registration->event_id !== $event->id || ! $this->isScannableRegistration($registration)) {
+            if (! $registration || ! $this->isScannableRegistration($registration)) {
                 return ['type' => 'invalid'];
             }
 
-            $existingAttendance = EventAttendance::query()
+            $existingAttendance = $this->attendanceForRegistration($event, $registration)
                 ->with('checkedInBy')
-                ->where('event_id', $event->id)
-                ->where('event_registration_id', $registration->id)
                 ->lockForUpdate()
                 ->first();
 
-            if ($existingAttendance || $registration->checkin_status === EventAttendance::STATUS_CHECKED_IN) {
+            if ($existingAttendance) {
                 return [
                     'type' => 'already_checked_in',
                     'attendance' => $existingAttendance,
-                    'registration' => $registration->fresh(['checkedInBy', 'user']),
+                    'registration' => $registration->fresh(['user']),
                 ];
             }
 
             try {
                 $attendance = EventAttendance::query()->create([
                     'event_id' => $event->id,
-                    'attendee_user_id' => $registration->user_id,
+                    'attendee_user_id' => $this->attendeeUserId($registration),
                     'event_registration_id' => $registration->id,
                     'qr_token' => $registration->qr_token,
                     'checked_in_by_user_id' => $request->user()->id,
@@ -67,38 +66,23 @@ class ScannerAttendanceController extends BaseApiController
                         'user_agent' => (string) $request->userAgent(),
                     ],
                 ]);
-            } catch (QueryException) {
-                $attendance = EventAttendance::query()
+            } catch (QueryException $exception) {
+                if (! $this->isDuplicateAttendanceException($exception)) {
+                    throw $exception;
+                }
+
+                $attendance = $this->attendanceForRegistration($event, $registration)
                     ->with('checkedInBy')
-                    ->where('event_id', $event->id)
-                    ->where('event_registration_id', $registration->id)
                     ->first();
 
                 return [
                     'type' => 'already_checked_in',
                     'attendance' => $attendance,
-                    'registration' => $registration->fresh(['checkedInBy', 'user']),
+                    'registration' => $registration->fresh(['user']),
                 ];
             }
 
-            $updates = [
-                'status' => 'attended',
-                'checkin_status' => 'checked_in',
-                'checked_in_at' => $attendance->checked_in_at,
-                'checked_in_by_user_id' => $request->user()->id,
-            ];
-
-            if (Schema::hasColumn('event_registrations', 'last_qr_scan_at')) {
-                $updates['last_qr_scan_at'] = $attendance->checked_in_at;
-            }
-            if (Schema::hasColumn('event_registrations', 'attendance_source')) {
-                $updates['attendance_source'] = 'unity_event_scan';
-            }
-            if (Schema::hasColumn('event_registrations', 'scan_device_info')) {
-                $updates['scan_device_info'] = (string) $request->userAgent();
-            }
-
-            $registration->forceFill($updates)->save();
+            $this->syncOptionalRegistrationScanMetadata($registration, $attendance, $request);
 
             return [
                 'type' => 'checked_in',
@@ -111,11 +95,12 @@ class ScannerAttendanceController extends BaseApiController
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid QR code for this event.',
+                'data' => null,
             ], 422);
         }
 
         if ($result['type'] === 'already_checked_in') {
-            return $this->alreadyCheckedInResponse($result['attendance'] ?? null, $result['registration']);
+            return $this->alreadyCheckedInResponse($result['attendance'] ?? null);
         }
 
         $registration = $result['registration'];
@@ -163,6 +148,28 @@ class ScannerAttendanceController extends BaseApiController
             ->exists();
     }
 
+    private function registrationQueryForEvent(Event $event): Builder
+    {
+        $query = EventRegistration::query();
+
+        if (Schema::hasColumn('event_registrations', 'event_id')) {
+            return $query->where('event_id', $event->id);
+        }
+
+        if (Schema::hasColumn('event_registrations', 'occurrence_id') && Schema::hasTable('event_occurrences')) {
+            return $query->whereHas('occurrence', fn (Builder $occurrenceQuery) => $occurrenceQuery->where('event_id', $event->id));
+        }
+
+        return $query->whereRaw('1 = 0');
+    }
+
+    private function attendanceForRegistration(Event $event, EventRegistration $registration): Builder
+    {
+        return EventAttendance::query()
+            ->where('event_id', $event->id)
+            ->where('event_registration_id', $registration->id);
+    }
+
     private function isScannableRegistration(EventRegistration $registration): bool
     {
         if ($registration->status === 'cancelled') {
@@ -180,18 +187,59 @@ class ScannerAttendanceController extends BaseApiController
         return true;
     }
 
-    private function alreadyCheckedInResponse(?EventAttendance $attendance, EventRegistration $registration): JsonResponse
+    private function attendeeUserId(EventRegistration $registration): ?string
     {
-        $scannedBy = $attendance?->checkedInBy ?? $registration->checkedInBy;
-        $checkedInAt = $attendance?->checked_in_at ?? $registration->checked_in_at;
+        if (! Schema::hasColumn('event_registrations', 'user_id')) {
+            return null;
+        }
 
+        return $registration->user_id;
+    }
+
+    private function syncOptionalRegistrationScanMetadata(EventRegistration $registration, EventAttendance $attendance, Request $request): void
+    {
+        $updates = [];
+
+        if (Schema::hasColumn('event_registrations', 'status')) {
+            $updates['status'] = 'attended';
+        }
+        if (Schema::hasColumn('event_registrations', 'checkin_status')) {
+            $updates['checkin_status'] = 'checked_in';
+        }
+        if (Schema::hasColumn('event_registrations', 'checked_in_at')) {
+            $updates['checked_in_at'] = $attendance->checked_in_at;
+        }
+        if (Schema::hasColumn('event_registrations', 'last_qr_scan_at')) {
+            $updates['last_qr_scan_at'] = $attendance->checked_in_at;
+        }
+        if (Schema::hasColumn('event_registrations', 'attendance_source')) {
+            $updates['attendance_source'] = 'unity_event_scan';
+        }
+        if (Schema::hasColumn('event_registrations', 'scan_device_info')) {
+            $updates['scan_device_info'] = (string) $request->userAgent();
+        }
+
+        if ($updates !== []) {
+            $registration->forceFill($updates)->save();
+        }
+    }
+
+    private function isDuplicateAttendanceException(QueryException $exception): bool
+    {
+        return (string) ($exception->errorInfo[0] ?? '') === '23505'
+            || str_contains(strtolower($exception->getMessage()), 'uq_event_attendances_event_registration')
+            || str_contains(strtolower($exception->getMessage()), 'unique');
+    }
+
+    private function alreadyCheckedInResponse(?EventAttendance $attendance): JsonResponse
+    {
         return response()->json([
             'success' => false,
             'message' => 'This attendee is already checked in.',
             'data' => [
                 'already_checked_in' => true,
-                'checked_in_at' => optional($checkedInAt)->toISOString(),
-                'scanned_by' => $this->scannerPayload($scannedBy),
+                'checked_in_at' => optional($attendance?->checked_in_at)->toISOString(),
+                'scanned_by' => $this->scannerPayload($attendance?->checkedInBy),
             ],
         ], 200);
     }
@@ -201,6 +249,7 @@ class ScannerAttendanceController extends BaseApiController
         return response()->json([
             'success' => false,
             'message' => 'You are not authorized to scan attendance for this event.',
+            'data' => null,
         ], 403);
     }
 

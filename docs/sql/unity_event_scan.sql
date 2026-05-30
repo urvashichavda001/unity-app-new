@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS event_attendances (
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     attendee_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     event_registration_id UUID REFERENCES event_registrations(id) ON DELETE SET NULL,
-    qr_token VARCHAR(512),
+    qr_token TEXT,
     checked_in_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     status VARCHAR(30) NOT NULL DEFAULT 'checked_in',
@@ -33,9 +33,12 @@ CREATE TABLE IF NOT EXISTS event_attendances (
     CONSTRAINT chk_event_attendances_status CHECK (status IN ('checked_in'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_event_attendances_event_status ON event_attendances(event_id, status);
-CREATE INDEX IF NOT EXISTS idx_event_attendances_scanner_time ON event_attendances(checked_in_by_user_id, checked_in_at);
+CREATE INDEX IF NOT EXISTS idx_event_attendances_event_id ON event_attendances(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_attendances_event_registration_id ON event_attendances(event_registration_id);
+CREATE INDEX IF NOT EXISTS idx_event_attendances_attendee_user_id ON event_attendances(attendee_user_id);
+CREATE INDEX IF NOT EXISTS idx_event_attendances_checked_in_by_user_id ON event_attendances(checked_in_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_event_attendances_qr_token ON event_attendances(qr_token);
+CREATE INDEX IF NOT EXISTS idx_event_attendances_event_status ON event_attendances(event_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_event_attendances_event_registration ON event_attendances(event_id, event_registration_id) WHERE event_registration_id IS NOT NULL;
 
 ALTER TABLE event_registrations ADD COLUMN IF NOT EXISTS qr_token VARCHAR(512);

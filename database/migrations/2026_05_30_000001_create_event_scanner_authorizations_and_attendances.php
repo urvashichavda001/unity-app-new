@@ -35,7 +35,7 @@ return new class extends Migration
             $table->uuid('event_id');
             $table->uuid('attendee_user_id')->nullable();
             $table->uuid('event_registration_id')->nullable();
-            $table->string('qr_token', 512)->nullable();
+            $table->text('qr_token')->nullable();
             $table->uuid('checked_in_by_user_id');
             $table->timestampTz('checked_in_at')->useCurrent();
             $table->string('status', 30)->default('checked_in');
@@ -45,9 +45,12 @@ return new class extends Migration
             $table->foreign('event_id')->references('id')->on('events')->cascadeOnDelete();
             $table->foreign('attendee_user_id')->references('id')->on('users')->nullOnDelete();
             $table->foreign('checked_in_by_user_id')->references('id')->on('users')->restrictOnDelete();
-            $table->index(['event_id', 'status'], 'idx_event_attendances_event_status');
-            $table->index(['checked_in_by_user_id', 'checked_in_at'], 'idx_event_attendances_scanner_time');
+            $table->index('event_id', 'idx_event_attendances_event_id');
+            $table->index('event_registration_id', 'idx_event_attendances_event_registration_id');
+            $table->index('attendee_user_id', 'idx_event_attendances_attendee_user_id');
+            $table->index('checked_in_by_user_id', 'idx_event_attendances_checked_in_by_user_id');
             $table->index('qr_token', 'idx_event_attendances_qr_token');
+            $table->index(['event_id', 'status'], 'idx_event_attendances_event_status');
         });
 
         if (Schema::hasTable('event_registrations')) {
@@ -62,7 +65,7 @@ return new class extends Migration
         if (Schema::hasTable('event_registrations')) {
             if (! Schema::hasColumn('event_registrations', 'qr_token')) {
                 Schema::table('event_registrations', function (Blueprint $table): void {
-                    $table->string('qr_token', 512)->nullable();
+                    $table->text('qr_token')->nullable();
                 });
             }
 

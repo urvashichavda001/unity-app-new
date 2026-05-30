@@ -18,7 +18,7 @@ class ScannerEventController extends BaseApiController
             ->with(['event' => fn ($query) => $query
                 ->withCount([
                     'registrations as total_registered' => fn ($registrationQuery) => $registrationQuery->where('status', '!=', 'cancelled'),
-                    'registrations as total_checked_in' => fn ($registrationQuery) => $registrationQuery->where('checkin_status', 'checked_in'),
+                    'attendances as total_checked_in',
                 ])])
             ->get()
             ->filter(fn (EventScannerAuthorization $authorization) => $authorization->event !== null)
@@ -81,7 +81,7 @@ class ScannerEventController extends BaseApiController
 
     private function totalCheckedIn(Event $event): int
     {
-        return $event->registrations()->where('checkin_status', 'checked_in')->count();
+        return $event->attendances()->count();
     }
 
     private function unauthorizedScannerResponse(): JsonResponse
@@ -89,6 +89,7 @@ class ScannerEventController extends BaseApiController
         return response()->json([
             'success' => false,
             'message' => 'You are not authorized to scan attendance for this event.',
+            'data' => null,
         ], 403);
     }
 }
