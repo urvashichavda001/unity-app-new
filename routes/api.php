@@ -54,6 +54,9 @@ use App\Http\Controllers\Api\V1\CollaborationTypeController;
 use App\Http\Controllers\Api\V1\AdController;
 use App\Http\Controllers\Api\V1\Admin\AppVersionController as AdminAppVersionController;
 use App\Http\Controllers\Api\V1\Admin\AdminOpsController;
+use App\Http\Controllers\Api\V1\Admin\AdminEventScannerController;
+use App\Http\Controllers\Api\V1\Scanner\ScannerAttendanceController;
+use App\Http\Controllers\Api\V1\Scanner\ScannerEventController;
 use App\Http\Controllers\Api\V1\Admin\AdminCampaignController;
 use App\Http\Controllers\Api\V1\Admin\CircleManagementController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
@@ -357,6 +360,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/events/{id}', [EventAdminController::class, 'show'])->whereUuid('id');
             Route::put('/events/{id}', [EventAdminController::class, 'update'])->whereUuid('id');
             Route::delete('/events/{id}', [EventAdminController::class, 'destroy'])->whereUuid('id');
+            Route::get('/events/{event}/scanners', [AdminEventScannerController::class, 'index'])->whereUuid('event');
+            Route::post('/events/{event}/scanners', [AdminEventScannerController::class, 'store'])->whereUuid('event');
+            Route::delete('/events/{event}/scanners/{scanner_user_id}', [AdminEventScannerController::class, 'destroy'])->whereUuid('event')->whereUuid('scanner_user_id');
             Route::get('/events/{id}/registrations', [AdminOpsController::class, 'eventRegistrations'])->whereUuid('id');
             Route::get('/events/{id}/attendees', [AdminOpsController::class, 'eventAttendees'])->whereUuid('id');
             Route::post('/events/{id}/speakers', [AdminOpsController::class, 'eventSpeakerStore'])->whereUuid('id');
@@ -468,6 +474,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/posts/{id}/comments', [PostController::class, 'listComments']);
         Route::get('/profile/posts', [MyPostsController::class, 'index']);
         Route::get('/posts/{post}/likes', [MyPostsController::class, 'likes']);
+
+        // UnityEventScan scanner app
+        Route::prefix('scanner')->group(function () {
+            Route::get('/events', [ScannerEventController::class, 'index']);
+            Route::get('/events/{event}/summary', [ScannerEventController::class, 'summary'])->whereUuid('event');
+            Route::post('/events/{event}/scan', [ScannerAttendanceController::class, 'scan'])->whereUuid('event');
+            Route::get('/events/{event}/attendances', [ScannerAttendanceController::class, 'attendances'])->whereUuid('event');
+        });
 
         // Events
         Route::get('/events', [EventController::class, 'index']);

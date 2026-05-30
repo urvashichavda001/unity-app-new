@@ -131,6 +131,16 @@ class Event extends Model
         return $this->hasMany(EventRegistration::class);
     }
 
+    public function scannerAuthorizations(): HasMany
+    {
+        return $this->hasMany(EventScannerAuthorization::class);
+    }
+
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(EventAttendance::class);
+    }
+
     public function organizer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'organizer_user_id');

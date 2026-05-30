@@ -28,6 +28,49 @@
     </div>
 
     <div class="card mt-3">
+        <div class="card-header d-flex justify-content-between align-items-center"><span>Authorized Scanners</span><span class="badge bg-light text-dark">UnityEventScan</span></div>
+        <div class="card-body">
+            <form method="POST" action="{{ route('admin.events.scanners.store', $event->id) }}" class="row g-2 align-items-end mb-3">
+                @csrf
+                <div class="col-md-8">
+                    <label class="form-label">Search/select user</label>
+                    <input class="form-control" list="scannerUserOptions" name="scanner_user_id" placeholder="Paste or select a user UUID" required>
+                    <datalist id="scannerUserOptions">
+                        @foreach(($scannerCandidates ?? collect()) as $candidate)
+                            <option value="{{ $candidate->id }}">{{ $candidate->display_name }} — {{ $candidate->email }} @if($candidate->company_name)({{ $candidate->company_name }})@endif</option>
+                        @endforeach
+                    </datalist>
+                    <div class="form-text">Adding a previously revoked scanner reactivates the same authorization.</div>
+                </div>
+                <div class="col-md-4"><button class="btn btn-primary w-100">Add Scanner</button></div>
+            </form>
+            <div class="table-responsive"><table class="table table-striped mb-0"><thead><tr><th>Scanner</th><th>Email</th><th>Company</th><th>Status</th><th>Assigned</th><th>Revoked</th><th></th></tr></thead><tbody>
+            @forelse($event->scannerAuthorizations as $authorization)
+                <tr>
+                    <td>{{ $authorization->scanner?->display_name ?? '-' }}</td>
+                    <td>{{ $authorization->scanner?->email ?? '-' }}</td>
+                    <td>{{ $authorization->scanner?->company_name ?? '-' }}</td>
+                    <td><span class="badge {{ $authorization->status === 'active' ? 'bg-success' : 'bg-secondary' }}">{{ $authorization->status }}</span></td>
+                    <td>{{ optional($authorization->assigned_at)->format('d M Y h:i A') }}</td>
+                    <td>{{ optional($authorization->revoked_at)->format('d M Y h:i A') ?? '-' }}</td>
+                    <td class="text-end">
+                        @if($authorization->status === 'active')
+                            <form method="POST" action="{{ route('admin.events.scanners.destroy', [$event->id, $authorization->scanner_user_id]) }}" onsubmit="return confirm('Revoke scanner access for this event?')">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </form>
+                        @endif
+                    </td>
+                </tr>
+            @empty
+                <tr><td colspan="7" class="text-center text-muted py-4">No scanners authorized for this event.</td></tr>
+            @endforelse
+            </tbody></table></div>
+        </div>
+    </div>
+
+    <div class="card mt-3">
         <div class="card-header">Registrations</div>
         <div class="table-responsive"><table class="table table-striped mb-0"><thead><tr><th>Attendee</th><th>Type</th><th>Gateway</th><th>Payment</th><th>Razorpay</th><th>Amount</th><th>Invoice</th><th>QR</th><th>Check-in</th></tr></thead><tbody>
         @forelse($event->registrations as $registration)

@@ -7,6 +7,8 @@ use App\Models\Circle;
 use App\Models\Event;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationRequest;
+use App\Models\EventScannerAuthorization;
+use App\Models\User;
 use App\Models\FileModel;
 use App\Services\Events\EventOccurrenceGeneratorService;
 use App\Services\Events\EventService;
@@ -164,9 +166,20 @@ class EventManagementController extends Controller
 
     public function show(string $id): View
     {
-        $event = Event::query()->with(['circle', 'occurrences' => fn ($q) => $q->orderBy('start_at'), 'registrations.user', 'registrations.occurrence'])->findOrFail($id);
+        $event = Event::query()->with([
+            'circle',
+            'occurrences' => fn ($q) => $q->orderBy('start_at'),
+            'registrations.user',
+            'registrations.occurrence',
+            'scannerAuthorizations.scanner',
+        ])->findOrFail($id);
 
-        return view('admin.events.show', compact('event'));
+        $scannerCandidates = User::query()
+            ->orderBy('display_name')
+            ->limit(300)
+            ->get(['id', 'display_name', 'first_name', 'last_name', 'email', 'company_name']);
+
+        return view('admin.events.show', compact('event', 'scannerCandidates'));
     }
 
     public function attendance(Request $request, string $id): View
@@ -175,6 +188,46 @@ class EventManagementController extends Controller
         $report = $this->events->attendanceReport($event, $request->only(['occurrence_id', 'status', 'checkin_status', 'attendee_type', 'search']));
 
         return view('admin.events.attendance', compact('event', 'report'));
+    }
+
+    public function storeScanner(Request $request, string $id): RedirectResponse
+    {
+        $event = Event::query()->findOrFail($id);
+        $data = $request->validate([
+            'scanner_user_id' => ['required', 'uuid', 'exists:users,id'],
+        ]);
+
+        EventScannerAuthorization::query()->updateOrCreate(
+            [
+                'event_id' => $event->id,
+                'scanner_user_id' => $data['scanner_user_id'],
+            ],
+            [
+                'assigned_by_user_id' => null,
+                'status' => EventScannerAuthorization::STATUS_ACTIVE,
+                'assigned_at' => now(),
+                'revoked_at' => null,
+            ]
+        );
+
+        return back()->with('success', 'Scanner authorized successfully.');
+    }
+
+    public function revokeScanner(string $id, string $scannerUserId): RedirectResponse
+    {
+        $event = Event::query()->findOrFail($id);
+
+        EventScannerAuthorization::query()
+            ->where('event_id', $event->id)
+            ->where('scanner_user_id', $scannerUserId)
+            ->firstOrFail()
+            ->forceFill([
+                'status' => EventScannerAuthorization::STATUS_REVOKED,
+                'revoked_at' => now(),
+            ])
+            ->save();
+
+        return back()->with('success', 'Scanner revoked successfully.');
     }
 
 
