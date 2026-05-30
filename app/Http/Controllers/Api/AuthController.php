@@ -762,28 +762,27 @@ class AuthController extends BaseApiController
             'password' => ['required', 'string'],
         ]);
 
-        // Find user by email
-        $user = User::where('email', $credentials['email'])->first();
+        $email = trim((string) $credentials['email']);
 
-        if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials.',
-                'data'    => null,
-            ], 401);
-        }
+        $user = User::query()
+            ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
+            ->first();
 
-        // IMPORTANT: use password_hash column
-        if (! Hash::check($credentials['password'], $user->password_hash)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials.',
-                'data'    => null,
-            ], 401);
+        if (! $user || ! $this->passwordMatchesUser($credentials['password'], $user)) {
+            Log::warning('auth.login.invalid_credentials', [
+                'email' => Str::lower($email),
+                'user_found' => (bool) $user,
+            ]);
+
+            return $this->invalidLoginResponse();
         }
 
         $user->expireFreeTrialIfNeeded();
         $user->refresh();
+
+        if ($user->membership_status === 'suspended') {
+            return $this->error('Account is suspended', 403);
+        }
 
         if (($user->status ?? 'active') !== 'active') {
             // Manual test: inactive user login should return 403 and no token.
@@ -794,18 +793,72 @@ class AuthController extends BaseApiController
             ], 403);
         }
 
-        // Create Sanctum token
+        $user->last_login_at = now();
+        $user->save();
+        $user->refresh();
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // If you already have a UserResource, you can use it here instead of returning $user directly
         return response()->json([
             'success' => true,
             'message' => 'Login successful.',
             'data'    => [
                 'token' => $token,
-                'user'  => $user,
+                'token_type' => 'Bearer',
+                'user' => $this->loginUserPayload($user),
             ],
         ]);
+    }
+
+    private function passwordMatchesUser(string $plainPassword, User $user): bool
+    {
+        foreach ($this->loginPasswordHashes($user) as $hash) {
+            if (Hash::check($plainPassword, $hash)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function loginPasswordHashes(User $user): array
+    {
+        $hashes = [];
+
+        $passwordHash = (string) ($user->password_hash ?? '');
+        if ($passwordHash !== '') {
+            $hashes[] = $passwordHash;
+        }
+
+        if (Schema::hasColumn('users', 'password')) {
+            $password = (string) ($user->getAttribute('password') ?? '');
+            if ($password !== '' && ! in_array($password, $hashes, true)) {
+                $hashes[] = $password;
+            }
+        }
+
+        return $hashes;
+    }
+
+    private function invalidLoginResponse(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid credentials.',
+            'data'    => null,
+        ], 401);
+    }
+
+    private function loginUserPayload(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'email' => $user->email,
+            'display_name' => $user->display_name,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'profile_photo_url' => $user->profile_photo_url ?? $user->getRawOriginal('profile_photo_url'),
+        ];
     }
 
     public function requestOtp(Request $request): JsonResponse
@@ -955,7 +1008,7 @@ class AuthController extends BaseApiController
         $user->save();
         $user->refresh();
 
-        $token = $user->createToken('api')->plainTextToken;
+        $token = $user->createToken('auth_token')->plainTextToken;
 
         UserLoginHistory::create([
             'user_id' => $user->id,
