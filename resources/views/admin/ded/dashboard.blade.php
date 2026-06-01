@@ -32,6 +32,28 @@
         ];
     @endphp
 
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-2 align-items-end">
+                <div class="col-md-5 col-lg-4">
+                    <label for="circle_id" class="form-label">Circle Filter</label>
+                    <select id="circle_id" name="circle_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Circles</option>
+                        @foreach ($circleOptions as $circle)
+                            <option value="{{ $circle->id }}" @selected((string) $selectedCircleId === (string) $circle->id)>{{ $circle->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-auto">
+                    <button type="submit" class="btn btn-primary">Apply</button>
+                    @if ($selectedCircleId)
+                        <a href="{{ route('admin.ded.dashboard') }}" class="btn btn-outline-secondary">Reset</a>
+                    @endif
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="row g-3 mb-4">
         @foreach ($statCards as $card)
             <div class="col-sm-6 col-xl-4">
@@ -45,7 +67,7 @@
 
     <div class="card p-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Latest District Peers</h5>
+            <h5 class="mb-0">{{ $selectedCircleId ? 'Latest Circle Peers' : 'Latest District Peers' }}</h5>
             <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-primary">View Peers</a>
         </div>
         <div class="table-responsive">

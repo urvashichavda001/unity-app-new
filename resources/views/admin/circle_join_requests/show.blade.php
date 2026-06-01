@@ -23,6 +23,9 @@
             <div class="d-flex justify-content-between align-items-start">
                 <h5>Peer: {{ $record->user?->adminDisplayName() }}</h5>
                 <div>
+                    @if($canApproveDed)
+                        <form method="POST" action="{{ route('admin.circle-joining-requests.approve-ded', $record->id) }}" class="d-inline">@csrf<button class="btn btn-sm btn-warning">DED Approval</button></form>
+                    @endif
                     @if($canApproveCd)
                         <form method="POST" action="{{ route('admin.circle-joining-requests.approve-cd', $record->id) }}" class="d-inline">@csrf<button class="btn btn-sm btn-success">Approve</button></form>
                         <form method="POST" action="{{ route('admin.circle-joining-requests.reject-cd', $record->id) }}" class="d-inline" onsubmit="const r = prompt('Enter rejection reason (required):'); if (!r || !r.trim()) { return false; } this.querySelector('input[name=reason]').value = r.trim(); return true;">@csrf<input type="hidden" name="reason"><button class="btn btn-sm btn-outline-danger">Reject</button></form>
@@ -75,6 +78,11 @@
             <p><strong>Industry Director Rejected By:</strong> {{ $record->idRejectedBy?->adminDisplayName() ?? '—' }}</p>
             <p><strong>Industry Director Rejected At:</strong> {{ optional($record->id_rejected_at)->format('d M Y H:i') ?: '—' }}</p>
             <p><strong>Industry Director Rejection Reason:</strong> <span class="text-danger">{{ $record->id_rejection_reason ?: '—' }}</span></p>
+
+            @php($dedApproval = is_array($record->notes ?? null) ? ($record->notes['ded_approval'] ?? []) : [])
+            <p><strong>DED Approval Status:</strong> {{ $record->ded_approval_status ?? ($dedApproval['status'] ?? '—') }}</p>
+            <p><strong>DED Approved By:</strong> {{ $record->dedApprovedBy?->adminDisplayName() ?? (($dedApproval['approved_by_user_id'] ?? null) ? $dedApproval['approved_by_user_id'] : '—') }}</p>
+            <p><strong>DED Approved At:</strong> {{ optional($record->ded_approved_at)->format('d M Y H:i') ?: ($dedApproval['approved_at'] ?? '—') }}</p>
 
             <p><strong>Fee Marked At:</strong> {{ optional($record->fee_marked_at)->format('d M Y H:i') ?: '—' }}</p>
             <p><strong>Fee Paid At:</strong> {{ optional($record->fee_paid_at)->format('d M Y H:i') ?: '—' }}</p>

@@ -12,6 +12,37 @@
 
 
 
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-semibold">Top 5 District Peers</div>
+        <div class="card-body table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Peer Name</th>
+                        <th>Company</th>
+                        <th>City</th>
+                        <th class="text-end">Performance Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($topDistrictPeers as $peer)
+                        <tr>
+                            <td>{{ $loop->iteration }}</td>
+                            <td>{{ $peer->peer_name ?? '—' }}</td>
+                            <td>{{ $peer->company_name ?: '—' }}</td>
+                            <td>{{ $peer->city_name ?: 'No City' }}</td>
+                            <td class="text-end fw-semibold">{{ number_format((int) ($peer->performance_score ?? 0)) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="5" class="text-center text-muted">No district peer activity found.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div class="card shadow-sm">
         <form id="activitiesFiltersForm" method="GET" action="{{ route('admin.activities.index') }}">
         </form>

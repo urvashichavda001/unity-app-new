@@ -8,6 +8,7 @@ use App\Models\CircleJoinRequest;
 use App\Models\User;
 use App\Support\AdminAccess;
 use App\Support\AdminCircleScope;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -74,7 +75,7 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function ded(): View
+    public function ded(Request $request): View
     {
         $admin = Auth::guard('admin')->user();
         abort_unless(AdminAccess::isDed($admin), 403);
@@ -83,20 +84,27 @@ class DashboardController extends Controller
         $districtId = $district['id'] ?? null;
         $districtName = $district['name'] ?? null;
 
+        $circleOptions = $district ? AdminCircleScope::circleOptions($admin) : collect();
+        $selectedCircleId = $district ? trim((string) $request->query('circle_id', '')) : '';
+        if ($selectedCircleId !== '' && ! $circleOptions->contains(fn ($circle) => (string) $circle->id === $selectedCircleId)) {
+            abort(403);
+        }
+        $selectedCircleId = $selectedCircleId !== '' ? $selectedCircleId : null;
+
         $stats = [
-            'peers' => $district ? $this->districtUsersQuery($admin)->count() : 0,
-            'circles' => $district ? $this->districtCirclesCount($admin) : 0,
-            'referrals' => $district ? $this->districtActivityCount('referrals', 'from_user_id', $admin) : 0,
-            'requirements' => $district ? $this->districtActivityCount('requirements', 'user_id', $admin) : 0,
-            'testimonials' => $district ? $this->districtActivityCount('testimonials', 'from_user_id', $admin) : 0,
-            'businessDeals' => $district ? $this->districtActivityCount('business_deals', 'from_user_id', $admin) : 0,
-            'p2pMeetings' => $district ? $this->districtActivityCount('p2p_meetings', 'initiator_user_id', $admin) : 0,
-            'coinsEarned' => $district ? $this->districtCoinsEarned($admin) : 0,
-            'pendingRequests' => $district ? $this->districtCircleJoinRequests($admin) : 0,
+            'peers' => $district ? $this->districtUsersQuery($admin, $selectedCircleId)->count() : 0,
+            'circles' => $district ? $this->districtCirclesCount($admin, $selectedCircleId) : 0,
+            'referrals' => $district ? $this->districtActivityCount('referrals', 'from_user_id', $admin, $selectedCircleId) : 0,
+            'requirements' => $district ? $this->districtActivityCount('requirements', 'user_id', $admin, $selectedCircleId) : 0,
+            'testimonials' => $district ? $this->districtActivityCount('testimonials', 'from_user_id', $admin, $selectedCircleId) : 0,
+            'businessDeals' => $district ? $this->districtActivityCount('business_deals', 'from_user_id', $admin, $selectedCircleId) : 0,
+            'p2pMeetings' => $district ? $this->districtActivityCount('p2p_meetings', 'initiator_user_id', $admin, $selectedCircleId) : 0,
+            'coinsEarned' => $district ? $this->districtCoinsEarned($admin, $selectedCircleId) : 0,
+            'pendingRequests' => $district ? $this->districtCircleJoinRequests($admin, $selectedCircleId) : 0,
         ];
 
         $peers = $district
-            ? $this->districtUsersQuery($admin)
+            ? $this->districtUsersQuery($admin, $selectedCircleId)
                 ->select(['users.id', 'users.display_name', 'users.first_name', 'users.last_name', 'users.email', 'users.company_name', 'users.city', 'users.city_id'])
                 ->with('city:id,name,district')
                 ->latest('users.created_at')
@@ -109,6 +117,8 @@ class DashboardController extends Controller
             'districtName' => $districtName,
             'stats' => $stats,
             'peers' => $peers,
+            'circleOptions' => $circleOptions,
+            'selectedCircleId' => $selectedCircleId,
         ]);
     }
 
@@ -126,23 +136,27 @@ class DashboardController extends Controller
         return Schema::hasTable($table) && Schema::hasColumn($table, $column);
     }
 
-    private function districtUsersQuery($admin)
+    private function districtUsersQuery($admin, ?string $circleId = null)
     {
         $query = User::query()->from('users');
         AdminCircleScope::applyToUsersQuery($query, $admin);
+        $this->applyCircleMemberFilter($query, 'users.id', $circleId);
 
         return $query;
     }
 
-    private function districtCirclesCount($admin): int
+    private function districtCirclesCount($admin, ?string $circleId = null): int
     {
         $query = Circle::query()->from('circles');
         AdminCircleScope::applyDedDistrictCircleScope($query, $admin);
+        if ($circleId) {
+            $query->where('circles.id', $circleId);
+        }
 
         return (int) $query->count();
     }
 
-    private function districtActivityCount(string $table, string $userColumn, $admin): int
+    private function districtActivityCount(string $table, string $userColumn, $admin, ?string $circleId = null): int
     {
         if (! $this->hasTableColumn($table, $userColumn)) {
             return 0;
@@ -150,20 +164,22 @@ class DashboardController extends Controller
 
         $query = DB::table($table)->whereNotNull($userColumn);
         AdminCircleScope::applyToActivityQuery($query, $admin, $table . '.' . $userColumn, null);
+        $this->applyCircleMemberFilter($query, $table . '.' . $userColumn, $circleId);
         $this->applySoftDeleteFilters($query, $table);
 
         return (int) $query->count();
     }
 
-    private function districtCoinsEarned($admin): int
+    private function districtCoinsEarned($admin, ?string $circleId = null): int
     {
         $query = User::query()->from('users');
         AdminCircleScope::applyToUsersQuery($query, $admin);
+        $this->applyCircleMemberFilter($query, 'users.id', $circleId);
 
         return (int) $query->sum(DB::raw('COALESCE(users.coins_balance, 0)'));
     }
 
-    private function districtCircleJoinRequests($admin): int
+    private function districtCircleJoinRequests($admin, ?string $circleId = null): int
     {
         if (! Schema::hasTable('circle_join_requests')) {
             return 0;
@@ -171,12 +187,29 @@ class DashboardController extends Controller
 
         return (int) CircleJoinRequest::query()
             ->visibleToAdminUser($admin)
+            ->when($circleId, fn ($query) => $query->where('circle_id', $circleId))
             ->whereIn('status', [
                 CircleJoinRequest::STATUS_PENDING_CD_APPROVAL,
                 CircleJoinRequest::STATUS_PENDING_ID_APPROVAL,
                 CircleJoinRequest::STATUS_PENDING_CIRCLE_FEE,
             ])
             ->count();
+    }
+
+    private function applyCircleMemberFilter($query, string $userColumn, ?string $circleId): void
+    {
+        if (! $circleId) {
+            return;
+        }
+
+        $query->whereExists(function ($subQuery) use ($userColumn, $circleId): void {
+            $subQuery->selectRaw('1')
+                ->from('circle_members as dashboard_circle_members')
+                ->whereRaw('dashboard_circle_members.user_id::text = ' . $userColumn . '::text')
+                ->where('dashboard_circle_members.circle_id', $circleId)
+                ->where('dashboard_circle_members.status', 'approved')
+                ->whereNull('dashboard_circle_members.deleted_at');
+        });
     }
 
     private function applySoftDeleteFilters($query, string $table): void

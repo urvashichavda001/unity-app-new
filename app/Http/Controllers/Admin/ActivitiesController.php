@@ -42,11 +42,13 @@ class ActivitiesController extends Controller
             ->withQueryString();
 
         $circles = $this->buildCircleFilterOptions($admin);
+        $topDistrictPeers = $this->buildTopDistrictPeers($summaryQuery);
 
         return view('admin.activities.index', [
             'members' => $members,
             'filters' => $filters,
             'circles' => $circles,
+            'topDistrictPeers' => $topDistrictPeers,
         ]);
     }
 
@@ -162,6 +164,23 @@ class ActivitiesController extends Controller
         }
 
         return $query;
+    }
+
+    private function buildTopDistrictPeers($summaryQuery)
+    {
+        return DB::query()
+            ->fromSub($summaryQuery->toBase(), 'activity_summary')
+            ->select([
+                'id',
+                'peer_name',
+                'company_name',
+                'city_name',
+            ])
+            ->selectRaw('(COALESCE(testimonials_count, 0) + COALESCE(referrals_count, 0) + COALESCE(requirements_count, 0) + COALESCE(business_deals_count, 0) + COALESCE(p2p_completed_count, 0) + COALESCE(become_leader_count, 0) + COALESCE(recommend_peer_count, 0) + COALESCE(register_visitor_count, 0)) as performance_score')
+            ->orderByDesc('performance_score')
+            ->orderBy('peer_name')
+            ->limit(5)
+            ->get();
     }
 
     private function applyDateRangeToSubQuery($subQuery, ?Carbon $from, ?Carbon $to, string $column = 'created_at'): void

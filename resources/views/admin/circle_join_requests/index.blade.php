@@ -44,6 +44,9 @@
                     <td>{{ \Illuminate\Support\Str::limit((string)$row->reason_for_joining, 50) }}</td>
                     <td>
                         <span class="badge text-bg-secondary">{{ $statusLabels[$row->status] ?? $row->status }}</span>
+                        @if($row->can_approve_ded)
+                            <form method="POST" action="{{ route('admin.circle-joining-requests.approve-ded', $row->id) }}" class="d-inline ms-1">@csrf<button class="btn btn-sm btn-warning">DED Approval</button></form>
+                        @endif
                         @if($row->status === 'rejected_by_cd' && $row->cd_rejection_reason)
                             <div class="small text-danger mt-1">Reason: {{ \Illuminate\Support\Str::limit((string) $row->cd_rejection_reason, 60) }}</div>
                         @elseif($row->status === 'rejected_by_id' && $row->id_rejection_reason)

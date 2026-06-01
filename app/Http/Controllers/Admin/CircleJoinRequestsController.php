@@ -32,7 +32,7 @@ class CircleJoinRequestsController extends Controller
         $admin = Auth::guard('admin')->user();
         $actor = AdminAccess::resolveAppUser($admin);
 
-        $query = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy']);
+        $query = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy', 'dedApprovedBy']);
         $query->visibleToAdminUser($admin);
 
         $search = trim((string) $request->query('search', ''));
@@ -68,6 +68,7 @@ class CircleJoinRequestsController extends Controller
             $joinRequest->setAttribute('can_reject_cd', $this->canApproveCd($admin, $actor, $joinRequest));
             $joinRequest->setAttribute('can_approve_id', $this->canApproveId($admin, $actor, $joinRequest));
             $joinRequest->setAttribute('can_reject_id', $this->canApproveId($admin, $actor, $joinRequest));
+            $joinRequest->setAttribute('can_approve_ded', $this->canApproveDed($admin, $actor, $joinRequest));
 
             return $joinRequest;
         });
@@ -84,7 +85,7 @@ class CircleJoinRequestsController extends Controller
         $admin = Auth::guard('admin')->user();
         $actor = AdminAccess::resolveAppUser($admin);
 
-        $record = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy'])->findOrFail($id);
+        $record = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy', 'dedApprovedBy'])->findOrFail($id);
         abort_unless($this->canAccessRecord($admin, $actor, $record), 403);
 
         $selectedCategoryIds = $this->resolveSelectedCategoryIds($record);
@@ -93,6 +94,7 @@ class CircleJoinRequestsController extends Controller
             'record' => $record,
             'canApproveCd' => $this->canApproveCd($admin, $actor, $record),
             'canApproveId' => $this->canApproveId($admin, $actor, $record),
+            'canApproveDed' => $this->canApproveDed($admin, $actor, $record),
             'categoryPath' => [
                 'level1' => $selectedCategoryIds['level1_category_id'] ? CircleCategory::query()->find($selectedCategoryIds['level1_category_id']) : null,
                 'level2' => $selectedCategoryIds['level2_category_id'] ? CircleCategoryLevel2::query()->find($selectedCategoryIds['level2_category_id']) : null,
@@ -135,6 +137,14 @@ class CircleJoinRequestsController extends Controller
         return $this->runAction($id, function (CircleJoinRequest $record, $admin, $actor) use ($request): void {
             abort_unless($this->canApproveId($admin, $actor, $record), 403);
             $this->rejectRequest($record, $actor, (string) $request->input('reason'));
+        });
+    }
+
+    public function approveDed(string $id): RedirectResponse
+    {
+        return $this->runAction($id, function (CircleJoinRequest $record, $admin, $actor): void {
+            abort_unless($this->canApproveDed($admin, $actor, $record), 403);
+            $this->approveDedRequest($record, $admin, $actor);
         });
     }
 
@@ -202,6 +212,80 @@ class CircleJoinRequestsController extends Controller
                 'to' => $request->status,
             ]);
         });
+    }
+
+    private function approveDedRequest(CircleJoinRequest $record, $admin, $actor): void
+    {
+        DB::transaction(function () use ($record, $admin, $actor): void {
+            $request = CircleJoinRequest::query()->lockForUpdate()->findOrFail($record->id);
+            $oldStatus = (string) $request->status;
+
+            if ($oldStatus === CircleJoinRequest::STATUS_PENDING_CD_APPROVAL) {
+                $newStatus = CircleJoinRequest::STATUS_PENDING_ID_APPROVAL;
+                $request->status = $newStatus;
+                $request->cd_approved_by = $actor->id;
+                $request->cd_approved_at = now();
+                $request->cd_rejected_by = null;
+                $request->cd_rejected_at = null;
+                $request->cd_rejection_reason = null;
+            } elseif ($oldStatus === CircleJoinRequest::STATUS_PENDING_ID_APPROVAL) {
+                $newStatus = CircleJoinRequest::STATUS_PENDING_CIRCLE_FEE;
+                $request->status = $newStatus;
+                $request->id_approved_by = $actor->id;
+                $request->id_approved_at = now();
+                $request->id_rejected_by = null;
+                $request->id_rejected_at = null;
+                $request->id_rejection_reason = null;
+            } else {
+                throw ValidationException::withMessages([
+                    'status' => ["DED approval is not available for {$oldStatus} requests."],
+                ]);
+            }
+
+            $this->storeDedApproval($request, $admin, $actor, $oldStatus, $newStatus);
+            $request->save();
+
+            Log::info('circle_join_request.ded_approved', [
+                'request_id' => $request->id,
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+                'ded_user_id' => $actor->id,
+                'admin_user_id' => $admin->id,
+            ]);
+        });
+    }
+
+    private function storeDedApproval(CircleJoinRequest $request, $admin, $actor, string $oldStatus, string $newStatus): void
+    {
+        $approvedAt = now();
+        $approvalPayload = [
+            'status' => 'approved',
+            'approved_by_user_id' => (string) $actor->id,
+            'approved_by_admin_user_id' => (string) $admin->id,
+            'approved_at' => $approvedAt->toISOString(),
+            'previous_status' => $oldStatus,
+            'new_status' => $newStatus,
+        ];
+
+        if (Schema::hasColumn('circle_join_requests', 'ded_approved_by')) {
+            $request->ded_approved_by = $actor->id;
+        }
+
+        if (Schema::hasColumn('circle_join_requests', 'ded_approved_admin_user_id')) {
+            $request->ded_approved_admin_user_id = $admin->id;
+        }
+
+        if (Schema::hasColumn('circle_join_requests', 'ded_approved_at')) {
+            $request->ded_approved_at = $approvedAt;
+        }
+
+        if (Schema::hasColumn('circle_join_requests', 'ded_approval_status')) {
+            $request->ded_approval_status = 'approved';
+        }
+
+        $notes = is_array($request->notes) ? $request->notes : [];
+        $notes['ded_approval'] = $approvalPayload;
+        $request->notes = $notes;
     }
 
     private function rejectRequest(CircleJoinRequest $record, $actor, string $reason): void
@@ -273,6 +357,22 @@ class CircleJoinRequestsController extends Controller
         }
 
         return (string) $record->circle?->director_user_id === (string) $actor->id;
+    }
+
+    private function canApproveDed($admin, $actor, CircleJoinRequest $record): bool
+    {
+        if (! AdminAccess::isDed($admin) || ! $actor) {
+            return false;
+        }
+
+        if (! $this->canAccessRecord($admin, $actor, $record)) {
+            return false;
+        }
+
+        return in_array($record->status, [
+            CircleJoinRequest::STATUS_PENDING_CD_APPROVAL,
+            CircleJoinRequest::STATUS_PENDING_ID_APPROVAL,
+        ], true);
     }
 
     private function canApproveId($admin, $actor, CircleJoinRequest $record): bool

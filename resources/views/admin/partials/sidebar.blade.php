@@ -115,6 +115,15 @@
         ['label' => 'Create Campaign', 'route' => 'admin.campaigns.create'],
         ['label' => 'Pamphlets', 'route' => 'admin.campaign-pamphlets.index'],
     ];
+    $disabledBottomItems = [];
+    if (! $canAccessLeads) {
+        $disabledBottomItems[] = ['icon' => 'bi-person-lines-fill', 'label' => 'Leads'];
+    }
+    if (! $canAccessEmailLogs) {
+        $disabledBottomItems[] = ['icon' => 'bi-envelope-paper', 'label' => 'Email Logs'];
+        $navItems = array_values(array_filter($navItems, fn ($item) => ($item['label'] ?? null) !== 'Email Logs'));
+    }
+
     $campaignsActive = request()->routeIs('admin.campaigns.*') || request()->routeIs('admin.campaign-pamphlets.*') || request()->routeIs('admin.execution.communications');
     $eventsManagementMenu = [
         ['label' => 'Events', 'route' => 'admin.events.index'],
@@ -231,12 +240,6 @@
                     </ul>
                 </div>
             </li>
-            @else
-                <li class="nav-item">
-                    <span class="nav-link disabled opacity-50 pe-none" aria-disabled="true" title="Access restricted" style="cursor: not-allowed;">
-                        <i class="bi bi-person-lines-fill me-2"></i>Leads
-                    </span>
-                </li>
             @endif
 
             @if ($isGlobalAdmin)
@@ -292,6 +295,17 @@
                     </li>
                 @endif
             @endforeach
+
+            @if ($disabledBottomItems)
+                <li class="nav-item mt-3 border-top pt-2"></li>
+                @foreach ($disabledBottomItems as $item)
+                    <li class="nav-item">
+                        <span class="nav-link disabled opacity-50 pe-none" aria-disabled="true" title="Access restricted" style="cursor: not-allowed;">
+                            <i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}
+                        </span>
+                    </li>
+                @endforeach
+            @endif
         </ul>
     </nav>
 
