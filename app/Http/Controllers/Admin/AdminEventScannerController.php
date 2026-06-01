@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\V1\Scanner\ScannerAuthController;
 use App\Models\AdminUser;
 use App\Models\Event;
 use App\Models\EventScannerAuthorization;
@@ -79,7 +80,7 @@ class AdminEventScannerController extends Controller
 
     public function destroy(Event $event, string $scannerUserId): RedirectResponse
     {
-        User::query()->findOrFail($scannerUserId);
+        $scannerUser = User::query()->findOrFail($scannerUserId);
 
         $authorization = EventScannerAuthorization::query()
             ->where('event_id', $event->id)
@@ -90,6 +91,8 @@ class AdminEventScannerController extends Controller
             'status' => EventScannerAuthorization::STATUS_REVOKED,
             'revoked_at' => now(),
         ])->save();
+
+        $scannerUser->tokens()->where('name', ScannerAuthController::TOKEN_NAME)->delete();
 
         return back()->with('success', 'Scanner revoked successfully.');
     }

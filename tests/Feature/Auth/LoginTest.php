@@ -103,6 +103,111 @@ class LoginTest extends TestCase
             ]);
     }
 
+
+    public function test_scanner_login_allows_only_active_authorized_scanner(): void
+    {
+        $userId = $this->createUser([
+            'email' => 'scanner@example.com',
+            'password_hash' => Hash::make('password'),
+        ]);
+        $eventId = $this->createEvent();
+        $this->authorizeScanner($eventId, $userId);
+
+        $loginResponse = $this->postJson('/api/v1/scanner/login', [
+            'email' => 'SCANNER@example.com',
+            'password' => 'password',
+        ]);
+
+        $loginResponse->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Scanner login successful.')
+            ->assertJsonPath('data.token_type', 'Bearer')
+            ->assertJsonPath('data.user.id', $userId);
+
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'tokenable_id' => $userId,
+            'name' => 'unity-event-scanner-token',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$loginResponse->json('data.token'))
+            ->getJson('/api/v1/scanner/events')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.items.0.event_id', $eventId);
+    }
+
+    public function test_scanner_login_rejects_revoked_or_unassigned_users_without_creating_token(): void
+    {
+        $revokedUserId = $this->createUser([
+            'email' => 'revoked-scanner@example.com',
+            'password_hash' => Hash::make('password'),
+        ]);
+        $eventId = $this->createEvent();
+        $this->authorizeScanner($eventId, $revokedUserId, 'revoked');
+
+        $this->postJson('/api/v1/scanner/login', [
+            'email' => 'revoked-scanner@example.com',
+            'password' => 'password',
+        ])->assertStatus(403)
+            ->assertExactJson([
+                'success' => false,
+                'message' => 'You are not authorized to use the scanner app.',
+                'data' => null,
+            ]);
+
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $revokedUserId,
+            'name' => 'unity-event-scanner-token',
+        ]);
+
+        $unassignedUserId = $this->createUser([
+            'email' => 'unassigned-scanner@example.com',
+            'password_hash' => Hash::make('password'),
+        ]);
+
+        $this->postJson('/api/v1/scanner/login', [
+            'email' => 'unassigned-scanner@example.com',
+            'password' => 'password',
+        ])->assertStatus(403)
+            ->assertExactJson([
+                'success' => false,
+                'message' => 'You are not authorized to use the scanner app.',
+                'data' => null,
+            ]);
+
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $unassignedUserId,
+            'name' => 'unity-event-scanner-token',
+        ]);
+    }
+
+    public function test_revoked_scanner_token_only_returns_empty_scanner_events(): void
+    {
+        $userId = $this->createUser([
+            'email' => 'old-token-scanner@example.com',
+            'password_hash' => Hash::make('password'),
+        ]);
+        $eventId = $this->createEvent();
+        $this->authorizeScanner($eventId, $userId);
+
+        $loginResponse = $this->postJson('/api/v1/scanner/login', [
+            'email' => 'old-token-scanner@example.com',
+            'password' => 'password',
+        ])->assertOk();
+
+        DB::table('event_scanner_authorizations')
+            ->where('event_id', $eventId)
+            ->where('scanner_user_id', $userId)
+            ->update(['status' => 'revoked', 'revoked_at' => now(), 'updated_at' => now()]);
+
+        $this->withHeader('Authorization', 'Bearer '.$loginResponse->json('data.token'))
+            ->getJson('/api/v1/scanner/events')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Scanner events fetched successfully.')
+            ->assertJsonPath('data.items', []);
+    }
+
     private function createUser(array $overrides = []): string
     {
         $id = (string) Str::uuid();
@@ -158,16 +263,16 @@ class LoginTest extends TestCase
         return $id;
     }
 
-    private function authorizeScanner(string $eventId, string $userId): void
+    private function authorizeScanner(string $eventId, string $userId, string $status = 'active'): void
     {
         DB::table('event_scanner_authorizations')->insert([
             'id' => (string) Str::uuid(),
             'event_id' => $eventId,
             'scanner_user_id' => $userId,
             'assigned_by_user_id' => null,
-            'status' => 'active',
+            'status' => $status,
             'assigned_at' => now(),
-            'revoked_at' => null,
+            'revoked_at' => $status === 'revoked' ? now() : null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

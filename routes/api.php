@@ -56,6 +56,7 @@ use App\Http\Controllers\Api\V1\Admin\AppVersionController as AdminAppVersionCon
 use App\Http\Controllers\Api\V1\Admin\AdminOpsController;
 use App\Http\Controllers\Api\V1\Admin\AdminEventScannerController;
 use App\Http\Controllers\Api\V1\Scanner\ScannerAttendanceController;
+use App\Http\Controllers\Api\V1\Scanner\ScannerAuthController;
 use App\Http\Controllers\Api\V1\Scanner\ScannerEventController;
 use App\Http\Controllers\Api\V1\Admin\AdminCampaignController;
 use App\Http\Controllers\Api\V1\Admin\CircleManagementController;
@@ -119,6 +120,8 @@ Route::prefix('v1')->group(function () {
             Route::get('me', [AuthController::class, 'me']);
         });
     });
+
+    Route::post('/scanner/login', [ScannerAuthController::class, 'login']);
 
     Route::get('/posts/report-reasons', [PostReportReasonsController::class, 'index']);
     Route::get('/app/version', [AppVersionController::class, 'show']);
