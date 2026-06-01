@@ -3,6 +3,8 @@
 namespace App\Services\Events;
 
 use App\Models\EventRegistration;
+use App\Support\QrCode\NativeQrCode;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -22,16 +24,22 @@ class EventQrService
     public function generateAndStore(EventRegistration $registration): array
     {
         $payload = $this->payload($registration->qr_token);
-        $svg = $this->makeSvg($payload, $registration->qr_token);
-        $relativePath = 'event-qrcodes/'.$registration->event_id.'/'.$registration->id.'.svg';
+        $this->logPayload($payload, (string) $registration->id);
 
-        Storage::disk('public')->put($relativePath, $svg);
+        $svg = $this->makeSvg($payload);
+        $png = $this->makePng($payload);
+        $basePath = 'event-qrcodes/'.$registration->event_id.'/'.$registration->id;
+        $pngPath = $basePath.'.png';
+        $svgPath = $basePath.'.svg';
 
-        $url = $this->url($relativePath);
-        $qrData = ['path' => $relativePath, 'url' => $url, 'svg' => $svg];
+        Storage::disk('public')->put($pngPath, $png);
+        Storage::disk('public')->put($svgPath, $svg);
+
+        $url = $this->url($pngPath);
+        $qrData = ['path' => $pngPath, 'url' => $url, 'svg_path' => $svgPath, 'svg' => $svg];
 
         $updates = [
-            'qr_code_path' => $relativePath,
+            'qr_code_path' => $pngPath,
             'qr_code_url' => $url,
             'qr_code_svg' => $svg,
         ];
@@ -54,56 +62,78 @@ class EventQrService
         return url(Storage::disk('public')->url($path));
     }
 
-    private function makeSvg(string $payload, string $token): string
+    public function libraryName(): string
     {
-        if (class_exists('SimpleSoftwareIO\\QrCode\\Facades\\QrCode')) {
-            return (string) \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')->size(320)->margin(2)->generate($payload);
-        }
-
-        $hash = hash('sha256', $payload);
-        $cells = 29;
-        $cell = 10;
-        $size = $cells * $cell;
-        $rects = [];
-
-        $finder = function (int $x, int $y) use (&$rects, $cell): void {
-            $rects[] = sprintf('<rect x="%d" y="%d" width="70" height="70" fill="#000"/>', $x * $cell, $y * $cell);
-            $rects[] = sprintf('<rect x="%d" y="%d" width="50" height="50" fill="#fff"/>', ($x + 1) * $cell, ($y + 1) * $cell);
-            $rects[] = sprintf('<rect x="%d" y="%d" width="30" height="30" fill="#000"/>', ($x + 2) * $cell, ($y + 2) * $cell);
-        };
-
-        $finder(0, 0);
-        $finder(22, 0);
-        $finder(0, 22);
-
-        for ($y = 0; $y < $cells; $y++) {
-            for ($x = 0; $x < $cells; $x++) {
-                if (($x < 8 && $y < 8) || ($x > 20 && $y < 8) || ($x < 8 && $y > 20)) {
-                    continue;
-                }
-                $i = ($x + ($y * $cells)) % strlen($hash);
-                if (hexdec($hash[$i]) % 2 === 0) {
-                    $rects[] = sprintf('<rect x="%d" y="%d" width="%d" height="%d" fill="#000"/>', $x * $cell, $y * $cell, $cell, $cell);
-                }
-            }
-        }
-
-        $safePayload = htmlspecialchars($payload, ENT_QUOTES, 'UTF-8');
-        $safeToken = htmlspecialchars($token, ENT_QUOTES, 'UTF-8');
-
-        $rectMarkup = $this->implodeRects($rects);
-
-        return <<<SVG
-<svg xmlns="http://www.w3.org/2000/svg" width="{$size}" height="{$size}" viewBox="0 0 {$size} {$size}" role="img" aria-label="Event QR token {$safeToken}">
-  <rect width="100%" height="100%" fill="#fff"/>
-  <metadata>{$safePayload}</metadata>
-  <g>{$rectMarkup}</g>
-</svg>
-SVG;
+        return 'App\\Support\\QrCode\\NativeQrCode';
     }
 
-    private function implodeRects(array $rects): string
+    public function libraryVersion(): string
     {
-        return implode('', $rects);
+        return '1.0.0';
     }
+
+    public function errorCorrectionLevel(): string
+    {
+        return 'Q';
+    }
+
+    public function size(): int
+    {
+        return 500;
+    }
+
+    public function quietZoneModules(): int
+    {
+        return 4;
+    }
+
+    private function buildQr(string $payload): NativeQrCode
+    {
+        $this->validatePayload($payload);
+
+        return new NativeQrCode($payload, $this->errorCorrectionLevel());
+    }
+
+    private function makeSvg(string $payload): string
+    {
+        return $this->buildQr($payload)->svg($this->size(), $this->quietZoneModules());
+    }
+
+    private function makePng(string $payload): string
+    {
+        return $this->buildQr($payload)->png($this->size(), $this->quietZoneModules());
+    }
+
+    private function validatePayload(string $payload): void
+    {
+        if ($payload === '') {
+            throw new \InvalidArgumentException('QR payload must not be empty.');
+        }
+
+        if (! mb_check_encoding($payload, 'UTF-8')) {
+            throw new \InvalidArgumentException('QR payload must be valid UTF-8.');
+        }
+
+        if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $payload) === 1) {
+            throw new \InvalidArgumentException('QR payload contains unsupported control characters.');
+        }
+    }
+
+    private function logPayload(string $payload, string $registrationId): void
+    {
+        Log::info('event_qr_payload_encoding', [
+            'event_registration_id' => $registrationId,
+            'library' => $this->libraryName(),
+            'library_version' => $this->libraryVersion(),
+            'format' => 'png+svg',
+            'size_px' => $this->size(),
+            'quiet_zone_modules' => $this->quietZoneModules(),
+            'error_correction' => $this->errorCorrectionLevel(),
+            'payload' => $payload,
+            'payload_length_bytes' => strlen($payload),
+            'payload_sha256' => hash('sha256', $payload),
+        ]);
+    }
+
+
 }
