@@ -11,6 +11,7 @@ use App\Models\CircleCategoryLevel4;
 use App\Models\CircleJoinRequest;
 use App\Services\Circles\CircleJoinRequestService;
 use App\Support\AdminAccess;
+use App\Support\AdminCircleScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -73,7 +74,7 @@ class CircleJoinRequestsController extends Controller
 
         return view('admin.circle_join_requests.index', [
             'requests' => $requests,
-            'circles' => Circle::query()->orderBy('name')->get(['id', 'name']),
+            'circles' => AdminCircleScope::circleOptions($admin),
             'filters' => $request->only(['search', 'circle_id', 'status', 'date_from', 'date_to']),
         ]);
     }
@@ -246,6 +247,10 @@ class CircleJoinRequestsController extends Controller
     {
         if (AdminAccess::isSuper($admin)) {
             return true;
+        }
+
+        if (AdminAccess::isDed($admin)) {
+            return AdminCircleScope::circleBelongsToDedDistrict($admin, (string) $record->circle_id);
         }
 
         $allowedCircleIds = array_map('strval', AdminAccess::allowedCircleIds($admin));

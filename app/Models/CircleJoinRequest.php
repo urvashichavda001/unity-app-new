@@ -110,6 +110,30 @@ class CircleJoinRequest extends Model
             return $query;
         }
 
+        if (AdminAccess::isDed($adminUser)) {
+            $district = AdminAccess::assignedDedDistrict($adminUser);
+
+            if (! $district) {
+                return $query->whereRaw('1=0');
+            }
+
+            return $query->whereExists(function ($subQuery) use ($district): void {
+                $subQuery->selectRaw('1')
+                    ->from('circles as ded_request_circles')
+                    ->join('cities as ded_request_cities', 'ded_request_cities.id', '=', 'ded_request_circles.city_id')
+                    ->whereColumn('ded_request_circles.id', 'circle_join_requests.circle_id')
+                    ->whereRaw('LOWER(ded_request_cities.district) = ?', [mb_strtolower((string) $district['name'])]);
+
+                if (! empty($district['state'])) {
+                    $subQuery->whereRaw("LOWER(COALESCE(ded_request_cities.state, '')) = ?", [mb_strtolower((string) $district['state'])]);
+                }
+
+                if (! empty($district['country'])) {
+                    $subQuery->whereRaw("LOWER(COALESCE(ded_request_cities.country, '')) = ?", [mb_strtolower((string) $district['country'])]);
+                }
+            });
+        }
+
         $allowedCircleIds = AdminAccess::allowedCircleIds($adminUser);
 
         if ($allowedCircleIds === []) {

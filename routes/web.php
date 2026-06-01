@@ -54,9 +54,16 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware(['admin.auth', 'admin.role', 'admin.circle'])->group(function () {
         Route::post('/logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::get('/', function () {
+            $admin = auth('admin')->user();
+
+            if (\App\Support\AdminAccess::isDed($admin)) {
+                return redirect()->route('admin.ded.dashboard');
+            }
+
             return redirect()->route('admin.dashboard');
         })->name('home');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('/ded-dashboard', [DashboardController::class, 'ded'])->name('ded.dashboard');
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::get('/users/create', [UsersController::class, 'create'])->name('users.create');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');

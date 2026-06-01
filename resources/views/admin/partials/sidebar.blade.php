@@ -3,15 +3,19 @@
     $adminUser?->loadMissing('roles:key');
     $isSuper = \App\Support\AdminAccess::isSuper($adminUser);
     $isCircleScoped = \App\Support\AdminAccess::isCircleScoped($adminUser);
+    $isDed = \App\Support\AdminAccess::isDed($adminUser);
+    $isScopedAdmin = $isCircleScoped || $isDed;
     $isGlobalAdmin = \App\Support\AdminAccess::isGlobalAdmin($adminUser);
-    $canAccessLeads = ! $isCircleScoped;
-    $canAccessEmailLogs = ! $isCircleScoped;
+    $canAccessLeads = ! $isScopedAdmin;
+    $canAccessEmailLogs = ! $isScopedAdmin;
 
     $dashboardItem = $isCircleScoped
         ? null
-        : ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.dashboard'];
+        : ($isDed
+            ? ['icon' => 'bi-speedometer2', 'label' => 'DED Dashboard', 'route' => 'admin.ded.dashboard']
+            : ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.dashboard']);
 
-    $navItems = $isCircleScoped
+    $navItems = $isScopedAdmin
         ? [
             ['icon' => 'bi-people', 'label' => 'Peers', 'route' => 'admin.users.index'],
             ['icon' => 'bi-coin', 'label' => 'Coins', 'route' => 'admin.coins.index'],
@@ -54,7 +58,7 @@
             ['icon' => 'bi-gear', 'label' => 'System Settings', 'route' => '#'],
         ];
 
-    $activityMenu = ($isSuper || $isCircleScoped) ? [
+    $activityMenu = ($isSuper || $isScopedAdmin) ? [
         ['label' => 'Summary', 'route' => 'admin.activities.index'],
         ['label' => 'Testimonials', 'route' => 'admin.activities.testimonials.index'],
         ['label' => 'Requirements', 'route' => 'admin.activities.requirements.index'],
@@ -68,10 +72,10 @@
     ] : [];
 
     $activityActive = request()->routeIs('admin.activities.*') || request()->routeIs('admin.collaborations.*');
-    $referralReportItem = ($isSuper || $isCircleScoped)
+    $referralReportItem = ($isSuper || $isScopedAdmin)
         ? ['icon' => 'bi-person-lines-fill', 'label' => 'Referral Report', 'route' => 'admin.referral-report.index', 'active_routes' => ['admin.referral-report.*']]
         : null;
-    $activityExpanded = $activityActive || ! $isGlobalAdmin;
+    $activityExpanded = $activityActive || $isScopedAdmin;
 
     $postsMenu = $isGlobalAdmin ? [
         ['label' => 'All Posts', 'route' => 'admin.posts.index'],
@@ -87,7 +91,7 @@
         ['label' => 'Become Mentor', 'route' => 'admin.leads.become-mentor.index'],
     ];
 
-    $pendingRequestsMenu = $isCircleScoped ? [
+    $pendingRequestsMenu = $isScopedAdmin ? [
         ['label' => 'Visitor Registrations', 'route' => 'admin.visitor-registrations.index'],
         ['label' => 'Circle Joining Requests', 'route' => 'admin.circle-joining-requests.index'],
     ] : [

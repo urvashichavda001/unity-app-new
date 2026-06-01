@@ -24,6 +24,28 @@ class AdminCircleScope
             return $next($request);
         }
 
+        if (AdminAccess::isDed($admin)) {
+            $request->attributes->set('allowed_circle_ids', []);
+            $request->attributes->set('is_circle_scoped', false);
+            $request->attributes->set('is_ded_scoped', true);
+            $request->attributes->set('ded_district_id', AdminAccess::assignedDedDistrictId($admin));
+            $request->attributes->set('ded_district_name', AdminAccess::assignedDedDistrictName($admin));
+
+            $routeName = $request->route()?->getName() ?? '';
+            $allowedPrefixes = ['admin.ded.', 'admin.users.', 'admin.activities.', 'admin.collaborations.', 'admin.referral-report.', 'admin.coins.', 'admin.life-impact.', 'admin.visitor-registrations.', 'admin.circle-joining-requests.'];
+            $allowedRoutes = ['admin.logout', 'admin.files.upload'];
+
+            if (in_array($routeName, ['admin.dashboard', 'admin.home'], true) || Str::startsWith($routeName, 'admin.circles.')) {
+                return redirect()->route('admin.ded.dashboard');
+            }
+
+            if ($routeName !== '' && ! in_array($routeName, $allowedRoutes, true) && ! Str::startsWith($routeName, $allowedPrefixes)) {
+                abort(403);
+            }
+
+            return $next($request);
+        }
+
         if (AdminAccess::isCircleScoped($admin)) {
             $allowedCircleIds = AdminAccess::allowedCircleIds($admin);
             $request->attributes->set('allowed_circle_ids', $allowedCircleIds);

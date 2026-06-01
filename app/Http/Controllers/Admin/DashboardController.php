@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Circle;
 use App\Models\User;
+use App\Support\AdminAccess;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -70,6 +72,39 @@ class DashboardController extends Controller
         ]);
     }
 
+    public function ded(): View
+    {
+        $admin = Auth::guard('admin')->user();
+        abort_unless(AdminAccess::isDed($admin), 403);
+
+        $district = AdminAccess::assignedDedDistrict($admin);
+        $districtId = $district['id'] ?? null;
+        $districtName = $district['name'] ?? null;
+
+        $stats = [
+            'peers' => $district ? $this->districtUsersQuery($district)->count() : 0,
+            'activeCircles' => $district ? $this->districtCirclesQuery($district)->count() : 0,
+            'activitiesToday' => $district ? $this->districtActivitiesToday($district) : 0,
+            'pendingCircleJoinRequests' => $district ? $this->districtCircleJoinRequests($district) : 0,
+        ];
+
+        $peers = $district
+            ? $this->districtUsersQuery($district)
+                ->select(['users.id', 'users.display_name', 'users.first_name', 'users.last_name', 'users.email', 'users.company_name', 'users.city_id'])
+                ->with('city:id,name,district')
+                ->latest('users.created_at')
+                ->limit(10)
+                ->get()
+            : collect();
+
+        return view('admin.ded.dashboard', [
+            'districtId' => $districtId,
+            'districtName' => $districtName,
+            'stats' => $stats,
+            'peers' => $peers,
+        ]);
+    }
+
     private function safeCountTable(string $table): int
     {
         if (! Schema::hasTable($table)) {
@@ -82,6 +117,70 @@ class DashboardController extends Controller
     private function hasTableColumn(string $table, string $column): bool
     {
         return Schema::hasTable($table) && Schema::hasColumn($table, $column);
+    }
+
+    private function districtUsersQuery(array $district)
+    {
+        $query = User::query()
+            ->join('cities as ded_cities', 'ded_cities.id', '=', 'users.city_id');
+
+        return $this->applyDistrictCriteria($query, 'ded_cities', $district);
+    }
+
+    private function districtCirclesQuery(array $district)
+    {
+        $query = Circle::query()
+            ->join('cities as ded_circle_cities', 'ded_circle_cities.id', '=', 'circles.city_id');
+
+        return $this->applyDistrictCriteria($query, 'ded_circle_cities', $district);
+    }
+
+    private function districtActivitiesToday(array $district): int
+    {
+        if (! $this->hasTableColumn('activities', 'created_at') || ! Schema::hasColumn('activities', 'user_id')) {
+            return 0;
+        }
+
+        $query = DB::table('activities')
+            ->join('users as ded_activity_users', 'ded_activity_users.id', '=', 'activities.user_id')
+            ->join('cities as ded_activity_cities', 'ded_activity_cities.id', '=', 'ded_activity_users.city_id')
+            ->whereDate('activities.created_at', now()->toDateString());
+
+        return (int) $this->applyDistrictCriteria($query, 'ded_activity_cities', $district)->count();
+    }
+
+    private function districtCircleJoinRequests(array $district): int
+    {
+        if (! Schema::hasTable('circle_join_requests')) {
+            return 0;
+        }
+
+        $query = DB::table('circle_join_requests')
+            ->join('circles as ded_request_circles', 'ded_request_circles.id', '=', 'circle_join_requests.circle_id')
+            ->join('cities as ded_request_cities', 'ded_request_cities.id', '=', 'ded_request_circles.city_id')
+            ->whereIn('circle_join_requests.status', [
+                'pending_cd_approval',
+                'pending_id_approval',
+                'pending_circle_fee',
+            ]);
+
+        return (int) $this->applyDistrictCriteria($query, 'ded_request_cities', $district)->count();
+    }
+
+
+    private function applyDistrictCriteria($query, string $cityAlias, array $district)
+    {
+        $query->whereRaw("LOWER({$cityAlias}.district) = ?", [mb_strtolower((string) $district['name'])]);
+
+        if (! empty($district['state'])) {
+            $query->whereRaw("LOWER(COALESCE({$cityAlias}.state, '')) = ?", [mb_strtolower((string) $district['state'])]);
+        }
+
+        if (! empty($district['country'])) {
+            $query->whereRaw("LOWER(COALESCE({$cityAlias}.country, '')) = ?", [mb_strtolower((string) $district['country'])]);
+        }
+
+        return $query;
     }
 
     private function safeReportedPostsCount(): int

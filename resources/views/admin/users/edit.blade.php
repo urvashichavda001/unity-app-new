@@ -623,6 +623,7 @@
                 <div class="card-body">
                     @php
                         $currentRoleIds = old('role_ids', $userRoleIds);
+                        $currentDedDistrictId = old('ded_district_id', $assignedDedDistrictId ?? null);
                     @endphp
                     @if ($hasAssignedAdminRole)
                         <div class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -657,6 +658,33 @@
                             </div>
                         @endforeach
                     </div>
+                    @if ($dedRoleId)
+                        <div id="dedDistrictWrapper" class="mt-3" style="display: none;">
+                            <label for="ded_district_id" class="form-label">DED District <span class="text-danger">*</span></label>
+                            <select
+                                id="ded_district_id"
+                                name="ded_district_id"
+                                class="form-select @error('ded_district_id') is-invalid @enderror"
+                                @disabled($hasAssignedAdminRole)
+                            >
+                                <option value="">Select district</option>
+                                @foreach ($districts as $district)
+                                    @php
+                                        $districtLabel = trim(collect([$district->name, $district->state, $district->country])->filter()->implode(', '));
+                                    @endphp
+                                    <option value="{{ $district->id }}" @selected((string) $currentDedDistrictId === (string) $district->id)>{{ $districtLabel }}</option>
+                                @endforeach
+                            </select>
+                            @error('ded_district_id')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            @if ($districts->isEmpty())
+                                <div class="form-text text-danger">No districts are available. Please run the provided manual SQL before assigning DED.</div>
+                            @else
+                                <div class="form-text">Required only when the DED role is selected.</div>
+                            @endif
+                        </div>
+                    @endif
                     @if ($hasAssignedAdminRole)
                         <div class="form-text text-muted mt-2">
                             Remove the existing admin role to assign a new one.
@@ -688,6 +716,26 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const dedRoleId = @json($dedRoleId ?? null);
+    const dedDistrictWrapper = document.getElementById('dedDistrictWrapper');
+    const dedDistrictSelect = document.getElementById('ded_district_id');
+    const roleInputs = Array.from(document.querySelectorAll('input[name="role_ids[]"]'));
+
+    const toggleDedDistrict = () => {
+        if (!dedRoleId || !dedDistrictWrapper) {
+            return;
+        }
+
+        const dedSelected = roleInputs.some((input) => String(input.value) === String(dedRoleId) && input.checked);
+        dedDistrictWrapper.style.display = dedSelected ? '' : 'none';
+        if (dedDistrictSelect) {
+            dedDistrictSelect.required = dedSelected && !dedDistrictSelect.disabled;
+        }
+    };
+
+    roleInputs.forEach((input) => input.addEventListener('change', toggleDedDistrict));
+    toggleDedDistrict();
+
     const joinedInput = document.querySelector('[name="circle_joined_date"]')
         || document.querySelector('[name="circle_joined_at"]');
     const expiryInput = document.querySelector('[name="circle_expiry_date"]')
