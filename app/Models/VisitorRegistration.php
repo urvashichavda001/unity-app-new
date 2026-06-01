@@ -54,7 +54,7 @@ class VisitorRegistration extends Model
 
     public function reviewedBy(): BelongsTo
     {
-        return $this->belongsTo(AdminUser::class, 'reviewed_by_admin_user_id');
+        return $this->belongsTo(User::class, 'reviewed_by_admin_user_id');
     }
 
     public function invitedByUser(): BelongsTo

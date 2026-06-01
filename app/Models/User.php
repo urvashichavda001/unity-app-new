@@ -730,7 +730,17 @@ class User extends Authenticatable
 
     public function roles(): BelongsToMany
     {
+        return $this->adminRoles();
+    }
+
+    public function adminRoles(): BelongsToMany
+    {
         return $this->belongsToMany(Role::class, 'admin_user_roles', 'user_id', 'role_id');
+    }
+
+    public function hasAdminRole(string $key): bool
+    {
+        return $this->adminRoles()->where('key', $key)->exists();
     }
 
     public function uploadedFiles(): HasMany

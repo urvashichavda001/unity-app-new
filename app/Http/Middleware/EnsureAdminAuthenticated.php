@@ -2,10 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\AdminUser;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureAdminAuthenticated
@@ -15,7 +15,7 @@ class EnsureAdminAuthenticated
         if (! Auth::guard('admin')->check()) {
             $adminId = $request->session()->get('admin_user_id');
             if ($adminId) {
-                $admin = AdminUser::find($adminId);
+                $admin = User::find($adminId);
                 if ($admin) {
                     Auth::guard('admin')->login($admin);
                 }

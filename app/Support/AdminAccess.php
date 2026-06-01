@@ -2,12 +2,11 @@
 
 namespace App\Support;
 
-use App\Models\AdminUser;
 use App\Models\CircleMember;
 use App\Models\Role;
 use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class AdminAccess
 {
@@ -49,27 +48,16 @@ class AdminAccess
         'member' => 'Member',
     ];
 
-    public static function resolveAppUser(?AdminUser $admin): ?User
+    public static function resolveAppUser(?User $admin): ?User
     {
         if (! $admin) {
             return null;
         }
 
-        $cacheKey = 'admin-access:user:' . $admin->id;
-
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($admin) {
-            $email = trim(strtolower((string) $admin->email));
-            if ($email === '') {
-                return null;
-            }
-
-            return User::query()
-                ->whereRaw('LOWER(email) = ?', [$email])
-                ->first();
-        });
+        return $admin;
     }
 
-    public static function adminRoleKeys(?AdminUser $admin): array
+    public static function adminRoleKeys(?User $admin): array
     {
         if (! $admin) {
             return [];
@@ -88,14 +76,14 @@ class AdminAccess
         });
     }
 
-    public static function isSuper(?AdminUser $admin): bool
+    public static function isSuper(?User $admin): bool
     {
         $roleKeys = self::adminRoleKeys($admin);
 
         return (bool) array_intersect(self::SUPER_ROLE_KEYS, $roleKeys);
     }
 
-    public static function isGlobalAdmin(?AdminUser $admin): bool
+    public static function isGlobalAdmin(?User $admin): bool
     {
         if (! $admin) {
             return false;
@@ -104,7 +92,7 @@ class AdminAccess
         return in_array('global_admin', self::adminRoleKeys($admin), true);
     }
 
-    public static function isCircleScoped(?AdminUser $admin): bool
+    public static function isCircleScoped(?User $admin): bool
     {
         if (! $admin || self::isSuper($admin)) {
             return false;
@@ -133,7 +121,7 @@ class AdminAccess
             ->exists();
     }
 
-    public static function allowedCircleIds(?AdminUser $admin): array
+    public static function allowedCircleIds(?User $admin): array
     {
         if (! $admin) {
             return [];
@@ -158,7 +146,7 @@ class AdminAccess
         });
     }
 
-    public static function allowedUserIds(?AdminUser $admin): array
+    public static function allowedUserIds(?User $admin): array
     {
         if (! $admin) {
             return [];
@@ -183,7 +171,7 @@ class AdminAccess
         });
     }
 
-    public static function primaryCircleRoleKey(?AdminUser $admin): ?string
+    public static function primaryCircleRoleKey(?User $admin): ?string
     {
         if (! $admin) {
             return null;
@@ -219,7 +207,7 @@ class AdminAccess
         });
     }
 
-    public static function primaryCircleRoleLabel(?AdminUser $admin): string
+    public static function primaryCircleRoleLabel(?User $admin): string
     {
         $roleKey = self::primaryCircleRoleKey($admin);
 
@@ -230,7 +218,7 @@ class AdminAccess
         return self::CIRCLE_ROLE_LABELS[$roleKey] ?? 'Circle Leader';
     }
 
-    public static function canEditUsers(?AdminUser $admin): bool
+    public static function canEditUsers(?User $admin): bool
     {
         if (! $admin) {
             return false;

@@ -64,6 +64,6 @@ class PostReport extends Model
 
     public function reviewer(): BelongsTo
     {
-        return $this->belongsTo(AdminUser::class, 'reviewed_by_admin_user_id');
+        return $this->belongsTo(User::class, 'reviewed_by_admin_user_id');
     }
 }

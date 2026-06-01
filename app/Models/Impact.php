@@ -63,11 +63,11 @@ class Impact extends Model
 
     public function approvedBy(): BelongsTo
     {
-        return $this->belongsTo(AdminUser::class, 'approved_by');
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
     public function rejectedBy(): BelongsTo
     {
-        return $this->belongsTo(AdminUser::class, 'rejected_by');
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 }

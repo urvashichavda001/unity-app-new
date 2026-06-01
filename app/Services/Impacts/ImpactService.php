@@ -2,7 +2,6 @@
 
 namespace App\Services\Impacts;
 
-use App\Models\AdminUser;
 use App\Models\Impact;
 use App\Models\ImpactAction;
 use App\Models\LifeImpactHistory;
@@ -52,7 +51,7 @@ class ImpactService
         return $impact;
     }
 
-    public function approveImpact(Impact|string $impactOrId, User|AdminUser|string $adminOrId, ?string $reviewRemarks = null): Impact
+    public function approveImpact(Impact|string $impactOrId, User|string $adminOrId, ?string $reviewRemarks = null): Impact
     {
         return DB::transaction(function () use ($impactOrId, $adminOrId, $reviewRemarks) {
             $impactId = $impactOrId instanceof Impact ? (string) $impactOrId->getKey() : (string) $impactOrId;
@@ -147,7 +146,7 @@ class ImpactService
         });
     }
 
-    public function rejectImpact(Impact|string $impactOrId, User|AdminUser|string $adminOrId, ?string $reviewRemarks = null): Impact
+    public function rejectImpact(Impact|string $impactOrId, User|string $adminOrId, ?string $reviewRemarks = null): Impact
     {
         return DB::transaction(function () use ($impactOrId, $adminOrId, $reviewRemarks) {
             $impactId = $impactOrId instanceof Impact ? (string) $impactOrId->getKey() : (string) $impactOrId;
@@ -236,9 +235,9 @@ class ImpactService
         return User::query()->whereKey($actorId)->exists() ? $actorId : null;
     }
 
-    private function resolveAdminId(User|AdminUser|string $adminOrId): string
+    private function resolveAdminId(User|string $adminOrId): string
     {
-        if ($adminOrId instanceof User || $adminOrId instanceof AdminUser) {
+        if ($adminOrId instanceof User) {
             return (string) $adminOrId->getKey();
         }
 

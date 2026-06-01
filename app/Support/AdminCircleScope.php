@@ -2,8 +2,8 @@
 
 namespace App\Support;
 
-use App\Models\AdminUser;
 use App\Models\CircleMember;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -21,7 +21,7 @@ class AdminCircleScope
         'member' => 7,
     ];
 
-    public static function resolveCircleId(?AdminUser $admin): ?string
+    public static function resolveCircleId(?User $admin): ?string
     {
         if (! $admin || ! AdminAccess::isCircleScoped($admin)) {
             return null;
@@ -64,7 +64,7 @@ class AdminCircleScope
             ->whereNull('deleted_at');
     }
 
-    public static function applyToActivityQuery($query, ?AdminUser $admin, string $primaryColumn, ?string $peerColumn): void
+    public static function applyToActivityQuery($query, ?User $admin, string $primaryColumn, ?string $peerColumn): void
     {
         if (! AdminAccess::isCircleScoped($admin)) {
             return;
@@ -82,7 +82,7 @@ class AdminCircleScope
         $query->whereIn($primaryColumn, $circleUserIds);
     }
 
-    public static function applyToUsersQuery($query, ?AdminUser $admin): void
+    public static function applyToUsersQuery($query, ?User $admin): void
     {
         if (! AdminAccess::isCircleScoped($admin)) {
             return;
@@ -105,7 +105,7 @@ class AdminCircleScope
         });
     }
 
-    public static function userInScope(?AdminUser $admin, string $userId): bool
+    public static function userInScope(?User $admin, string $userId): bool
     {
         if (! AdminAccess::isCircleScoped($admin)) {
             return true;

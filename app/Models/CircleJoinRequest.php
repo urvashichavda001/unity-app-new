@@ -100,7 +100,7 @@ class CircleJoinRequest extends Model
         return $query->where('circle_id', $circleId);
     }
 
-    public function scopeVisibleToAdminUser(Builder $query, ?AdminUser $adminUser): Builder
+    public function scopeVisibleToAdminUser(Builder $query, ?User $adminUser): Builder
     {
         if (! $adminUser) {
             return $query->whereRaw('1=0');

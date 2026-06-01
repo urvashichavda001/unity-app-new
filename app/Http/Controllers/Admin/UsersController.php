@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\AdminUser;
 use App\Models\Circle;
 use App\Models\CircleCategory;
 use App\Models\CircleCategoryLevel2;
@@ -779,60 +778,20 @@ class UsersController extends Controller
             ->with('success', $statusMessage);
     }
 
-    private function findAdminUserForPeer(User $user): ?AdminUser
+    private function findAdminUserForPeer(User $user): ?User
     {
-        $email = $this->normalizedAdminEmail($user);
-
-        if ($email !== '') {
-            $adminUser = AdminUser::query()
-                ->whereRaw('LOWER(email) = ?', [$email])
-                ->first();
-
-            if ($adminUser) {
-                return $adminUser;
-            }
-        }
-
-        return AdminUser::query()->find($user->id);
+        return $user->exists ? $user : null;
     }
 
-    private function resolveAdminUserForRoleAssignment(User $user): AdminUser
+    private function resolveAdminUserForRoleAssignment(User $user): User
     {
-        $email = $this->normalizedAdminEmail($user);
-
-        if ($email === '') {
+        if ($this->normalizedAdminEmail($user) === '') {
             throw ValidationException::withMessages([
                 'email' => 'Email is required before assigning an admin role.',
             ]);
         }
 
-        $name = $this->adminDisplayName($user);
-        $adminUser = $this->findAdminUserForPeer($user);
-
-        if ($adminUser) {
-            $adminUser->forceFill([
-                'name' => $name,
-            ])->save();
-
-            if (! $adminUser->wasChanged()) {
-                $adminUser->touch();
-            }
-
-            return $adminUser;
-        }
-
-        $adminUserId = (string) ($user->id ?: Str::uuid());
-        if (AdminUser::query()->whereKey($adminUserId)->exists()) {
-            $adminUserId = (string) Str::uuid();
-        }
-
-        return AdminUser::query()->firstOrCreate(
-            ['email' => $email],
-            [
-                'id' => $adminUserId,
-                'name' => $name,
-            ],
-        );
+        return $user;
     }
 
     private function normalizedAdminEmail(User $user): string
