@@ -177,7 +177,7 @@ class AdminCircleScope
             return;
         }
 
-        if (AdminAccess::isCircleScoped($admin) && ! in_array($circleId, self::allowedCircleIds($admin), true)) {
+        if (! AdminAccess::isDed($admin) && AdminAccess::isCircleScoped($admin) && ! in_array($circleId, self::allowedCircleIds($admin), true)) {
             $query->whereRaw('1=0');
             return;
         }

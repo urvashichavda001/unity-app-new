@@ -9,10 +9,10 @@
     $canAccessLeads = ! $isScopedAdmin;
     $canAccessEmailLogs = ! $isScopedAdmin;
 
-    $dashboardItem = $isCircleScoped
-        ? null
-        : ($isDed
-            ? ['icon' => 'bi-speedometer2', 'label' => 'DED Dashboard', 'route' => 'admin.ded.dashboard']
+    $dashboardItem = $isDed
+        ? ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.ded.dashboard']
+        : ($isCircleScoped
+            ? null
             : ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.dashboard']);
 
     $navItems = $isScopedAdmin
