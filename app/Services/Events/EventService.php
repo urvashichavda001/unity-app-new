@@ -93,7 +93,7 @@ class EventService
             'circle_meeting' => CircleMember::query()
                 ->where('circle_id', $event->circle_id)
                 ->where('user_id', $user->id)
-                ->whereIn('status', ['approved', 'active'])
+                ->where('status', 'approved')
                 ->whereNull('deleted_at')
                 ->exists(),
             'global_event', 'public_event' => true,

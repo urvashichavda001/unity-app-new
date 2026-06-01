@@ -88,7 +88,7 @@ class EventController extends BaseApiController
             ->where('user_id', $user->id)
             ->whereNull('deleted_at');
         if (\Illuminate\Support\Facades\Schema::hasColumn('circle_members', 'status')) {
-            $memberQuery->whereIn('status', ['approved', 'active']);
+            $memberQuery->where('status', 'approved');
         }
         if (\Illuminate\Support\Facades\Schema::hasColumn('circle_members', 'expires_at')) {
             $memberQuery->where(function ($q): void {
@@ -193,7 +193,7 @@ class EventController extends BaseApiController
         $event = Event::query()->findOrFail($eventId);
         $occurrence = EventOccurrence::query()->where('event_id', $event->id)->findOrFail($occurrenceId);
         $eventCircleId = $event->circle_id;
-        $sameCircle = CircleMember::query()->where('circle_id', $eventCircleId)->where('user_id', $user->id)->whereNull('deleted_at')->whereIn('status', ['approved','active'])->exists();
+        $sameCircle = CircleMember::query()->where('circle_id', $eventCircleId)->where('user_id', $user->id)->whereNull('deleted_at')->where('status', 'approved')->exists();
         if ($sameCircle) return $this->success([], 'You are already a member of this circle. You can register directly.');
         $existingReg = EventRegistration::query()->where('occurrence_id',$occurrence->id)->where('user_id',$user->id)->where('status','!=','cancelled')->whereNull('deleted_at')->first();
         if ($existingReg) return $this->success(['registration_id'=>$existingReg->id], 'You are already registered for this event.');
@@ -781,7 +781,7 @@ class EventController extends BaseApiController
             ->where('user_id', $userId)
             ->whereNull('deleted_at');
         if (\Illuminate\Support\Facades\Schema::hasColumn('circle_members', 'status')) {
-            $query->whereIn('status', ['approved', 'active']);
+            $query->where('status', 'approved');
         }
         if (\Illuminate\Support\Facades\Schema::hasColumn('circle_members', 'expires_at')) {
             $query->where(function ($q): void {
