@@ -2,6 +2,7 @@
 
 namespace App\Console;
 
+use App\Console\Commands\ImportIndiaDistricts;
 use App\Console\Commands\LifeImpactBackfillCommand;
 use App\Console\Commands\RetryIgnoredZohoWebhooks;
 use App\Console\Commands\RetryZohoWebhooks;
@@ -17,6 +18,7 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 class Kernel extends ConsoleKernel
 {
     protected $commands = [
+        ImportIndiaDistricts::class,
         LifeImpactBackfillCommand::class,
         LifeImpactRecalculateUsersCommand::class,
         SendAppUpdateReminderNotifications::class,
