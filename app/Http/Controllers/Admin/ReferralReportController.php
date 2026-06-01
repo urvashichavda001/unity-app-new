@@ -254,6 +254,11 @@ class ReferralReportController extends Controller
     {
         $admin = Auth::guard('admin')->user();
 
+        if (\App\Support\AdminAccess::isDed($admin)) {
+            AdminCircleScope::applyToActivityQuery($query, $admin, 'rd.referrer_user_id', 'rd.referred_user_id');
+            return;
+        }
+
         if (! \App\Support\AdminAccess::isCircleScoped($admin)) {
             return;
         }

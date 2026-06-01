@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Circle;
 use App\Models\User;
 use App\Support\AdminCircleScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -46,7 +45,7 @@ class LifeImpactController extends Controller
         return view('admin.life-impact.index', [
             'members' => $members,
             'filters' => $filters,
-            'circles' => Circle::query()->orderBy('name')->get(['id', 'name']),
+            'circles' => AdminCircleScope::circleOptions(auth('admin')->user()),
             'categories' => self::CATEGORIES,
             'impactStats' => $this->impactStatsByUserId($members->pluck('id')->all(), $filters),
             'summary' => $this->summaryStats($filters),

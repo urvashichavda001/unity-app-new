@@ -442,7 +442,17 @@ class User extends Authenticatable
     {
         $city = trim((string) ($this->city ?? ''));
 
-        return $city !== '' ? $city : 'No City';
+        if ($city !== '') {
+            return $city;
+        }
+
+        if ($this->relationLoaded('city')) {
+            $cityName = trim((string) optional($this->getRelation('city'))->name);
+
+            return $cityName !== '' ? $cityName : 'No City';
+        }
+
+        return 'No City';
     }
 
     public function adminCircleLabel(): string

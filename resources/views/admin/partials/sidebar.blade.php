@@ -75,7 +75,7 @@
     $referralReportItem = ($isSuper || $isScopedAdmin)
         ? ['icon' => 'bi-person-lines-fill', 'label' => 'Referral Report', 'route' => 'admin.referral-report.index', 'active_routes' => ['admin.referral-report.*']]
         : null;
-    $activityExpanded = $activityActive || $isScopedAdmin;
+    $activityExpanded = $activityActive || ($isCircleScoped && ! $isDed);
 
     $postsMenu = $isGlobalAdmin ? [
         ['label' => 'All Posts', 'route' => 'admin.posts.index'],

@@ -7,6 +7,7 @@ use App\Models\CircleCategoryLevel2;
 use App\Models\CircleCategoryLevel3;
 use App\Models\CircleCategoryLevel4;
 use App\Support\AdminAccess;
+use App\Support\AdminCircleScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -111,26 +112,12 @@ class CircleJoinRequest extends Model
         }
 
         if (AdminAccess::isDed($adminUser)) {
-            $district = AdminAccess::assignedDedDistrict($adminUser);
-
-            if (! $district) {
-                return $query->whereRaw('1=0');
-            }
-
-            return $query->whereExists(function ($subQuery) use ($district): void {
+            return $query->whereExists(function ($subQuery) use ($adminUser): void {
                 $subQuery->selectRaw('1')
-                    ->from('circles as ded_request_circles')
-                    ->join('cities as ded_request_cities', 'ded_request_cities.id', '=', 'ded_request_circles.city_id')
-                    ->whereColumn('ded_request_circles.id', 'circle_join_requests.circle_id')
-                    ->whereRaw('LOWER(ded_request_cities.district) = ?', [mb_strtolower((string) $district['name'])]);
+                    ->from('circles')
+                    ->whereColumn('circles.id', 'circle_join_requests.circle_id');
 
-                if (! empty($district['state'])) {
-                    $subQuery->whereRaw("LOWER(COALESCE(ded_request_cities.state, '')) = ?", [mb_strtolower((string) $district['state'])]);
-                }
-
-                if (! empty($district['country'])) {
-                    $subQuery->whereRaw("LOWER(COALESCE(ded_request_cities.country, '')) = ?", [mb_strtolower((string) $district['country'])]);
-                }
+                AdminCircleScope::applyDedDistrictCircleScope($subQuery, $adminUser);
             });
         }
 

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Circle;
+use App\Models\CircleJoinRequest;
 use App\Models\User;
 use App\Support\AdminAccess;
+use App\Support\AdminCircleScope;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -82,15 +84,20 @@ class DashboardController extends Controller
         $districtName = $district['name'] ?? null;
 
         $stats = [
-            'peers' => $district ? $this->districtUsersQuery($district)->count() : 0,
-            'activeCircles' => $district ? $this->districtCirclesQuery($district)->count() : 0,
-            'activitiesToday' => $district ? $this->districtActivitiesToday($district) : 0,
-            'pendingCircleJoinRequests' => $district ? $this->districtCircleJoinRequests($district) : 0,
+            'peers' => $district ? $this->districtUsersQuery($admin)->count() : 0,
+            'circles' => $district ? $this->districtCirclesCount($admin) : 0,
+            'referrals' => $district ? $this->districtActivityCount('referrals', 'from_user_id', $admin) : 0,
+            'requirements' => $district ? $this->districtActivityCount('requirements', 'user_id', $admin) : 0,
+            'testimonials' => $district ? $this->districtActivityCount('testimonials', 'from_user_id', $admin) : 0,
+            'businessDeals' => $district ? $this->districtActivityCount('business_deals', 'from_user_id', $admin) : 0,
+            'p2pMeetings' => $district ? $this->districtActivityCount('p2p_meetings', 'initiator_user_id', $admin) : 0,
+            'coinsEarned' => $district ? $this->districtCoinsEarned($admin) : 0,
+            'pendingRequests' => $district ? $this->districtCircleJoinRequests($admin) : 0,
         ];
 
         $peers = $district
-            ? $this->districtUsersQuery($district)
-                ->select(['users.id', 'users.display_name', 'users.first_name', 'users.last_name', 'users.email', 'users.company_name', 'users.city_id'])
+            ? $this->districtUsersQuery($admin)
+                ->select(['users.id', 'users.display_name', 'users.first_name', 'users.last_name', 'users.email', 'users.company_name', 'users.city', 'users.city_id'])
                 ->with('city:id,name,district')
                 ->latest('users.created_at')
                 ->limit(10)
@@ -119,68 +126,68 @@ class DashboardController extends Controller
         return Schema::hasTable($table) && Schema::hasColumn($table, $column);
     }
 
-    private function districtUsersQuery(array $district)
+    private function districtUsersQuery($admin)
     {
-        $query = User::query()
-            ->join('cities as ded_cities', 'ded_cities.id', '=', 'users.city_id');
+        $query = User::query()->from('users');
+        AdminCircleScope::applyToUsersQuery($query, $admin);
 
-        return $this->applyDistrictCriteria($query, 'ded_cities', $district);
+        return $query;
     }
 
-    private function districtCirclesQuery(array $district)
+    private function districtCirclesCount($admin): int
     {
-        $query = Circle::query()
-            ->join('cities as ded_circle_cities', 'ded_circle_cities.id', '=', 'circles.city_id');
+        $query = Circle::query()->from('circles');
+        AdminCircleScope::applyDedDistrictCircleScope($query, $admin);
 
-        return $this->applyDistrictCriteria($query, 'ded_circle_cities', $district);
+        return (int) $query->count();
     }
 
-    private function districtActivitiesToday(array $district): int
+    private function districtActivityCount(string $table, string $userColumn, $admin): int
     {
-        if (! $this->hasTableColumn('activities', 'created_at') || ! Schema::hasColumn('activities', 'user_id')) {
+        if (! $this->hasTableColumn($table, $userColumn)) {
             return 0;
         }
 
-        $query = DB::table('activities')
-            ->join('users as ded_activity_users', 'ded_activity_users.id', '=', 'activities.user_id')
-            ->join('cities as ded_activity_cities', 'ded_activity_cities.id', '=', 'ded_activity_users.city_id')
-            ->whereDate('activities.created_at', now()->toDateString());
+        $query = DB::table($table)->whereNotNull($userColumn);
+        AdminCircleScope::applyToActivityQuery($query, $admin, $table . '.' . $userColumn, null);
+        $this->applySoftDeleteFilters($query, $table);
 
-        return (int) $this->applyDistrictCriteria($query, 'ded_activity_cities', $district)->count();
+        return (int) $query->count();
     }
 
-    private function districtCircleJoinRequests(array $district): int
+    private function districtCoinsEarned($admin): int
+    {
+        $query = User::query()->from('users');
+        AdminCircleScope::applyToUsersQuery($query, $admin);
+
+        return (int) $query->sum(DB::raw('COALESCE(users.coins_balance, 0)'));
+    }
+
+    private function districtCircleJoinRequests($admin): int
     {
         if (! Schema::hasTable('circle_join_requests')) {
             return 0;
         }
 
-        $query = DB::table('circle_join_requests')
-            ->join('circles as ded_request_circles', 'ded_request_circles.id', '=', 'circle_join_requests.circle_id')
-            ->join('cities as ded_request_cities', 'ded_request_cities.id', '=', 'ded_request_circles.city_id')
-            ->whereIn('circle_join_requests.status', [
-                'pending_cd_approval',
-                'pending_id_approval',
-                'pending_circle_fee',
-            ]);
-
-        return (int) $this->applyDistrictCriteria($query, 'ded_request_cities', $district)->count();
+        return (int) CircleJoinRequest::query()
+            ->visibleToAdminUser($admin)
+            ->whereIn('status', [
+                CircleJoinRequest::STATUS_PENDING_CD_APPROVAL,
+                CircleJoinRequest::STATUS_PENDING_ID_APPROVAL,
+                CircleJoinRequest::STATUS_PENDING_CIRCLE_FEE,
+            ])
+            ->count();
     }
 
-
-    private function applyDistrictCriteria($query, string $cityAlias, array $district)
+    private function applySoftDeleteFilters($query, string $table): void
     {
-        $query->whereRaw("LOWER({$cityAlias}.district) = ?", [mb_strtolower((string) $district['name'])]);
-
-        if (! empty($district['state'])) {
-            $query->whereRaw("LOWER(COALESCE({$cityAlias}.state, '')) = ?", [mb_strtolower((string) $district['state'])]);
+        if (Schema::hasColumn($table, 'deleted_at')) {
+            $query->whereNull($table . '.deleted_at');
         }
 
-        if (! empty($district['country'])) {
-            $query->whereRaw("LOWER(COALESCE({$cityAlias}.country, '')) = ?", [mb_strtolower((string) $district['country'])]);
+        if (Schema::hasColumn($table, 'is_deleted')) {
+            $query->where($table . '.is_deleted', false);
         }
-
-        return $query;
     }
 
     private function safeReportedPostsCount(): int

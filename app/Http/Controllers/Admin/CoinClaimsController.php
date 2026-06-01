@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CoinClaims\RejectCoinClaimRequest;
-use App\Models\Circle;
 use App\Models\CoinClaimRequest;
 use App\Models\User;
 use App\Services\CoinClaims\CoinClaimEmailService;
@@ -146,7 +145,7 @@ class CoinClaimsController extends Controller
         AdminCircleScope::applyToActivityQuery($query, Auth::guard('admin')->user(), 'coin_claim_requests.user_id', null);
 
         $claims = $query->orderByDesc('created_at')->paginate(25)->appends($request->query());
-        $circles = Circle::query()->orderBy('name')->get(['id', 'name']);
+        $circles = AdminCircleScope::circleOptions(auth('admin')->user());
 
         return view('admin.coin_claims.index', [
             'claims' => $claims,

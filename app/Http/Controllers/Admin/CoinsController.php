@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Circle;
 use App\Models\CoinLedger;
 use App\Models\User;
 use App\Support\AdminCircleScope;
@@ -44,7 +43,7 @@ class CoinsController extends Controller
         return view('admin.coins.index', [
             'members' => $members,
             'filters' => $filters,
-            'circles' => Circle::query()->orderBy('name')->get(['id', 'name']),
+            'circles' => AdminCircleScope::circleOptions(auth('admin')->user()),
             'activityStats' => $activityStats,
         ]);
     }

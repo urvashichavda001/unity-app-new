@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Circle;
 use App\Models\VisitorRegistration;
 use App\Services\Coins\CoinsService;
 use App\Support\AdminCircleScope;
@@ -164,7 +163,7 @@ class VisitorRegistrationsController extends Controller
             ->paginate(25)
             ->appends($request->query());
 
-        $circles = Circle::query()->orderBy('name')->get(['id', 'name']);
+        $circles = AdminCircleScope::circleOptions(auth('admin')->user());
 
         return view('admin.visitor_registrations.index', [
             'registrations' => $registrations,

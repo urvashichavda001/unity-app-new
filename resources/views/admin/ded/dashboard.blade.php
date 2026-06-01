@@ -18,31 +18,29 @@
         No district assigned. Please contact Global Admin.
     </div>
 @else
+    @php
+        $statCards = [
+            ['label' => 'Total District Peers', 'key' => 'peers'],
+            ['label' => 'Total District Circles', 'key' => 'circles'],
+            ['label' => 'Total Referrals', 'key' => 'referrals'],
+            ['label' => 'Total Requirements', 'key' => 'requirements'],
+            ['label' => 'Total Testimonials', 'key' => 'testimonials'],
+            ['label' => 'Total Business Deals', 'key' => 'businessDeals'],
+            ['label' => 'Total P2P Meetings', 'key' => 'p2pMeetings'],
+            ['label' => 'Total Coins Earned', 'key' => 'coinsEarned'],
+            ['label' => 'Pending Requests', 'key' => 'pendingRequests'],
+        ];
+    @endphp
+
     <div class="row g-3 mb-4">
-        <div class="col-sm-6 col-xl-3">
-            <div class="card p-3 h-100">
-                <p class="text-muted mb-1">District Peers</p>
-                <h4 class="mb-0">{{ number_format($stats['peers'] ?? 0) }}</h4>
+        @foreach ($statCards as $card)
+            <div class="col-sm-6 col-xl-4">
+                <div class="card p-3 h-100">
+                    <p class="text-muted mb-1">{{ $card['label'] }}</p>
+                    <h4 class="mb-0">{{ number_format($stats[$card['key']] ?? 0) }}</h4>
+                </div>
             </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card p-3 h-100">
-                <p class="text-muted mb-1">District Circles</p>
-                <h4 class="mb-0">{{ number_format($stats['activeCircles'] ?? 0) }}</h4>
-            </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card p-3 h-100">
-                <p class="text-muted mb-1">Activities Today</p>
-                <h4 class="mb-0">{{ number_format($stats['activitiesToday'] ?? 0) }}</h4>
-            </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card p-3 h-100">
-                <p class="text-muted mb-1">Pending Circle Requests</p>
-                <h4 class="mb-0">{{ number_format($stats['pendingCircleJoinRequests'] ?? 0) }}</h4>
-            </div>
-        </div>
+        @endforeach
     </div>
 
     <div class="card p-4">
@@ -66,7 +64,7 @@
                             <td>{{ $peer->display_name ?: trim(($peer->first_name ?? '') . ' ' . ($peer->last_name ?? '')) ?: '—' }}</td>
                             <td>{{ $peer->email ?? '—' }}</td>
                             <td>{{ $peer->company_name ?? '—' }}</td>
-                            <td>{{ $peer->city?->name ?? '—' }}</td>
+                            <td>{{ $peer->adminCity() }}</td>
                         </tr>
                     @empty
                         <tr>

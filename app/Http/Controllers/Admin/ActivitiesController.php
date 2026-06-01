@@ -230,20 +230,7 @@ class ActivitiesController extends Controller
 
     private function buildCircleFilterOptions($admin)
     {
-        $query = DB::table('circles')
-            ->select('circles.id', 'circles.name')
-            ->orderBy('circles.name');
-
-        if (\App\Support\AdminAccess::isCircleScoped($admin)) {
-            $circleId = AdminCircleScope::resolveCircleId($admin);
-            if ($circleId) {
-                $query->where('circles.id', $circleId);
-            } else {
-                $query->whereRaw('1=0');
-            }
-        }
-
-        return $query->get();
+        return AdminCircleScope::circleOptions($admin);
     }
 
     public function testimonials(User $member, Request $request): View
