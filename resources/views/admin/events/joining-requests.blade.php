@@ -6,10 +6,33 @@
 @php
     $statusClasses = [
         'pending' => 'warning text-dark',
+        'pending_payment' => 'warning text-dark',
+        'registered' => 'success',
         'approved' => 'success',
         'rejected' => 'danger',
         'cancelled' => 'secondary',
     ];
+    $requestReason = fn ($request) => $request->request_reason
+        ?? data_get($request->metadata, 'request_reason')
+        ?? data_get($request->metadata, 'reason')
+        ?? $request->registration_type
+        ?? $request->source
+        ?? null;
+    $adminNote = fn ($request) => $request->admin_note
+        ?? data_get($request->metadata, 'admin_note')
+        ?? null;
+    $approvedAt = fn ($request) => $request->approved_at
+        ?? data_get($request->metadata, 'approved_at')
+        ?? null;
+    $rejectedAt = fn ($request) => $request->rejected_at
+        ?? data_get($request->metadata, 'rejected_at')
+        ?? null;
+    $approvedByName = fn ($request) => method_exists($request, 'approvedBy')
+        ? ($request->approvedBy?->display_name ?? '-')
+        : (data_get($request->metadata, 'approved_by_user_id') ?: '-');
+    $rejectedByName = fn ($request) => method_exists($request, 'rejectedBy')
+        ? ($request->rejectedBy?->display_name ?? '-')
+        : (data_get($request->metadata, 'rejected_by_user_id') ?: '-');
 @endphp
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-start mb-3">
@@ -112,11 +135,11 @@
                             <div class="small text-muted">{{ ucfirst((string) ($event?->mode ?? '-')) }} @if($event?->location_text) · {{ $event->location_text }} @endif</div>
                         </td>
                         <td style="max-width:260px;">
-                            <span class="d-inline-block text-truncate" style="max-width:230px;">{{ $joinRequest->request_reason ?: '-' }}</span>
+                            <span class="d-inline-block text-truncate" style="max-width:230px;">{{ $requestReason($joinRequest) ?: '-' }}</span>
                         </td>
                         <td><span class="badge bg-{{ $badge }}">{{ ucfirst($joinRequest->status) }}</span></td>
                         <td>{{ optional($joinRequest->created_at)->format('d M Y h:i A') }}</td>
-                        <td style="max-width:220px;"><span class="d-inline-block text-truncate" style="max-width:200px;">{{ $joinRequest->admin_note ?: '-' }}</span></td>
+                        <td style="max-width:220px;"><span class="d-inline-block text-truncate" style="max-width:200px;">{{ $adminNote($joinRequest) ?: '-' }}</span></td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#{{ $modalId }}">View</button>
                             @if($joinRequest->status === 'pending')
@@ -124,8 +147,8 @@
                                 <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#reject{{ $joinRequest->id }}">Reject</button>
                             @else
                                 <div class="small text-muted mt-1">
-                                    @if($joinRequest->status === 'approved') Approved {{ optional($joinRequest->approved_at)->diffForHumans() }} @endif
-                                    @if($joinRequest->status === 'rejected') Rejected {{ optional($joinRequest->rejected_at)->diffForHumans() }} @endif
+                                    @if($joinRequest->status === 'approved') Approved {{ $approvedAt($joinRequest) ? \Illuminate\Support\Carbon::parse($approvedAt($joinRequest))->diffForHumans() : '' }} @endif
+                                    @if($joinRequest->status === 'rejected') Rejected {{ $rejectedAt($joinRequest) ? \Illuminate\Support\Carbon::parse($rejectedAt($joinRequest))->diffForHumans() : '' }} @endif
                                 </div>
                             @endif
                         </td>
@@ -141,13 +164,13 @@
                                         <dl class="row small mb-0">
                                             <dt class="col-5">Request ID</dt><dd class="col-7">{{ $joinRequest->id }}</dd>
                                             <dt class="col-5">Status</dt><dd class="col-7"><span class="badge bg-{{ $badge }}">{{ ucfirst($joinRequest->status) }}</span></dd>
-                                            <dt class="col-5">Reason</dt><dd class="col-7">{{ $joinRequest->request_reason ?: '-' }}</dd>
-                                            <dt class="col-5">Admin Note</dt><dd class="col-7">{{ $joinRequest->admin_note ?: '-' }}</dd>
+                                            <dt class="col-5">Reason</dt><dd class="col-7">{{ $requestReason($joinRequest) ?: '-' }}</dd>
+                                            <dt class="col-5">Admin Note</dt><dd class="col-7">{{ $adminNote($joinRequest) ?: '-' }}</dd>
                                             <dt class="col-5">Requested At</dt><dd class="col-7">{{ optional($joinRequest->created_at)->format('d M Y h:i A') }}</dd>
-                                            <dt class="col-5">Approved At</dt><dd class="col-7">{{ optional($joinRequest->approved_at)->format('d M Y h:i A') ?: '-' }}</dd>
-                                            <dt class="col-5">Rejected At</dt><dd class="col-7">{{ optional($joinRequest->rejected_at)->format('d M Y h:i A') ?: '-' }}</dd>
-                                            <dt class="col-5">Approved By</dt><dd class="col-7">{{ $joinRequest->approvedBy?->display_name ?? '-' }}</dd>
-                                            <dt class="col-5">Rejected By</dt><dd class="col-7">{{ $joinRequest->rejectedBy?->display_name ?? '-' }}</dd>
+                                            <dt class="col-5">Approved At</dt><dd class="col-7">{{ $approvedAt($joinRequest) ? optional(\Illuminate\Support\Carbon::parse($approvedAt($joinRequest)))->format('d M Y h:i A') : '-' }}</dd>
+                                            <dt class="col-5">Rejected At</dt><dd class="col-7">{{ $rejectedAt($joinRequest) ? optional(\Illuminate\Support\Carbon::parse($rejectedAt($joinRequest)))->format('d M Y h:i A') : '-' }}</dd>
+                                            <dt class="col-5">Approved By</dt><dd class="col-7">{{ $approvedByName($joinRequest) }}</dd>
+                                            <dt class="col-5">Rejected By</dt><dd class="col-7">{{ $rejectedByName($joinRequest) }}</dd>
                                         </dl>
                                     </div>
                                     <div class="col-md-6">
