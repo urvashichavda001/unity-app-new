@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\BusinessDeal;
 use App\Models\Circle;
 use App\Models\CircleJoinRequest;
+use App\Models\CollaborationPost;
 use App\Models\CoinClaimRequest;
 use App\Models\CoinsLedger;
 use App\Models\Event;
@@ -223,6 +224,10 @@ class DedApiService
             'referrals' => [Referral::class, ['fromUser', 'toUser'], 'referrals.from_user_id', 'referrals.to_user_id', ['referral_of', 'phone', 'email', 'remarks', 'referral_type'], 'referral_date'],
             'p2p-meetings' => [P2PMeetingRequest::class, ['requester', 'invitee'], 'p2p_meeting_requests.requester_id', 'p2p_meeting_requests.invitee_id', ['place', 'message', 'status'], 'scheduled_at'],
             'business-deals' => [BusinessDeal::class, ['fromUser', 'toUser'], 'business_deals.from_user_id', 'business_deals.to_user_id', ['business_type', 'comment'], 'deal_date'],
+            'become-a-leader' => [LeaderInterestSubmission::class, ['user'], 'leader_interest_submissions.user_id', null, ['applying_for', 'referred_name', 'referred_mobile', 'primary_domain', 'contribute_city', 'message'], 'created_at'],
+            'recommend-a-peer' => [PeerRecommendation::class, ['user'], 'peer_recommendations.user_id', null, ['peer_name', 'peer_mobile', 'peer_email', 'peer_city', 'peer_business', 'note'], 'created_at'],
+            'find-build-collaborations' => [CollaborationPost::class, ['user', 'acceptedByUser', 'collaborationType', 'industry'], 'collaboration_posts.user_id', 'collaboration_posts.accepted_by_user_id', ['title', 'description', 'collaboration_type', 'scope', 'preferred_model', 'business_stage', 'urgency', 'status'], 'posted_at'],
+            'register-a-visitor' => [VisitorRegistration::class, ['user'], 'visitor_registrations.user_id', null, ['event_name', 'visitor_full_name', 'visitor_mobile', 'visitor_email', 'visitor_city', 'visitor_business', 'status'], 'created_at'],
             default => abort(404, 'Unknown activity type.'),
         };
     }

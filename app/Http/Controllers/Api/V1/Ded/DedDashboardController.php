@@ -20,7 +20,7 @@ class DedDashboardController extends DedBaseController
             'assigned_state' => ['id' => $district['state_id'] ?? null, 'name' => $district['state_name'] ?? null],
             'assigned_district' => ['id' => $district['id'] ?? null, 'name' => $district['name'] ?? null],
             'permissions' => ['district_scope' => true, 'approve_pending_requests' => true],
-            'available_modules' => ['dashboard', 'circles', 'peers', 'activities', 'coins', 'pending_requests', 'reports'],
+            'available_modules' => ['dashboard', 'activities', 'referral_report', 'pending_requests', 'peers', 'coins', 'life_impact'],
         ], 'DED context fetched successfully.');
     }
 

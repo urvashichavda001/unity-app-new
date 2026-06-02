@@ -155,6 +155,97 @@
       }
     },
     {
+      "name": "Dashboard Circles",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/dashboard/circles?search=&per_page=100"
+      }
+    },
+    {
+      "name": "Become A Leader",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/activities/become-a-leader?per_page=20"
+      }
+    },
+    {
+      "name": "Recommend A Peer",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/activities/recommend-a-peer?per_page=20"
+      }
+    },
+    {
+      "name": "Find & Build Collaborations",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/activities/find-build-collaborations?per_page=20"
+      }
+    },
+    {
+      "name": "Register A Visitor",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/activities/register-a-visitor?per_page=20"
+      }
+    },
+    {
+      "name": "Referral Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/referral-report?per_page=20"
+      }
+    },
+    {
+      "name": "Life Impact",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{base_url}}/api/v1/ded/life-impact?per_page=20"
+      }
+    },
+    {
       "name": "Circles",
       "request": {
         "method": "GET",

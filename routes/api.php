@@ -118,45 +118,49 @@ Route::prefix('v1/ded/auth')->group(function () {
 Route::middleware(['auth:sanctum', 'ensure.ded.api'])->prefix('v1/ded')->group(function () {
     Route::get('/me', [DedDashboardController::class, 'me']);
     Route::get('/dashboard', [DedDashboardController::class, 'dashboard']);
+    Route::get('/dashboard/circles', [DedDashboardController::class, 'circles']);
     Route::get('/circles', [DedDashboardController::class, 'circles']);
 
     Route::get('/peers', [DedPeersController::class, 'index']);
-    Route::get('/peers/{id}', [DedPeersController::class, 'show'])->whereUuid('id');
+    Route::get('/peers/{id}', [DedPeersController::class, 'show']);
 
     Route::get('/activities/summary', [DedActivitiesController::class, 'summary']);
-    foreach (['testimonials', 'requirements', 'referrals', 'p2p-meetings', 'business-deals'] as $activityType) {
+    foreach (['testimonials', 'requirements', 'referrals', 'p2p-meetings', 'business-deals', 'become-a-leader', 'recommend-a-peer', 'find-build-collaborations', 'register-a-visitor'] as $activityType) {
         Route::get("/activities/{$activityType}", [DedActivitiesController::class, 'index'])->defaults('type', $activityType);
-        Route::get("/activities/{$activityType}/{id}", [DedActivitiesController::class, 'show'])->whereUuid('id')->defaults('type', $activityType);
+        Route::get("/activities/{$activityType}/{id}", [DedActivitiesController::class, 'show'])->defaults('type', $activityType);
     }
 
     Route::get('/coins', [DedCoinsController::class, 'index']);
     Route::get('/coins/history', [DedCoinsController::class, 'history']);
 
+    Route::get('/referral-report', [DedReportsController::class, 'referralReport']);
+    Route::get('/life-impact', [DedReportsController::class, 'lifeImpact']);
+
     Route::get('/pending-requests/summary', [DedPendingRequestsController::class, 'summary']);
     Route::get('/pending-requests/visitor-registrations', [DedPendingRequestsController::class, 'visitorRegistrations']);
-    Route::get('/pending-requests/visitor-registrations/{id}', [DedPendingRequestsController::class, 'visitorRegistrationShow'])->whereUuid('id');
-    Route::post('/pending-requests/visitor-registrations/{id}/approve', [DedPendingRequestsController::class, 'approveVisitor'])->whereUuid('id');
-    Route::post('/pending-requests/visitor-registrations/{id}/reject', [DedPendingRequestsController::class, 'rejectVisitor'])->whereUuid('id');
+    Route::get('/pending-requests/visitor-registrations/{id}', [DedPendingRequestsController::class, 'visitorRegistrationShow']);
+    Route::post('/pending-requests/visitor-registrations/{id}/approve', [DedPendingRequestsController::class, 'approveVisitor']);
+    Route::post('/pending-requests/visitor-registrations/{id}/reject', [DedPendingRequestsController::class, 'rejectVisitor']);
 
     Route::get('/pending-requests/event-joining-requests', [DedPendingRequestsController::class, 'eventJoiningRequests']);
-    Route::get('/pending-requests/event-joining-requests/{id}', [DedPendingRequestsController::class, 'eventJoiningRequestShow'])->whereUuid('id');
-    Route::post('/pending-requests/event-joining-requests/{id}/approve', [DedPendingRequestsController::class, 'approveEventJoining'])->whereUuid('id');
-    Route::post('/pending-requests/event-joining-requests/{id}/reject', [DedPendingRequestsController::class, 'rejectEventJoining'])->whereUuid('id');
+    Route::get('/pending-requests/event-joining-requests/{id}', [DedPendingRequestsController::class, 'eventJoiningRequestShow']);
+    Route::post('/pending-requests/event-joining-requests/{id}/approve', [DedPendingRequestsController::class, 'approveEventJoining']);
+    Route::post('/pending-requests/event-joining-requests/{id}/reject', [DedPendingRequestsController::class, 'rejectEventJoining']);
 
     Route::get('/pending-requests/coin-claims', [DedPendingRequestsController::class, 'coinClaims']);
-    Route::get('/pending-requests/coin-claims/{id}', [DedPendingRequestsController::class, 'coinClaimShow'])->whereUuid('id');
-    Route::post('/pending-requests/coin-claims/{id}/approve', [DedPendingRequestsController::class, 'approveCoinClaim'])->whereUuid('id');
-    Route::post('/pending-requests/coin-claims/{id}/reject', [DedPendingRequestsController::class, 'rejectCoinClaim'])->whereUuid('id');
+    Route::get('/pending-requests/coin-claims/{id}', [DedPendingRequestsController::class, 'coinClaimShow']);
+    Route::post('/pending-requests/coin-claims/{id}/approve', [DedPendingRequestsController::class, 'approveCoinClaim']);
+    Route::post('/pending-requests/coin-claims/{id}/reject', [DedPendingRequestsController::class, 'rejectCoinClaim']);
 
     Route::get('/pending-requests/circle-joining-requests', [DedPendingRequestsController::class, 'circleJoinRequests']);
-    Route::get('/pending-requests/circle-joining-requests/{id}', [DedPendingRequestsController::class, 'circleJoinRequestShow'])->whereUuid('id');
-    Route::post('/pending-requests/circle-joining-requests/{id}/ded-approve', [DedPendingRequestsController::class, 'dedApproveCircleJoin'])->whereUuid('id');
-    Route::post('/pending-requests/circle-joining-requests/{id}/reject', [DedPendingRequestsController::class, 'rejectCircleJoin'])->whereUuid('id');
+    Route::get('/pending-requests/circle-joining-requests/{id}', [DedPendingRequestsController::class, 'circleJoinRequestShow']);
+    Route::post('/pending-requests/circle-joining-requests/{id}/ded-approve', [DedPendingRequestsController::class, 'dedApproveCircleJoin']);
+    Route::post('/pending-requests/circle-joining-requests/{id}/reject', [DedPendingRequestsController::class, 'rejectCircleJoin']);
 
     Route::get('/pending-requests/pending-impacts', [DedPendingRequestsController::class, 'pendingImpacts']);
-    Route::get('/pending-requests/pending-impacts/{id}', [DedPendingRequestsController::class, 'pendingImpactShow'])->whereUuid('id');
-    Route::post('/pending-requests/pending-impacts/{id}/approve', [DedPendingRequestsController::class, 'approveImpact'])->whereUuid('id');
-    Route::post('/pending-requests/pending-impacts/{id}/reject', [DedPendingRequestsController::class, 'rejectImpact'])->whereUuid('id');
+    Route::get('/pending-requests/pending-impacts/{id}', [DedPendingRequestsController::class, 'pendingImpactShow']);
+    Route::post('/pending-requests/pending-impacts/{id}/approve', [DedPendingRequestsController::class, 'approveImpact']);
+    Route::post('/pending-requests/pending-impacts/{id}/reject', [DedPendingRequestsController::class, 'rejectImpact']);
 
     Route::get('/reports/referrals', [DedReportsController::class, 'referrals']);
     Route::get('/reports/activities', [DedReportsController::class, 'activities']);

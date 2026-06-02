@@ -57,7 +57,8 @@ Successful verify response:
 ### Context and Dashboard
 - `GET /me` — DED profile, assigned state/district, permissions, modules.
 - `GET /dashboard?circle_id=&date_from=&date_to=` — district dashboard stats, optional circle/date filters.
-- `GET /circles?search=&status=&per_page=` — district circles.
+- `GET /dashboard/circles?search=&status=&per_page=` — district circles for the dashboard circle filter.
+- `GET /circles?search=&status=&per_page=` — backwards-compatible alias for dashboard circle options.
 
 ### Peers
 - `GET /peers?search=&circle_id=&membership_status=&status=&per_page=` — district peers.
@@ -75,10 +76,20 @@ Successful verify response:
 - `GET /activities/p2p-meetings/{id}`
 - `GET /activities/business-deals?search=&circle_id=&date_from=&date_to=&per_page=`
 - `GET /activities/business-deals/{id}`
+- `GET /activities/become-a-leader?search=&circle_id=&date_from=&date_to=&per_page=`
+- `GET /activities/recommend-a-peer?search=&circle_id=&date_from=&date_to=&per_page=`
+- `GET /activities/find-build-collaborations?search=&circle_id=&date_from=&date_to=&per_page=`
+- `GET /activities/register-a-visitor?search=&circle_id=&date_from=&date_to=&per_page=`
+
+### Referral Report
+- `GET /referral-report?date_from=&date_to=&per_page=` — district referral report.
 
 ### Coins
 - `GET /coins?search=&circle_id=&per_page=` — district coin balances.
 - `GET /coins/history?user_id=&date_from=&date_to=&per_page=` — district coin ledger.
+
+### Life Impact
+- `GET /life-impact?search=&circle_id=&activity_type=&date_from=&date_to=&per_page=` — district life impact history.
 
 ### Pending Requests
 - `GET /pending-requests/summary`
