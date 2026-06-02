@@ -254,6 +254,7 @@ class UsersController extends Controller
                 ->when($adminUserForRoles, fn ($query) => $query->orWhere('admin_user_id', $adminUserForRoles->id))
                 ->value('industry_id')
             : null;
+    
         $assignedIndustryId = null;
 
         if ($adminUserForRoles && Schema::hasTable('industry_director_assignments')) {
