@@ -4,6 +4,7 @@ use App\Http\Middleware\AdminCircleScope;
 use App\Http\Middleware\AdminRoleMiddleware;
 use App\Http\Middleware\AllowFixedMembersToken;
 use App\Http\Middleware\EnsureAdminAuthenticated;
+use App\Http\Middleware\EnsureDedApi;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.role' => AdminRoleMiddleware::class,
             'admin.circle' => AdminCircleScope::class,
             'fixed.members.token' => AllowFixedMembersToken::class,
+            'ensure.ded.api' => EnsureDedApi::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -39,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             if ($e instanceof ValidationException) {
                 return response()->json([
+                    'success' => false,
                     'status' => false,
                     'message' => $e->getMessage(),
                     'errors' => $e->errors(),
@@ -52,6 +55,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 : 500;
 
             $payload = [
+                'success' => false,
                 'status' => false,
                 'message' => $e->getMessage() ?: 'Something went wrong.',
                 'data' => null,

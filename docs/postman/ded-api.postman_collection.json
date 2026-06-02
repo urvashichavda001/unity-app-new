@@ -1,0 +1,35 @@
+{
+  "info": {"name": "DED API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}", "type": "string"}]},
+  "variable": [
+    {"key":"base_url","value":"http://localhost"},{"key":"token","value":""},{"key":"ded_peer_id","value":""},{"key":"circle_id","value":""},{"key":"testimonial_id","value":""},{"key":"requirement_id","value":""},{"key":"referral_id","value":""},{"key":"p2p_meeting_id","value":""},{"key":"business_deal_id","value":""},{"key":"visitor_request_id","value":""},{"key":"event_request_id","value":""},{"key":"coin_claim_id","value":""},{"key":"circle_join_request_id","value":""},{"key":"pending_impact_id","value":""}
+  ],
+  "item": [
+    {"name":"Me","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/me"}},
+    {"name":"Dashboard","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/dashboard?circle_id={{circle_id}}"}},
+    {"name":"Circles","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/circles?search=&per_page=20"}},
+    {"name":"Peers","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/peers?circle_id={{circle_id}}&per_page=20"}},
+    {"name":"Peer Detail","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/peers/{{ded_peer_id}}"}},
+    {"name":"Activity Summary","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/activities/summary?circle_id={{circle_id}}"}},
+    {"name":"Testimonials","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/activities/testimonials?per_page=20"}},
+    {"name":"Requirements","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/activities/requirements?per_page=20"}},
+    {"name":"Referrals","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/activities/referrals?per_page=20"}},
+    {"name":"P2P Meetings","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/activities/p2p-meetings?per_page=20"}},
+    {"name":"Business Deals","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/activities/business-deals?per_page=20"}},
+    {"name":"Coins","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/coins?per_page=20"}},
+    {"name":"Coins History","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/coins/history?user_id={{ded_peer_id}}"}},
+    {"name":"Pending Summary","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/summary"}},
+    {"name":"Visitor Registrations","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/visitor-registrations?status=pending"}},
+    {"name":"Approve Visitor","request":{"method":"POST","header":[{"key":"Accept","value":"application/json"},{"key":"Content-Type","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/visitor-registrations/{{visitor_request_id}}/approve"}},
+    {"name":"Event Joining Requests","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/event-joining-requests?status=pending"}},
+    {"name":"Approve Event Request","request":{"method":"POST","header":[{"key":"Accept","value":"application/json"},{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"admin_note\":\"Approved\"}"},"url":"{{base_url}}/api/v1/ded/pending-requests/event-joining-requests/{{event_request_id}}/approve"}},
+    {"name":"Coin Claims","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/coin-claims?status=pending"}},
+    {"name":"Circle Joining Requests","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/circle-joining-requests?status=pending_cd_approval"}},
+    {"name":"DED Approve Circle Join","request":{"method":"POST","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/circle-joining-requests/{{circle_join_request_id}}/ded-approve"}},
+    {"name":"Pending Impacts","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/pending-requests/pending-impacts?status=pending"}},
+    {"name":"Reports - Referrals","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/reports/referrals"}},
+    {"name":"Reports - Activities","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/reports/activities"}},
+    {"name":"Reports - Coins","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/reports/coins"}},
+    {"name":"Reports - Pending Requests","request":{"method":"GET","header":[{"key":"Accept","value":"application/json"}],"url":"{{base_url}}/api/v1/ded/reports/pending-requests"}}
+  ]
+}
