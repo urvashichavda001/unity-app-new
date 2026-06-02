@@ -249,11 +249,7 @@ class UsersController extends Controller
             : collect();
         $assignedIndustryId = null;
 
-        if (
-            isset($adminUserForRoles)
-            && $adminUserForRoles
-            && Schema::hasTable('industry_director_assignments')
-        ) {
+        if ($adminUserForRoles && Schema::hasTable('industry_director_assignments')) {
             $assignedIndustryId = DB::table('industry_director_assignments')
                 ->where('admin_user_id', $adminUserForRoles->id)
                 ->where('is_active', true)
