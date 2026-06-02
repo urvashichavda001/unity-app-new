@@ -88,6 +88,8 @@ use App\Http\Controllers\Api\V1\PostReportReasonsController;
 use App\Http\Controllers\Api\V1\Profile\MyPostsController;
 use App\Http\Controllers\Api\V1\PushTokenController;
 use App\Http\Controllers\Api\V1\RazorpayWebhookController;
+use App\Http\Controllers\Api\V1\ScanAppAuthController;
+use App\Http\Controllers\Api\V1\ScanAppEventController;
 use App\Http\Controllers\Api\V1\RequirementController as V1RequirementController;
 use App\Http\Controllers\Api\V1\RequirementInterestController;
 use App\Http\Controllers\Api\V1\TimelineRequirementController;
@@ -103,6 +105,18 @@ use App\Http\Controllers\Api\WalletController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+    Route::prefix('scan-app')->group(function () {
+        Route::post('/login', [ScanAppAuthController::class, 'login']);
+
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::get('/me', [ScanAppAuthController::class, 'me']);
+            Route::post('/logout', [ScanAppAuthController::class, 'logout']);
+            Route::get('/events', [ScanAppEventController::class, 'index']);
+            Route::post('/events/{event}/scan', [ScanAppEventController::class, 'scan'])->whereUuid('event');
+            Route::get('/events/{event}/attendance-history', [ScanAppEventController::class, 'attendanceHistory'])->whereUuid('event');
+        });
+    });
+
     Route::prefix('auth')->group(function () {
         Route::post('register', [AuthController::class, 'register']);
         Route::post('login', [AuthController::class, 'login']);
