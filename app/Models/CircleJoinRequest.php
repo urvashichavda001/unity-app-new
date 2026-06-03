@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class CircleJoinRequest extends Model
@@ -87,6 +88,31 @@ class CircleJoinRequest extends Model
         static::creating(function (self $request): void {
             if (! $request->id) {
                 $request->id = (string) Str::uuid();
+            }
+        });
+
+        static::saving(function (self $request): void {
+            if (! Schema::hasTable('circle_join_requests') || ! Schema::hasColumn('circle_join_requests', 'ded_approval_status')) {
+                return;
+            }
+
+            $status = (string) $request->status;
+            $dedStatus = (string) ($request->ded_approval_status ?: 'pending');
+
+            if (in_array($status, [self::STATUS_PENDING_CIRCLE_FEE, self::STATUS_CIRCLE_MEMBER, self::STATUS_PAID], true) && $dedStatus === 'pending') {
+                $request->ded_approval_status = 'approved';
+
+                if (Schema::hasColumn('circle_join_requests', 'ded_approved_by') && ! $request->ded_approved_by) {
+                    $request->ded_approved_by = $request->id_approved_by ?: $request->cd_approved_by;
+                }
+
+                if (Schema::hasColumn('circle_join_requests', 'ded_approved_at') && ! $request->ded_approved_at) {
+                    $request->ded_approved_at = $request->id_approved_at ?: ($request->cd_approved_at ?: ($request->fee_marked_at ?: now()));
+                }
+            }
+
+            if (in_array($status, [self::STATUS_REJECTED_BY_CD, self::STATUS_REJECTED_BY_ID, self::STATUS_CANCELLED], true) && $dedStatus === 'pending') {
+                $request->ded_approval_status = 'rejected';
             }
         });
     }

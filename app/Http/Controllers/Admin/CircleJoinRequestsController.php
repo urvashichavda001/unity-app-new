@@ -33,6 +33,7 @@ class CircleJoinRequestsController extends Controller
     {
         $admin = Auth::guard('admin')->user();
         $actor = AdminAccess::resolveAppUser($admin);
+        $this->reconcileDedApprovalWorkflowState();
 
         $query = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy', 'dedApprovedBy']);
         $query->visibleToAdminUser($admin);
@@ -86,6 +87,7 @@ class CircleJoinRequestsController extends Controller
     {
         $admin = Auth::guard('admin')->user();
         $actor = AdminAccess::resolveAppUser($admin);
+        $this->reconcileDedApprovalWorkflowState($id);
 
         $record = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy', 'dedApprovedBy'])->findOrFail($id);
         abort_unless($this->canAccessRecord($admin, $actor, $record), 403);
@@ -199,6 +201,12 @@ class CircleJoinRequestsController extends Controller
                 $request->id_rejected_by = null;
                 $request->id_rejected_at = null;
                 $request->id_rejection_reason = null;
+
+                if ($this->hasDedApprovalColumns() && (string) ($request->ded_approval_status ?? 'pending') === 'pending') {
+                    $request->ded_approval_status = 'approved';
+                    $request->ded_approved_by = $actor->id;
+                    $request->ded_approved_at = now();
+                }
             } else {
                 throw ValidationException::withMessages([
                     'status' => ["Invalid status transition from {$oldStatus}."],
@@ -243,6 +251,10 @@ class CircleJoinRequestsController extends Controller
             $request->ded_approval_status = 'approved';
             $request->ded_approved_by = $actor->id;
             $request->ded_approved_at = now();
+            $request->status = CircleJoinRequest::STATUS_PENDING_CIRCLE_FEE;
+            if (Schema::hasColumn('circle_join_requests', 'fee_marked_at') && ! $request->fee_marked_at) {
+                $request->fee_marked_at = now();
+            }
             $request->save();
 
             $this->writeDedApprovalAuditLog($admin, $actor, $request);
@@ -378,8 +390,58 @@ class CircleJoinRequestsController extends Controller
     {
         return [
             CircleJoinRequest::STATUS_PENDING_CD_APPROVAL,
-            CircleJoinRequest::STATUS_PENDING_ID_APPROVAL,
         ];
+    }
+
+    private function reconcileDedApprovalWorkflowState(?string $requestId = null): void
+    {
+        if (! $this->hasDedApprovalColumns()) {
+            return;
+        }
+
+        $now = now();
+        $approvedStatuses = [
+            CircleJoinRequest::STATUS_PENDING_CIRCLE_FEE,
+            CircleJoinRequest::STATUS_CIRCLE_MEMBER,
+            CircleJoinRequest::STATUS_PAID,
+        ];
+
+        $approvedQuery = DB::table('circle_join_requests')
+            ->whereIn('status', $approvedStatuses)
+            ->where('ded_approval_status', 'pending');
+
+        if ($requestId) {
+            $approvedQuery->where('id', $requestId);
+        }
+
+        $approvedPayload = [
+            'ded_approval_status' => 'approved',
+            'ded_approved_at' => DB::raw('COALESCE(ded_approved_at, id_approved_at, cd_approved_at, fee_marked_at, updated_at, NOW())'),
+            'updated_at' => $now,
+        ];
+
+        if (Schema::hasColumn('circle_join_requests', 'ded_approved_by')) {
+            $approvedPayload['ded_approved_by'] = DB::raw('COALESCE(ded_approved_by, id_approved_by, cd_approved_by)');
+        }
+
+        $approvedQuery->update($approvedPayload);
+
+        $rejectedQuery = DB::table('circle_join_requests')
+            ->whereIn('status', [
+                CircleJoinRequest::STATUS_REJECTED_BY_CD,
+                CircleJoinRequest::STATUS_REJECTED_BY_ID,
+                CircleJoinRequest::STATUS_CANCELLED,
+            ])
+            ->where('ded_approval_status', 'pending');
+
+        if ($requestId) {
+            $rejectedQuery->where('id', $requestId);
+        }
+
+        $rejectedQuery->update([
+            'ded_approval_status' => 'rejected',
+            'updated_at' => $now,
+        ]);
     }
 
     private function hasDedApprovalColumns(): bool
