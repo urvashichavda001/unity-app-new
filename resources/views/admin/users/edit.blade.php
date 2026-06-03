@@ -717,7 +717,7 @@
                             @enderror
                         </div>
                         <div class="col-12">
-                            <div class="form-text">Districts are loaded from the canonical districts table for the selected state. New user/circle locations sync into that table automatically.</div>
+                            <div class="form-text">Only districts currently used by users, circles, or DED assignments are shown for the selected state.</div>
                         </div>
                     </div>
 
