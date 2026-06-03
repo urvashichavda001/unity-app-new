@@ -15,6 +15,7 @@ use App\Support\AdminAccess;
 use App\Support\AdminCircleScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -56,6 +57,25 @@ class EventManagementController extends Controller
     public function joiningRequests(Request $request): View
     {
         $status = $request->input('status', 'pending');
+        $admin = Auth::guard('admin')->user();
+        $requestTable = (new EventRegistrationRequest())->getTable();
+
+        if (! Schema::hasTable($requestTable)) {
+            $summary = ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'total' => 0];
+            $requests = new LengthAwarePaginator(
+                collect(),
+                0,
+                (int) $request->input('per_page', 20),
+                (int) $request->input('page', 1),
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+            $eventsQuery = Event::query()->orderBy('title');
+            AdminCircleScope::applyToEventsQuery($eventsQuery, $admin);
+            $events = $eventsQuery->get(['id', 'title']);
+
+            return view('admin.events.joining-requests', compact('requests', 'summary', 'events', 'status'));
+        }
+
         $query = EventRegistrationRequest::query()
             ->with([
                 'user.circleMemberships.circle',
@@ -86,7 +106,6 @@ class EventManagementController extends Controller
                 });
             });
 
-        $admin = Auth::guard('admin')->user();
         $this->applyJoiningRequestScope($query, $admin);
 
         $summaryBase = EventRegistrationRequest::query();
@@ -108,6 +127,7 @@ class EventManagementController extends Controller
 
     public function approveJoiningRequest(Request $request, string $id): RedirectResponse
     {
+        abort_unless(Schema::hasTable((new EventRegistrationRequest())->getTable()), 404);
         $joiningRequest = EventRegistrationRequest::query()->findOrFail($id);
         abort_unless($this->canAccessJoiningRequest($joiningRequest), 403);
         $joiningRequest->forceFill([
@@ -123,6 +143,7 @@ class EventManagementController extends Controller
     public function rejectJoiningRequest(Request $request, string $id): RedirectResponse
     {
         $data = $request->validate(['admin_note' => ['required', 'string', 'max:2000']]);
+        abort_unless(Schema::hasTable((new EventRegistrationRequest())->getTable()), 404);
         $joiningRequest = EventRegistrationRequest::query()->findOrFail($id);
         abort_unless($this->canAccessJoiningRequest($joiningRequest), 403);
         $joiningRequest->forceFill([
@@ -217,11 +238,18 @@ class EventManagementController extends Controller
             return;
         }
 
-        $query->where(function ($scopeQuery) use ($admin) {
+        $requestTable = (new EventRegistrationRequest())->getTable();
+
+        if (! Schema::hasTable($requestTable) || ! Schema::hasColumn($requestTable, 'user_id')) {
+            $query->whereRaw('1=0');
+            return;
+        }
+
+        $query->where(function ($scopeQuery) use ($admin, $requestTable) {
             $scopeQuery->whereHas('event', function ($eventQuery) use ($admin): void {
                 AdminCircleScope::applyToEventsQuery($eventQuery, $admin);
-            })->orWhere(function ($userScope) use ($admin): void {
-                AdminCircleScope::applyToActivityQuery($userScope, $admin, 'event_registration_requests.user_id', null);
+            })->orWhere(function ($userScope) use ($admin, $requestTable): void {
+                AdminCircleScope::applyToActivityQuery($userScope, $admin, "{$requestTable}.user_id", null);
             });
         });
     }
