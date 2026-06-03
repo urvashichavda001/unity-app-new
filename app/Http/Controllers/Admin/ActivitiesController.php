@@ -41,13 +41,40 @@ class ActivitiesController extends Controller
             ->paginate($filters['per_page'])
             ->withQueryString();
 
+        $topDistrictPeers = $this->buildTopDistrictPeers(clone $summaryQuery);
+
         $circles = $this->buildCircleFilterOptions($admin);
 
         return view('admin.activities.index', [
             'members' => $members,
             'filters' => $filters,
             'circles' => $circles,
+            'topDistrictPeers' => $topDistrictPeers,
         ]);
+    }
+
+
+    private function buildTopDistrictPeers($summaryQuery)
+    {
+        return $summaryQuery
+            ->get()
+            ->map(function ($peer) {
+                $peer->performance_score = collect([
+                    'testimonials_count',
+                    'referrals_count',
+                    'requirements_count',
+                    'business_deals_count',
+                    'p2p_completed_count',
+                    'become_leader_count',
+                    'recommend_peer_count',
+                    'register_visitor_count',
+                ])->sum(fn (string $column) => (int) ($peer->{$column} ?? 0));
+
+                return $peer;
+            })
+            ->sortByDesc('performance_score')
+            ->take(5)
+            ->values();
     }
 
     private function buildPeerSummaryQuery(array $filters, $admin)

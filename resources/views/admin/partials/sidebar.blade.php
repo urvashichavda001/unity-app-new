@@ -113,7 +113,8 @@
         ['label' => 'Event Joining Requests', 'route' => 'admin.event-joining-requests.index'],
     ];
     $eventsManagementActive = request()->routeIs('admin.events.*') || request()->routeIs('admin.event-joining-requests.*');
-    $navItems = array_values(array_filter($navItems, fn ($item) => ($item['label'] ?? null) !== 'Events Management'));
+    $bottomNavItems = array_values(array_filter($navItems, fn ($item) => ($item['label'] ?? null) === 'Email Logs'));
+    $navItems = array_values(array_filter($navItems, fn ($item) => ! in_array(($item['label'] ?? null), ['Events Management', 'Email Logs'], true)));
 @endphp
 
 <aside class="admin-sidebar d-flex flex-column">
@@ -205,27 +206,6 @@
                 </div>
             </li>
 
-            @if (! $isDed)
-            <li class="nav-item menu-parent {{ $leadsActive ? 'open' : '' }}">
-                <a class="nav-link d-flex justify-content-between align-items-center {{ $leadsActive ? 'active' : '' }}" data-bs-toggle="collapse" href="#leadsSubmenu" role="button" aria-expanded="{{ $leadsActive ? 'true' : 'false' }}" aria-controls="leadsSubmenu">
-                    <span><i class="bi bi-person-lines-fill me-2"></i>Leads</span>
-                    <i class="bi bi-chevron-right menu-arrow"></i>
-                </a>
-                <div class="collapse {{ $leadsActive ? 'show' : '' }}" id="leadsSubmenu">
-                    <ul class="nav flex-column ms-3">
-                        @foreach ($leadsMenu as $item)
-                            <li class="nav-item">
-                                <a class="nav-link {{ request()->routeIs($item['route']) ? 'active' : '' }}" href="{{ route($item['route']) }}">
-                                    {{ $item['label'] }}
-                                </a>
-                            </li>
-                        @endforeach
-                    </ul>
-                </div>
-            </li>
-
-            @endif
-
             @if ($isGlobalAdmin)
                 <li class="nav-item menu-parent {{ $eventsManagementActive ? 'open' : '' }}">
                     <a class="nav-link d-flex justify-content-between align-items-center {{ $eventsManagementActive ? 'active' : '' }}" data-bs-toggle="collapse" href="#eventsManagementSubmenu" role="button" aria-expanded="{{ $eventsManagementActive ? 'true' : 'false' }}" aria-controls="eventsManagementSubmenu">
@@ -275,6 +255,40 @@
                     </li>
                 @endif
             @endforeach
+
+
+            @if ($bottomNavItems || ! $isDed)
+                <li class="nav-item mt-3 pt-2 border-top small text-muted px-3">More</li>
+            @endif
+
+            @foreach ($bottomNavItems as $item)
+                <li class="nav-item">
+                    <a class="nav-link {{ (isset($item['active_routes']) ? request()->routeIs(...$item['active_routes']) : request()->routeIs($item['route'])) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                        <i class="bi {{ $item['icon'] }} me-2"></i>{{ $item['label'] }}
+                    </a>
+                </li>
+            @endforeach
+
+            @if (! $isDed)
+            <li class="nav-item menu-parent {{ $leadsActive ? 'open' : '' }}">
+                <a class="nav-link d-flex justify-content-between align-items-center {{ $leadsActive ? 'active' : '' }}" data-bs-toggle="collapse" href="#leadsSubmenu" role="button" aria-expanded="{{ $leadsActive ? 'true' : 'false' }}" aria-controls="leadsSubmenu">
+                    <span><i class="bi bi-person-lines-fill me-2"></i>Leads</span>
+                    <i class="bi bi-chevron-right menu-arrow"></i>
+                </a>
+                <div class="collapse {{ $leadsActive ? 'show' : '' }}" id="leadsSubmenu">
+                    <ul class="nav flex-column ms-3">
+                        @foreach ($leadsMenu as $item)
+                            <li class="nav-item">
+                                <a class="nav-link {{ request()->routeIs($item['route']) ? 'active' : '' }}" href="{{ route($item['route']) }}">
+                                    {{ $item['label'] }}
+                                </a>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            </li>
+
+            @endif
 
             @if ($isDed)
                 <li class="nav-item menu-parent {{ $eventsManagementActive ? 'open' : '' }}">

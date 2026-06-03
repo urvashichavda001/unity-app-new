@@ -30,6 +30,33 @@
         ];
     @endphp
 
+    <div class="card p-3 mb-4">
+        <form method="GET" action="{{ route('admin.ded.dashboard') }}" class="row g-2 align-items-end">
+            <div class="col-md-6 col-xl-4">
+                <label for="dedDashboardCircleFilter" class="form-label small text-muted mb-1">Circle Filter</label>
+                <select id="dedDashboardCircleFilter" name="circle_id" class="form-select">
+                    <option value="all" @selected(($selectedCircleId ?? '') === '')>All Circles</option>
+                    @foreach (($districtCircles ?? collect()) as $circle)
+                        <option value="{{ $circle->id }}" @selected(($selectedCircleId ?? '') === $circle->id)>
+                            {{ $circle->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button class="btn btn-primary">Apply</button>
+            </div>
+            @if (($selectedCircleId ?? '') !== '')
+                <div class="col-md-auto">
+                    <a href="{{ route('admin.ded.dashboard') }}" class="btn btn-outline-secondary">Reset</a>
+                </div>
+                <div class="col-md-auto text-muted small">Showing statistics for {{ $selectedCircle?->name ?? 'selected circle' }} only.</div>
+            @else
+                <div class="col-md-auto text-muted small">Showing district-wide statistics across all circles.</div>
+            @endif
+        </form>
+    </div>
+
     <div class="row g-3 mb-4">
         @foreach ($cards as $card)
             <div class="col-sm-6 col-xl-4">
@@ -58,7 +85,7 @@
         <div class="col-12 col-xl-7">
             <div class="card p-4 h-100">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="mb-0">Recent District Peers</h6>
+                    <h6 class="mb-0">{{ ($selectedCircleId ?? '') !== '' ? 'Recent Circle Peers' : 'Recent District Peers' }}</h6>
                     <a class="btn btn-sm btn-outline-primary" href="{{ route('admin.users.index') }}">View Peers</a>
                 </div>
                 <div class="table-responsive">
@@ -78,7 +105,7 @@
                                     <td>{{ $peer->city?->name ?? $peer->city ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="3" class="text-muted">No peers found for this district.</td></tr>
+                                <tr><td colspan="3" class="text-muted">No peers found for this {{ ($selectedCircleId ?? '') !== '' ? 'circle' : 'district' }}.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

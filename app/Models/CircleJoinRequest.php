@@ -58,6 +58,9 @@ class CircleJoinRequest extends Model
         'id_rejected_by',
         'id_rejected_at',
         'id_rejection_reason',
+        'ded_approval_status',
+        'ded_approved_by',
+        'ded_approved_at',
         'fee_marked_at',
         'fee_paid_at',
         'notes',
@@ -69,6 +72,7 @@ class CircleJoinRequest extends Model
         'cd_rejected_at' => 'datetime',
         'id_approved_at' => 'datetime',
         'id_rejected_at' => 'datetime',
+        'ded_approved_at' => 'datetime',
         'fee_marked_at' => 'datetime',
         'fee_paid_at' => 'datetime',
         'notes' => 'array',
@@ -154,6 +158,11 @@ class CircleJoinRequest extends Model
     public function idRejectedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'id_rejected_by');
+    }
+
+    public function dedApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'ded_approved_by');
     }
 
 

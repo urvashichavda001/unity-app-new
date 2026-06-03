@@ -51,6 +51,9 @@
                         @elseif($row->status === 'circle_member')
                             <div class="small text-success mt-1">Payment completed</div>
                         @endif
+                        @if(($row->ded_approval_status ?? 'pending') === 'approved')
+                            <div class="small text-success mt-1">DED Approved{{ $row->dedApprovedBy ? ' by ' . $row->dedApprovedBy->adminDisplayName() : '' }}</div>
+                        @endif
                     </td>
                     <td>
                         <a href="{{ route('admin.circle-joining-requests.show', $row->id) }}" class="btn btn-sm btn-outline-primary">Details</a>
@@ -63,6 +66,10 @@
                         @if($row->can_approve_id)
                             <form method="POST" action="{{ route('admin.circle-joining-requests.approve-id', $row->id) }}" class="d-inline">@csrf<button class="btn btn-sm btn-success">Approve</button></form>
                             <form method="POST" action="{{ route('admin.circle-joining-requests.reject-id', $row->id) }}" class="d-inline" onsubmit="const r = prompt('Enter rejection reason (required):'); if (!r || !r.trim()) { return false; } this.querySelector('input[name=reason]').value = r.trim(); return true;">@csrf<input type="hidden" name="reason"><button class="btn btn-sm btn-outline-danger">Reject</button></form>
+                        @endif
+
+                        @if($row->can_approve_ded)
+                            <form method="POST" action="{{ route('admin.circle-joining-requests.approve-ded', $row->id) }}" class="d-inline">@csrf<button class="btn btn-sm btn-warning">DED Approval</button></form>
                         @endif
                     </td>
                 </tr>
