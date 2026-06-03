@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -27,6 +28,12 @@ class IndustryDirectorDashboardController extends Controller
         $memberIds = $industryScope->memberIdsForAdmin($admin);
         $circleIds = $industryScope->circleIdsForIndustryIds($industryIds);
         $industry = $assignedIndustryId ? Industry::query()->find($assignedIndustryId) : null;
+
+        Log::info('IDE Dashboard Scope', [
+            'assigned_industry_id' => $assignedIndustryId,
+            'industry_ids' => $industryIds,
+            'matched_users' => $memberIds,
+        ]);
 
         $metrics = [
             'total_industry_members' => count($memberIds),

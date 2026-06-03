@@ -136,11 +136,13 @@ class IndustryScopeService
 
         $query = DB::table('circles')->select('circles.id')->distinct();
 
-        $query->where(function ($scope) use ($industryIds): void {
+        $scopeValues = $this->industryScopeValues($industryIds);
+
+        $query->where(function ($scope) use ($industryIds, $scopeValues): void {
             $hasCondition = false;
 
             $hasCondition = $this->orWhereColumnIn($scope, 'circles', 'industry_id', $industryIds) || $hasCondition;
-            $hasCondition = $this->orWhereJsonContainsAny($scope, 'circles', 'industry_tags', $industryIds) || $hasCondition;
+            $hasCondition = $this->orWhereJsonContainsAny($scope, 'circles', 'industry_tags', $scopeValues) || $hasCondition;
 
             if (Schema::hasTable('circle_category_mappings')) {
                 $categoryIds = $this->idsForColumn('circle_category_mappings', 'category_id', $industryIds);
@@ -243,7 +245,10 @@ class IndustryScopeService
             return $query;
         }
 
-        $query->where(function ($scope) use ($table, $industryIds): void {
+        $scopeValues = $this->industryScopeValues($industryIds);
+        $circleIds = $this->circleIdsForIndustryIds($industryIds);
+
+        $query->where(function ($scope) use ($table, $industryIds, $scopeValues, $circleIds): void {
             $hasCondition = false;
 
             foreach ([
@@ -258,8 +263,35 @@ class IndustryScopeService
                 $hasCondition = $this->orWhereColumnIn($scope, $table, $column, $industryIds) || $hasCondition;
             }
 
-            $hasCondition = $this->orWhereJsonContainsAny($scope, $table, 'industry_tags', $industryIds) || $hasCondition;
-            $hasCondition = $this->orWhereJsonContainsAny($scope, $table, 'industries_of_interest', $industryIds) || $hasCondition;
+            $hasCondition = $this->orWhereJsonContainsAny($scope, $table, 'industry_tags', $scopeValues) || $hasCondition;
+            $hasCondition = $this->orWhereJsonContainsAny($scope, $table, 'industries_of_interest', $scopeValues) || $hasCondition;
+
+            if ($circleIds !== []) {
+                $hasCondition = $this->orWhereColumnIn($scope, $table, 'circle_id', $circleIds) || $hasCondition;
+
+                if ($table === 'users' && Schema::hasTable('circle_members') && Schema::hasColumn('circle_members', 'user_id') && Schema::hasColumn('circle_members', 'circle_id')) {
+                    $scope->orWhereExists(function ($subQuery) use ($circleIds): void {
+                        $subQuery->selectRaw('1')
+                            ->from('circle_members as ide_cm')
+                            ->whereColumn('ide_cm.user_id', 'users.id')
+                            ->whereIn('ide_cm.circle_id', $circleIds);
+
+                        if (Schema::hasColumn('circle_members', 'status')) {
+                            $subQuery->where('ide_cm.status', config('circle.member_joined_status', 'approved'));
+                        }
+
+                        if (Schema::hasColumn('circle_members', 'left_at')) {
+                            $subQuery->whereNull('ide_cm.left_at');
+                        }
+
+                        if (Schema::hasColumn('circle_members', 'deleted_at')) {
+                            $subQuery->whereNull('ide_cm.deleted_at');
+                        }
+                    });
+
+                    $hasCondition = true;
+                }
+            }
 
             if (! $hasCondition) {
                 $scope->whereRaw('1 = 0');
@@ -311,6 +343,44 @@ class IndustryScopeService
         $query->orWhereIn("{$table}.{$column}", $compatibleIds);
 
         return true;
+    }
+
+
+    private function industryScopeValues(array $industryIds): array
+    {
+        $industryIds = $this->cleanIds($industryIds);
+        $values = collect($industryIds);
+
+        if ($industryIds !== [] && Schema::hasTable('industries')) {
+            $columns = ['id'];
+
+            foreach (['name', 'slug'] as $column) {
+                if (Schema::hasColumn('industries', $column)) {
+                    $columns[] = $column;
+                }
+            }
+
+            DB::table('industries')
+                ->select($columns)
+                ->whereIn('id', $industryIds)
+                ->get()
+                ->each(function ($industry) use ($columns, $values): void {
+                    foreach ($columns as $column) {
+                        $value = trim((string) ($industry->{$column} ?? ''));
+
+                        if ($value !== '') {
+                            $values->push($value);
+                        }
+                    }
+                });
+        }
+
+        return $values
+            ->map(fn ($value) => trim((string) $value))
+            ->filter(fn (string $value) => $value !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function orWhereJsonContainsAny($query, string $table, string $column, array $ids): bool
