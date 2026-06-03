@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\QrGenerationException;
 use App\Http\Middleware\AdminCircleScope;
 use App\Http\Middleware\AdminRoleMiddleware;
 use App\Http\Middleware\AllowFixedMembersToken;
@@ -39,6 +40,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (Throwable $e, Request $request) {
             if (! ($request->is('api/*') || $request->expectsJson())) {
                 return null;
+            }
+
+            if ($e instanceof QrGenerationException) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 500);
             }
 
             if ($e instanceof ValidationException) {
