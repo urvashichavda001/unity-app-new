@@ -148,9 +148,9 @@ class AdminAccess
                 ->from('admin_ded_districts')
                 ->where('admin_ded_districts.admin_user_id', $admin->id);
 
-            if (Schema::hasTable('districts')) {
+            if (Schema::hasTable('districts') && Schema::hasColumn('admin_ded_districts', 'district_id')) {
                 $query->leftJoin('districts', 'districts.id', '=', 'admin_ded_districts.district_id')
-                    ->addSelect('districts.name as district_name');
+                    ->addSelect('districts.name as districts_table_name');
             }
 
             if (Schema::hasColumn('admin_ded_districts', 'state_id')) {
@@ -159,18 +159,28 @@ class AdminAccess
                 $query->addSelect('districts.state_id');
             }
 
-            if (Schema::hasTable('states') && (Schema::hasColumn('admin_ded_districts', 'state_id') || (Schema::hasTable('districts') && Schema::hasColumn('districts', 'state_id')))) {
+            if (Schema::hasColumn('admin_ded_districts', 'district_id')) {
+                $query->addSelect('admin_ded_districts.district_id');
+            }
+
+            if (Schema::hasColumn('admin_ded_districts', 'district_name')) {
+                $query->addSelect('admin_ded_districts.district_name as assigned_district_name');
+            }
+
+            if (Schema::hasColumn('admin_ded_districts', 'state_name')) {
+                $query->addSelect('admin_ded_districts.state_name as assigned_state_name');
+            }
+
+            if (Schema::hasTable('states') && (Schema::hasColumn('admin_ded_districts', 'state_id') || (Schema::hasTable('districts') && Schema::hasColumn('admin_ded_districts', 'district_id') && Schema::hasColumn('districts', 'state_id')))) {
                 $stateJoinColumn = Schema::hasColumn('admin_ded_districts', 'state_id')
                     ? 'admin_ded_districts.state_id'
                     : 'districts.state_id';
 
                 $query->leftJoin('states', 'states.id', '=', $stateJoinColumn)
-                    ->addSelect('states.name as state_name');
+                    ->addSelect('states.name as states_table_name');
             }
 
-            $assignment = $query
-                ->addSelect('admin_ded_districts.district_id')
-                ->first();
+            $assignment = $query->first();
 
             if (! $assignment) {
                 return [];
@@ -178,9 +188,9 @@ class AdminAccess
 
             return [
                 'state_id' => $assignment->state_id ?? null,
-                'state_name' => $assignment->state_name ?? null,
+                'state_name' => ($assignment->assigned_state_name ?? null) ?: ($assignment->states_table_name ?? null),
                 'district_id' => $assignment->district_id ?? null,
-                'district_name' => $assignment->district_name ?? null,
+                'district_name' => ($assignment->assigned_district_name ?? null) ?: ($assignment->districts_table_name ?? null),
             ];
         });
     }

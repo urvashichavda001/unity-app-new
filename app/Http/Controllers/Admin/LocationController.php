@@ -3,29 +3,24 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\District;
+use App\Services\Admin\DedLocationService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Schema;
 
 class LocationController extends Controller
 {
+    public function __construct(private readonly DedLocationService $dedLocationService)
+    {
+    }
+
     public function districts(string $state): JsonResponse
     {
-        if (! Schema::hasTable('districts') || ! Schema::hasColumn('districts', 'state_id')) {
-            return response()->json(['data' => []]);
-        }
-
-        $districts = District::query()
-            ->where('state_id', $state)
-            ->when(Schema::hasColumn('districts', 'status'), fn ($query) => $query->where('status', 'active'))
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (District $district) => [
+        return response()->json([
+            'data' => $this->dedLocationService->getAvailableDistrictsByState($state)->map(fn (object $district): array => [
                 'id' => $district->id,
                 'name' => $district->name,
-            ])
-            ->values();
-
-        return response()->json(['data' => $districts]);
+                'district_name' => $district->district_name ?? $district->name,
+                'district_id' => $district->district_id ?? null,
+            ])->values(),
+        ]);
     }
 }

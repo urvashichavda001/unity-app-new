@@ -19,6 +19,8 @@ class AdminDedDistrict extends Model
         'user_id',
         'state_id',
         'district_id',
+        'state_name',
+        'district_name',
     ];
 
     public function adminUser(): BelongsTo
