@@ -408,7 +408,11 @@ class CircleJoinRequestsController extends Controller
 
         $approvedQuery = DB::table('circle_join_requests')
             ->whereIn('status', $approvedStatuses)
-            ->where('ded_approval_status', 'pending');
+            ->where(function ($query): void {
+                $query->whereNull('ded_approval_status')
+                    ->orWhere('ded_approval_status', '')
+                    ->orWhere('ded_approval_status', 'pending');
+            });
 
         if ($requestId) {
             $approvedQuery->where('id', $requestId);
@@ -432,7 +436,11 @@ class CircleJoinRequestsController extends Controller
                 CircleJoinRequest::STATUS_REJECTED_BY_ID,
                 CircleJoinRequest::STATUS_CANCELLED,
             ])
-            ->where('ded_approval_status', 'pending');
+            ->where(function ($query): void {
+                $query->whereNull('ded_approval_status')
+                    ->orWhere('ded_approval_status', '')
+                    ->orWhere('ded_approval_status', 'pending');
+            });
 
         if ($requestId) {
             $rejectedQuery->where('id', $requestId);

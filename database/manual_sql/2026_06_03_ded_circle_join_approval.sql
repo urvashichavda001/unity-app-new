@@ -34,12 +34,12 @@ SET ded_approval_status = 'approved',
     ded_approved_by = COALESCE(ded_approved_by, id_approved_by, cd_approved_by),
     ded_approved_at = COALESCE(ded_approved_at, id_approved_at, cd_approved_at, fee_marked_at, updated_at, NOW())
 WHERE status IN ('pending_circle_fee', 'circle_member', 'paid')
-  AND ded_approval_status = 'pending';
+  AND (ded_approval_status IS NULL OR ded_approval_status = '' OR ded_approval_status = 'pending');
 
 UPDATE circle_join_requests
 SET ded_approval_status = 'rejected'
 WHERE status IN ('rejected_by_cd', 'rejected_by_id', 'cancelled')
-  AND ded_approval_status = 'pending';
+  AND (ded_approval_status IS NULL OR ded_approval_status = '' OR ded_approval_status = 'pending');
 
 CREATE INDEX IF NOT EXISTS idx_circle_join_requests_ded_approval_status
     ON circle_join_requests (ded_approval_status);

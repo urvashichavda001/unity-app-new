@@ -32,7 +32,7 @@
 
     <div class="card"><div class="card-body table-responsive">
         <table class="table table-sm align-middle">
-            <thead><tr><th>Submitted At</th><th>Peer</th><th>Company</th><th>City</th><th>Circle</th><th>Reason for Joining</th><th>Status</th><th>DED Approval</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Submitted At</th><th>Peer</th><th>Company</th><th>City</th><th>Circle</th><th>Reason for Joining</th><th>Status</th><th>DED Approval</th><th>Payment</th><th>Actions</th></tr></thead>
             <tbody>
             @forelse($requests as $row)
                 <tr>
@@ -53,7 +53,7 @@
                         @endif
                     </td>
                     <td>
-                        @php($dedApprovalStatus = (string) ($row->ded_approval_status ?? 'pending'))
+                        @php($dedApprovalStatus = $row->effectiveDedApprovalStatus())
                         @if($dedApprovalStatus === 'approved')
                             <span class="badge text-bg-success">Approved</span>
                             <div class="small text-success mt-1">Approved{{ $row->dedApprovedBy ? ' by ' . $row->dedApprovedBy->adminDisplayName() : ' by DED' }}</div>
@@ -62,6 +62,10 @@
                         @else
                             <span class="badge text-bg-warning">Pending</span>
                         @endif
+                    </td>
+                    <td>
+                        @php($paymentStatus = $row->paymentStatusLabel())
+                        <span class="badge {{ $paymentStatus === 'Paid' ? 'text-bg-success' : ($paymentStatus === 'Unpaid' ? 'text-bg-warning' : 'text-bg-secondary') }}">{{ $paymentStatus }}</span>
                     </td>
                     <td>
                         <a href="{{ route('admin.circle-joining-requests.show', $row->id) }}" class="btn btn-sm btn-outline-primary">Details</a>
@@ -82,7 +86,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="9" class="text-center text-muted">No requests found.</td></tr>
+                <tr><td colspan="10" class="text-center text-muted">No requests found.</td></tr>
             @endforelse
             </tbody>
         </table>

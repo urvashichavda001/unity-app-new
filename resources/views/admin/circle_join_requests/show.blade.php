@@ -44,7 +44,7 @@
             <p>Status: <span class="badge text-bg-secondary">{{ $statusLabels[$record->status] ?? $record->status }}</span></p>
             <p>
                 <strong>DED Approval:</strong>
-                @php($dedApprovalStatus = (string) ($record->ded_approval_status ?? 'pending'))
+                @php($dedApprovalStatus = $record->effectiveDedApprovalStatus())
                 @if($dedApprovalStatus === 'approved')
                     <span class="badge text-bg-success">Approved</span>
                     <span class="text-success small">Approved{{ $record->dedApprovedBy ? ' by ' . $record->dedApprovedBy->adminDisplayName() : ' by DED' }}</span>
@@ -74,7 +74,7 @@
                 </ul>
             @endif
 
-            <p>Payment Status: <span class="badge {{ $record->fee_paid_at ? 'text-bg-success' : 'text-bg-warning' }}">{{ $record->fee_paid_at ? 'Paid' : 'Unpaid' }}</span></p>
+            <p>Payment Status: @php($paymentStatus = $record->paymentStatusLabel()) <span class="badge {{ $paymentStatus === 'Paid' ? 'text-bg-success' : ($paymentStatus === 'Unpaid' ? 'text-bg-warning' : 'text-bg-secondary') }}">{{ $paymentStatus }}</span></p>
 
             <hr>
             <h6 class="mt-4">Approval Timeline</h6>
@@ -91,7 +91,7 @@
             <p><strong>Industry Director Rejected At:</strong> {{ optional($record->id_rejected_at)->format('d M Y H:i') ?: '—' }}</p>
             <p><strong>Industry Director Rejection Reason:</strong> <span class="text-danger">{{ $record->id_rejection_reason ?: '—' }}</span></p>
 
-            <p><strong>DED Approval Status:</strong> {{ ucfirst((string) ($record->ded_approval_status ?? 'pending')) }}</p>
+            <p><strong>DED Approval Status:</strong> {{ ucfirst($record->effectiveDedApprovalStatus()) }}</p>
             <p><strong>DED Approved By:</strong> {{ $record->dedApprovedBy?->adminDisplayName() ?? '—' }}</p>
             <p><strong>DED Approved At:</strong> {{ optional($record->ded_approved_at)->format('d M Y H:i') ?: '—' }}</p>
 

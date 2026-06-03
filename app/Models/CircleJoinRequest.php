@@ -117,6 +117,36 @@ class CircleJoinRequest extends Model
         });
     }
 
+
+    public function effectiveDedApprovalStatus(): string
+    {
+        $status = (string) $this->status;
+        $dedStatus = (string) ($this->ded_approval_status ?: 'pending');
+
+        if (in_array($status, [self::STATUS_PENDING_CIRCLE_FEE, self::STATUS_CIRCLE_MEMBER, self::STATUS_PAID], true) && $dedStatus === 'pending') {
+            return 'approved';
+        }
+
+        if (in_array($status, [self::STATUS_REJECTED_BY_CD, self::STATUS_REJECTED_BY_ID, self::STATUS_CANCELLED], true) && $dedStatus === 'pending') {
+            return 'rejected';
+        }
+
+        return $dedStatus;
+    }
+
+    public function paymentStatusLabel(): string
+    {
+        if ($this->status === self::STATUS_PENDING_CIRCLE_FEE) {
+            return $this->fee_paid_at ? 'Paid' : 'Unpaid';
+        }
+
+        if (in_array((string) $this->status, [self::STATUS_CIRCLE_MEMBER, self::STATUS_PAID], true)) {
+            return 'Paid';
+        }
+
+        return 'Not Applicable';
+    }
+
     public function scopePending(Builder $query): Builder
     {
         return $query->whereIn('status', [
