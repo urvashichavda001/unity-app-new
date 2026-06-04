@@ -139,6 +139,13 @@ class IndustryDirectorScopeService
             ->values()
             ->all();
 
+        Log::info('IDE Scope Debug', [
+            'admin_user_id' => Auth::guard('admin')->id(),
+            'assigned_industry_id' => $selectedIndustryId,
+            'matched_member_ids' => $memberIds,
+            'matched_member_count' => count($memberIds),
+        ]);
+
         Log::info('IDE Scope Result', [
             'selected_industry_id' => $selectedIndustryId,
             'allowed_industry_ids' => $this->assignedIndustryIdsForAdmin((string) Auth::guard('admin')->id()),
@@ -509,13 +516,19 @@ class IndustryDirectorScopeService
         }
 
         $hasCondition = false;
+        $qualifiedColumn = "{$table}.{$column}";
 
         foreach ($this->cleanIds($ids) as $id) {
-            $query->orWhereJsonContains("{$table}.{$column}", (string) $id);
+            $query->orWhereJsonContains($qualifiedColumn, (string) $id)
+                ->orWhereJsonContains($qualifiedColumn, ['id' => (string) $id])
+                ->orWhereJsonContains($qualifiedColumn, [['id' => (string) $id]])
+                ->orWhereRaw("CAST({$qualifiedColumn} AS TEXT) LIKE ?", ['%'.(string) $id.'%']);
             $hasCondition = true;
 
             if (ctype_digit((string) $id)) {
-                $query->orWhereJsonContains("{$table}.{$column}", (int) $id);
+                $query->orWhereJsonContains($qualifiedColumn, (int) $id)
+                    ->orWhereJsonContains($qualifiedColumn, ['id' => (int) $id])
+                    ->orWhereJsonContains($qualifiedColumn, [['id' => (int) $id]]);
             }
         }
 
