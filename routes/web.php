@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\AdminExecutionController;
 use App\Http\Controllers\Admin\EventManagementController;
 use App\Http\Controllers\Admin\EventScanCredentialController;
 use App\Http\Controllers\Admin\ActivityCreativeController;
+use App\Http\Controllers\Admin\IndustryDirector\IndustryDirectorDashboardController;
 
 Route::get('/', function () {
     return view('landing');
@@ -56,12 +57,25 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware(['admin.auth', 'admin.role', 'admin.circle'])->group(function () {
         Route::post('/logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::get('/', function () {
+            $admin = auth('admin')->user();
+            $isIndustryDirector = $admin?->roles()->where('key', 'industry_director')->exists() ?? false;
+
+            if ($isIndustryDirector) {
+                return redirect()->route('admin.industry-director.dashboard');
+            }
+
             return redirect()->route('admin.dashboard');
         })->name('home');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/ded-dashboard', [DashboardController::class, 'ded'])->name('ded.dashboard');
         Route::get('/ded/dashboard', fn () => redirect()->route('admin.ded.dashboard'))->name('ded.dashboard.legacy');
         Route::get('/location/states/{state}/districts', [LocationController::class, 'districts'])->whereUuid('state')->name('location.states.districts');
+        Route::get('/industry-director/dashboard', [IndustryDirectorDashboardController::class, 'index'])
+            ->middleware('admin.industry-director')
+            ->name('industry-director.dashboard');
+        Route::post('/industry-director/switch-industry', [IndustryDirectorDashboardController::class, 'switchIndustry'])
+            ->middleware('admin.industry-director')
+            ->name('industry-director.switch-industry');
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::get('/users/create', [UsersController::class, 'create'])->name('users.create');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');

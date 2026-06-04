@@ -10,6 +10,7 @@ use App\Models\CircleCategoryLevel3;
 use App\Models\CircleCategoryLevel4;
 use App\Models\AdminAuditLog;
 use App\Models\CircleJoinRequest;
+use App\Services\Admin\IndustryScopeService;
 use App\Services\Circles\CircleJoinRequestService;
 use App\Support\AdminAccess;
 use App\Support\AdminCircleScope;
@@ -25,8 +26,10 @@ use Illuminate\View\View;
 
 class CircleJoinRequestsController extends Controller
 {
-    public function __construct(private readonly CircleJoinRequestService $service)
-    {
+    public function __construct(
+        private readonly CircleJoinRequestService $service,
+        private readonly IndustryScopeService $industryScope,
+    ) {
     }
 
     public function index(Request $request): View
@@ -37,6 +40,14 @@ class CircleJoinRequestsController extends Controller
 
         $query = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy', 'dedApprovedBy']);
         $query->visibleToAdminUser($admin);
+        $query = CircleJoinRequest::query()->with(['user', 'circle', 'cdApprovedBy', 'cdRejectedBy', 'idApprovedBy', 'idRejectedBy']);
+
+        if ($this->industryScope->isIndustryDirector($admin)) {
+            $industryCircleIds = $this->industryScope->circleIdsForAdmin($admin);
+            $query->when($industryCircleIds !== [], fn ($q) => $q->whereIn('circle_id', $industryCircleIds), fn ($q) => $q->whereRaw('1 = 0'));
+        } else {
+            $query->visibleToAdminUser($admin);
+        }
 
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
@@ -78,7 +89,7 @@ class CircleJoinRequestsController extends Controller
 
         return view('admin.circle_join_requests.index', [
             'requests' => $requests,
-            'circles' => Circle::query()->orderBy('name')->get(['id', 'name']),
+            'circles' => $this->circleOptions($admin),
             'filters' => $request->only(['search', 'circle_id', 'status', 'date_from', 'date_to']),
         ]);
     }
@@ -307,8 +318,24 @@ class CircleJoinRequestsController extends Controller
         ];
     }
 
+    private function circleOptions($admin)
+    {
+        $query = Circle::query()->orderBy('name');
+
+        if ($this->industryScope->isIndustryDirector($admin)) {
+            $circleIds = $this->industryScope->circleIdsForAdmin($admin);
+            $query->when($circleIds !== [], fn ($q) => $q->whereIn('id', $circleIds), fn ($q) => $q->whereRaw('1 = 0'));
+        }
+
+        return $query->get(['id', 'name']);
+    }
+
     private function canAccessRecord($admin, $actor, CircleJoinRequest $record): bool
     {
+        if ($this->industryScope->isIndustryDirector($admin)) {
+            return in_array((string) $record->circle_id, $this->industryScope->circleIdsForAdmin($admin), true);
+        }
+
         if (AdminAccess::isGlobalAdmin($admin)) {
             return true;
         }
@@ -345,6 +372,10 @@ class CircleJoinRequestsController extends Controller
             return true;
         }
 
+        if ($this->industryScope->isIndustryDirector($admin)) {
+            return false;
+        }
+
         return (string) $record->circle?->director_user_id === (string) $actor->id;
     }
 
@@ -359,6 +390,10 @@ class CircleJoinRequestsController extends Controller
         }
 
         if (AdminAccess::isGlobalAdmin($admin)) {
+            return true;
+        }
+
+        if ($this->industryScope->isIndustryDirector($admin)) {
             return true;
         }
 

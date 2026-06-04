@@ -623,6 +623,8 @@
                 <div class="card-body">
                     @php
                         $currentRoleIds = old('role_ids', $userRoleIds);
+                        $currentRoleIds = is_array($currentRoleIds) ? $currentRoleIds : [];
+                        $currentIndustryId = old('industry_id', $selectedIndustryId);
                     @endphp
                     @if ($hasAssignedAdminRole)
                         <div class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -650,6 +652,7 @@
                                            data-role-key="{{ $role->key }}"
                                            @checked(in_array($role->id, $currentRoleIds))
                                            @disabled($hasAssignedAdminRole)>
+                                           @checked(in_array($role->id, $currentRoleIds))>
                                     <label class="form-check-label" for="role-{{ $role->id }}">
                                         <strong>{{ $role->name }}</strong>
                                         <div class="small text-muted">{{ $role->description }}</div>
@@ -724,8 +727,23 @@
                     @if ($hasAssignedAdminRole)
                         <div class="form-text text-muted mt-2">
                             Remove the existing admin role to assign a new one.
+                    <div id="industry-director-industry-group" class="row g-3 mt-3 d-none">
+                        <div class="col-md-6">
+                            <label class="form-label" for="industry-director-industry">Industry <span class="text-danger">*</span></label>
+                            <select id="industry-director-industry" name="industry_id" class="form-select @error('industry_id') is-invalid @enderror">
+                                <option value="">Select industry</option>
+                                @foreach ($industries as $industry)
+                                    <option value="{{ $industry->id }}" @selected((string) $currentIndustryId === (string) $industry->id)>
+                                        {{ $industry->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('industry_id')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                            <div class="form-text text-muted">Required only when Industry Director is selected.</div>
                         </div>
-                    @endif
+                    </div>
                 </div>
             </div>
         </div>
@@ -877,6 +895,40 @@ document.addEventListener('DOMContentLoaded', function () {
     if (dedStateSelect?.value && dedDistrictSelect && !dedDistrictSelect.disabled && dedDistrictSelect.options.length <= 1) {
         loadDistrictsForState(dedStateSelect.value, selectedDedDistrictName);
     }
+    const roleInputs = Array.from(document.querySelectorAll('input[name="role_ids[]"]'));
+    const industryDirectorRoleId = @json($industryDirectorRoleId);
+    const industryGroup = document.getElementById('industry-director-industry-group');
+    const industrySelect = document.getElementById('industry-director-industry');
+
+    function syncIndustryDirectorIndustry() {
+        const industryDirectorSelected = roleInputs.some((input) => input.checked && input.value === String(industryDirectorRoleId));
+
+        if (industryGroup) {
+            industryGroup.classList.toggle('d-none', ! industryDirectorSelected);
+        }
+
+        if (industrySelect) {
+            industrySelect.required = industryDirectorSelected;
+            if (! industryDirectorSelected) {
+                industrySelect.value = '';
+            }
+        }
+    }
+
+    roleInputs.forEach((input) => {
+        input.addEventListener('change', () => {
+            if (input.checked) {
+                roleInputs.forEach((otherInput) => {
+                    if (otherInput !== input) {
+                        otherInput.checked = false;
+                    }
+                });
+            }
+            syncIndustryDirectorIndustry();
+        });
+    });
+
+    syncIndustryDirectorIndustry();
     const joinedInput = document.querySelector('[name="circle_joined_date"]')
         || document.querySelector('[name="circle_joined_at"]');
     const expiryInput = document.querySelector('[name="circle_expiry_date"]')

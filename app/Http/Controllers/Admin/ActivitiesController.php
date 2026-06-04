@@ -14,6 +14,7 @@ use App\Models\Requirement;
 use App\Models\Testimonial;
 use App\Models\User;
 use App\Models\VisitorRegistration;
+use App\Services\Admin\IndustryScopeService;
 use App\Support\AdminCircleScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -95,13 +96,17 @@ class ActivitiesController extends Controller
             ]);
 
         $this->applyCircleScopeToUsersQuery($query, $admin);
+        app(IndustryScopeService::class)->applyToUsersQuery($query, $admin);
 
         $query->selectSub($this->primaryCircleSubquery('name'), 'circle_name');
 
         $query->selectSub(function ($sub) use ($from, $to) {
             $sub->from('testimonials')
                 ->selectRaw('count(*)')
-                ->whereColumn('testimonials.from_user_id', 'users.id')
+                ->where(function ($query) {
+                    $query->whereColumn('testimonials.from_user_id', 'users.id')
+                        ->orWhereColumn('testimonials.to_user_id', 'users.id');
+                })
                 ->where('testimonials.is_deleted', false)
                 ->whereNull('testimonials.deleted_at');
             $this->applyDateRangeToSubQuery($sub, $from, $to, 'testimonials.created_at');
@@ -110,7 +115,10 @@ class ActivitiesController extends Controller
         $query->selectSub(function ($sub) use ($from, $to) {
             $sub->from('referrals')
                 ->selectRaw('count(*)')
-                ->whereColumn('referrals.from_user_id', 'users.id')
+                ->where(function ($query) {
+                    $query->whereColumn('referrals.from_user_id', 'users.id')
+                        ->orWhereColumn('referrals.to_user_id', 'users.id');
+                })
                 ->where('referrals.is_deleted', false)
                 ->whereNull('referrals.deleted_at');
             $this->applyDateRangeToSubQuery($sub, $from, $to, 'referrals.created_at');
@@ -119,7 +127,10 @@ class ActivitiesController extends Controller
         $query->selectSub(function ($sub) use ($from, $to) {
             $sub->from('business_deals')
                 ->selectRaw('count(*)')
-                ->whereColumn('business_deals.from_user_id', 'users.id')
+                ->where(function ($query) {
+                    $query->whereColumn('business_deals.from_user_id', 'users.id')
+                        ->orWhereColumn('business_deals.to_user_id', 'users.id');
+                })
                 ->where('business_deals.is_deleted', false)
                 ->whereNull('business_deals.deleted_at');
             $this->applyDateRangeToSubQuery($sub, $from, $to, 'business_deals.created_at');
@@ -128,7 +139,10 @@ class ActivitiesController extends Controller
         $query->selectSub(function ($sub) use ($from, $to) {
             $sub->from('p2p_meetings')
                 ->selectRaw('count(*)')
-                ->whereColumn('p2p_meetings.initiator_user_id', 'users.id')
+                ->where(function ($query) {
+                    $query->whereColumn('p2p_meetings.initiator_user_id', 'users.id')
+                        ->orWhereColumn('p2p_meetings.peer_user_id', 'users.id');
+                })
                 ->where('p2p_meetings.is_deleted', false)
                 ->whereNull('p2p_meetings.deleted_at')
                 ->whereDate('p2p_meetings.meeting_date', '<', now()->toDateString());
@@ -590,7 +604,7 @@ class ActivitiesController extends Controller
 
     private function ensureMemberInScope(User $member, $admin): void
     {
-        if (! AdminCircleScope::userInScope($admin, $member->id)) {
+        if (! AdminCircleScope::userInScope($admin, $member->id) || ! app(IndustryScopeService::class)->userInScope($admin, (string) $member->id)) {
             abort(403);
         }
     }
@@ -598,6 +612,7 @@ class ActivitiesController extends Controller
     private function applyCircleScopeToActivityQuery($query, $admin, string $userColumn, ?string $peerColumn): void
     {
         AdminCircleScope::applyToActivityQuery($query, $admin, $userColumn, $peerColumn);
+        app(IndustryScopeService::class)->applyToActivityQuery($query, $admin, array_filter([$userColumn, $peerColumn]));
     }
 
     private function activityRequiresPeer(string $activityType): bool
