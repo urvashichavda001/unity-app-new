@@ -1389,7 +1389,7 @@ class UsersController extends Controller
             return back()->with('warning', 'Selected peer is not eligible for membership approval.');
         }
 
-        return back()->with('success', 'Approved 1 peer. Skipped 0 non-eligible peers.');
+        return back()->with('success', 'Peer approved successfully as Only Unity Peer. Membership valid until ' . $endDate->toDateString() . '.');
     }
 
     public function bulkApproveMembership(Request $request): RedirectResponse
@@ -1422,7 +1422,7 @@ class UsersController extends Controller
             return $this->approveEligibleUsers($users, $startDate, $endDate, $adminId ? (string) $adminId : null);
         });
 
-        return back()->with('success', "Approved {$result['approved_count']} peers. Skipped {$result['skipped_count']} non-eligible peers.");
+        return back()->with('success', "Approved {$result['approved_count']} peers as Only Unity Peer. Skipped {$result['skipped_count']} non-eligible peers.");
     }
 
     private function membershipStatuses(): array
@@ -1971,14 +1971,6 @@ class UsersController extends Controller
                 $attributes['membership_end_date'] = $endDate->copy()->toDateString();
             }
 
-            if (Schema::hasColumn('users', 'membership_starts_at')) {
-                $attributes['membership_starts_at'] = $startDate->copy()->startOfDay();
-            }
-
-            if (Schema::hasColumn('users', 'membership_ends_at')) {
-                $attributes['membership_ends_at'] = $endDate->copy()->endOfDay();
-            }
-
             if (Schema::hasColumn('users', 'membership_expiry')) {
                 $attributes['membership_expiry'] = $endDate->copy()->endOfDay();
             }
@@ -2021,15 +2013,7 @@ class UsersController extends Controller
 
     private function approvedMembershipStatus(): string
     {
-        $statuses = $this->membershipStatuses();
-
-        foreach (['Circle Peer', 'premium', 'member'] as $status) {
-            if (in_array($status, $statuses, true)) {
-                return $status;
-            }
-        }
-
-        return 'premium';
+        return 'only_unity_peer';
     }
 
     private function parseJoinedFilterDate(?string $value): ?Carbon
