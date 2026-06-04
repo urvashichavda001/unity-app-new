@@ -35,7 +35,7 @@ class ScanAppEventController extends BaseApiController
         ], 'Events fetched successfully.');
     }
 
-    public function scan(Request $request, Event $event)
+    public function scan(Request $request, string $eventId)
     {
         $scanner = $this->activeScanner($request);
         if (! $scanner instanceof ScanAppUser) {
@@ -47,6 +47,7 @@ class ScanAppEventController extends BaseApiController
             'device_info' => ['nullable', 'array'],
         ]);
 
+        $event = Event::query()->findOrFail($eventId);
         $qrToken = trim($data['qr_token']);
         $deviceInfo = $data['device_info'] ?? null;
 
