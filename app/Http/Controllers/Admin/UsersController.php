@@ -2013,6 +2013,8 @@ class UsersController extends Controller
 
     private function approvedMembershipStatus(): string
     {
+        // Database enum membership_status_enum must include only_unity_peer.
+        // Manual SQL: ALTER TYPE membership_status_enum ADD VALUE IF NOT EXISTS 'only_unity_peer';
         return 'only_unity_peer';
     }
 
