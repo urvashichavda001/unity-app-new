@@ -39,6 +39,21 @@ class DedReportsController extends Controller
         return $this->ded->success($this->ded->pendingRequestCounts($this->ded->admin($request)), 'DED pending requests report loaded.');
     }
 
+
+    public function referralReport(Request $request)
+    {
+        $data = $this->ded->referralReport($request, $this->ded->admin($request));
+
+        return $this->ded->success($data['items'], 'DED referral report loaded.', $data['meta']);
+    }
+
+    public function lifeImpact(Request $request)
+    {
+        $data = $this->ded->lifeImpact($request, $this->ded->admin($request));
+
+        return $this->ded->success($data['items'], 'DED life impact loaded.', $data['meta']);
+    }
+
     private function activityReport(Request $request, string $type, string $message)
     {
         $query = $this->ded->activityQuery($type, $this->ded->admin($request), $request);

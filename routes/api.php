@@ -142,6 +142,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/peers/{id}', [DedPeersController::class, 'show'])->whereUuid('id');
 
             Route::get('/activities/summary', [DedActivitiesController::class, 'summary']);
+            Route::get('/activities/recommend-a-peer', [DedActivitiesController::class, 'recommendPeer']);
+            Route::get('/activities/find-build-collaborations', [DedActivitiesController::class, 'findBuildCollaborations']);
+            Route::get('/activities/register-a-visitor', [DedActivitiesController::class, 'registerVisitor']);
             foreach (['testimonials', 'requirements', 'referrals', 'p2p-meetings', 'business-deals'] as $activityType) {
                 Route::get("/activities/{$activityType}", [DedActivitiesController::class, 'index'])->defaults('type', $activityType);
                 Route::get("/activities/{$activityType}/{id}", [DedActivitiesController::class, 'show'])->defaults('type', $activityType)->whereUuid('id');
@@ -165,6 +168,8 @@ Route::prefix('v1')->group(function () {
             }
             Route::post('/pending-requests/circle-joining-requests/{id}/ded-approve', [DedPendingRequestsController::class, 'approve'])->defaults('type', 'circle_joining_requests')->whereUuid('id');
 
+            Route::get('/referral-report', [DedReportsController::class, 'referralReport']);
+            Route::get('/life-impact', [DedReportsController::class, 'lifeImpact']);
             Route::get('/reports/referrals', [DedReportsController::class, 'referrals']);
             Route::get('/reports/activities', [DedReportsController::class, 'activities']);
             Route::get('/reports/coins', [DedReportsController::class, 'coins']);

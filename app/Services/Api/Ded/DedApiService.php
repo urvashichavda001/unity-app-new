@@ -10,6 +10,7 @@ use App\Models\CircleJoinRequest;
 use App\Models\CoinClaimRequest;
 use App\Models\CoinLedger;
 use App\Models\Event;
+use App\Models\EventRegistration;
 use App\Models\EventRegistrationRequest;
 use App\Models\Impact;
 use App\Models\P2pMeeting;
@@ -361,7 +362,7 @@ class DedApiService
     {
         return [
             'visitor_registrations' => $this->visitorRegistrationsQuery($admin, $circleId)->count(),
-            'event_joining_requests' => Schema::hasTable((new EventRegistrationRequest())->getTable()) ? $this->eventJoiningRequestsQuery($admin, $circleId)->count() : 0,
+            'event_joining_requests' => $this->eventJoiningRequestsQuery($admin, $circleId)->count(),
             'coin_claims' => $this->coinClaimsQuery($admin, $circleId)->count(),
             'circle_joining_requests' => $this->circleJoinRequestsQuery($admin, $circleId)->count(),
             'pending_impacts' => $this->impactsQuery($admin, $circleId)->where('status', 'pending')->count(),
@@ -484,16 +485,18 @@ class DedApiService
 
     public function userActivityCount(AdminUser $admin, string $table, string $primaryColumn, ?string $peerColumn, string $userId, ?string $circleId = null): int
     {
-        if (! Schema::hasTable($table)) {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $primaryColumn)) {
             return 0;
         }
-        $query = DB::table("{$table} as activity")->where(function ($q) use ($primaryColumn, $peerColumn, $userId): void {
+
+        $hasPeerColumn = $peerColumn && Schema::hasColumn($table, $peerColumn);
+        $query = DB::table("{$table} as activity")->where(function ($q) use ($primaryColumn, $peerColumn, $hasPeerColumn, $userId): void {
             $q->where("activity.{$primaryColumn}", $userId);
-            if ($peerColumn && Schema::hasColumn($table, $peerColumn)) {
+            if ($hasPeerColumn) {
                 $q->orWhere("activity.{$peerColumn}", $userId);
             }
         });
-        $this->applyActivityScope($query, $admin, "activity.{$primaryColumn}", $peerColumn ? "activity.{$peerColumn}" : null, $circleId);
+        $this->applyActivityScope($query, $admin, "activity.{$primaryColumn}", $hasPeerColumn ? "activity.{$peerColumn}" : null, $circleId);
 
         return (int) $query->count();
     }
@@ -647,26 +650,48 @@ class DedApiService
 
     public function eventJoiningRequestsQuery(AdminUser $admin, ?string $circleId = null): EloquentBuilder
     {
-        if (! Schema::hasTable((new EventRegistrationRequest())->getTable())) {
-            abort(500, 'Event joining request table is not available.');
+        if (Schema::hasTable((new EventRegistrationRequest())->getTable())) {
+            $query = EventRegistrationRequest::query()->with(['user', 'event.circle', 'occurrence', 'registration', 'approvedBy', 'rejectedBy']);
+            $this->applyEventRegistrationRequestScope($query, $admin);
+            if ($circleId && $circleId !== 'all') {
+                $query->where(function ($q) use ($circleId): void {
+                    $hasDirectCircle = Schema::hasColumn('event_registration_requests', 'event_circle_id');
+                    if ($hasDirectCircle) {
+                        $q->where('event_circle_id', $circleId);
+                    }
+
+                    $hasEvent = Schema::hasColumn('event_registration_requests', 'event_id');
+                    if ($hasEvent) {
+                        $method = $hasDirectCircle ? 'orWhereHas' : 'whereHas';
+                        $q->{$method}('event', fn ($eventQuery) => $eventQuery->where('circle_id', $circleId));
+                    }
+
+                    if (! $hasDirectCircle && ! $hasEvent) {
+                        $q->whereRaw('1=0');
+                    }
+                });
+            }
+
+            return $query;
         }
 
-        $query = EventRegistrationRequest::query()->with(['user', 'event.circle', 'occurrence', 'registration', 'approvedBy', 'rejectedBy']);
-        $this->applyEventRegistrationRequestScope($query, $admin);
+        if (! Schema::hasTable((new EventRegistration())->getTable())) {
+            abort(500, 'Event registration table is not available.');
+        }
+
+        $relations = ['user', 'event.circle', 'occurrence'];
+        if (Schema::hasColumn('event_registrations', 'invited_by_user_id')) {
+            $relations[] = 'invitedByUser';
+        }
+
+        $query = EventRegistration::query()->with($relations);
+        $this->applyEventRegistrationFallbackScope($query, $admin);
+
         if ($circleId && $circleId !== 'all') {
             $query->where(function ($q) use ($circleId): void {
-                $hasDirectCircle = Schema::hasColumn('event_registration_requests', 'event_circle_id');
-                if ($hasDirectCircle) {
-                    $q->where('event_circle_id', $circleId);
-                }
-
-                $hasEvent = Schema::hasColumn('event_registration_requests', 'event_id');
-                if ($hasEvent) {
-                    $method = $hasDirectCircle ? 'orWhereHas' : 'whereHas';
-                    $q->{$method}('event', fn ($eventQuery) => $eventQuery->where('circle_id', $circleId));
-                }
-
-                if (! $hasDirectCircle && ! $hasEvent) {
+                if (Schema::hasColumn('event_registrations', 'event_id')) {
+                    $q->whereHas('event', fn ($eventQuery) => $eventQuery->where('circle_id', $circleId));
+                } else {
                     $q->whereRaw('1=0');
                 }
             });
@@ -700,6 +725,42 @@ class DedApiService
         });
     }
 
+
+    public function applyEventRegistrationFallbackScope(EloquentBuilder $query, AdminUser $admin): void
+    {
+        $query->where(function ($scope) use ($admin): void {
+            $userColumns = $this->existingQualifiedColumns('event_registrations', [
+                'user_id',
+                'invited_by_user_id',
+                'created_by_user_id',
+                'registered_by_user_id',
+                'peer_id',
+                'visitor_user_id',
+            ]);
+
+            $hasUserScope = false;
+            foreach ($userColumns as $qualifiedColumn) {
+                $method = $hasUserScope ? 'orWhere' : 'where';
+                $scope->{$method}(function ($userScope) use ($admin, $qualifiedColumn): void {
+                    AdminCircleScope::applyDedDistrictScope($userScope, $admin, $qualifiedColumn);
+                });
+                $hasUserScope = true;
+            }
+
+            if (Schema::hasColumn('event_registrations', 'event_id')) {
+                $method = $hasUserScope ? 'orWhereHas' : 'whereHas';
+                $scope->{$method}('event', function ($eventQuery) use ($admin): void {
+                    AdminCircleScope::applyToEventsQuery($eventQuery, $admin);
+                });
+                $hasUserScope = true;
+            }
+
+            if (! $hasUserScope) {
+                $scope->whereRaw('1=0');
+            }
+        });
+    }
+
     public function circleJoinRequestsQuery(AdminUser $admin, ?string $circleId = null): EloquentBuilder
     {
         $query = CircleJoinRequest::query()->with(['user', 'circle', 'dedApprovedBy']);
@@ -717,6 +778,144 @@ class DedApiService
         $this->applyActivityScope($query, $admin, 'impacts.user_id', 'impacts.impacted_peer_id', $circleId);
 
         return $query;
+    }
+
+    public function peerRecommendationsQuery(AdminUser $admin, Request $request): EloquentBuilder
+    {
+        if (! Schema::hasTable('peer_recommendations')) {
+            abort(404, 'Peer recommendation table is not available.');
+        }
+
+        $query = \App\Models\PeerRecommendation::query()->with('user');
+        $this->applyActivityScope($query, $admin, 'peer_recommendations.user_id', null, $request->query('circle_id'));
+        $this->applyDateFilters($query, $request, 'created_at');
+        $this->applyGenericSearch($query, $request->query('search'));
+
+        return $query;
+    }
+
+    public function collaborationsQuery(AdminUser $admin, Request $request): EloquentBuilder
+    {
+        if (! Schema::hasTable('collaboration_posts')) {
+            abort(404, 'Collaboration table is not available.');
+        }
+
+        $query = \App\Models\CollaborationPost::query()->with(['user', 'acceptedByUser', 'collaborationType']);
+        $this->applyActivityScope($query, $admin, 'collaboration_posts.user_id', 'collaboration_posts.accepted_by_user_id', $request->query('circle_id'));
+        $this->applyDateFilters($query, $request, Schema::hasColumn('collaboration_posts', 'posted_at') ? 'posted_at' : 'created_at');
+        $this->applyGenericSearch($query, $request->query('search'));
+        $query->when($request->query('status'), fn ($q, $v) => $q->where('status', $v));
+
+        return $query;
+    }
+
+    public function registerVisitorQuery(AdminUser $admin, Request $request): EloquentBuilder
+    {
+        $query = $this->visitorRegistrationsQuery($admin, $request->query('circle_id'));
+        $this->applyDateFilters($query, $request, 'created_at');
+        $this->applyGenericSearch($query, $request->query('search'));
+        $query->when($request->query('status'), fn ($q, $v) => $q->where('status', $v));
+
+        return $query;
+    }
+
+    public function referralReport(Request $request, AdminUser $admin): array
+    {
+        if (! Schema::hasTable('referraldata')) {
+            $query = $this->activityQuery('referrals', $admin, $request);
+            $paginator = $query->latest('created_at')->paginate($this->perPage($request));
+
+            return [
+                'items' => $paginator->items(),
+                'meta' => $this->paginationMeta($paginator),
+            ];
+        }
+
+        $query = DB::table('referraldata as rd')
+            ->leftJoin('users as referrer', function ($join): void {
+                $join->on(DB::raw('rd.referrer_user_id::text'), '=', DB::raw('referrer.id::text'));
+            })
+            ->leftJoin('users as referred', function ($join): void {
+                $join->on(DB::raw('rd.referred_user_id::text'), '=', DB::raw('referred.id::text'));
+            })
+            ->select([
+                'rd.*',
+                DB::raw("coalesce(nullif(trim(concat_ws(' ', referrer.first_name, referrer.last_name)), ''), referrer.display_name, referrer.email) as referrer_name"),
+                'referrer.email as referrer_email',
+                'referrer.phone as referrer_phone',
+                'referrer.company_name as referrer_company',
+                DB::raw("coalesce(nullif(trim(concat_ws(' ', referred.first_name, referred.last_name)), ''), referred.display_name, referred.email) as referred_name"),
+                'referred.email as referred_email',
+                'referred.phone as referred_phone',
+                'referred.company_name as referred_company',
+                'referred.city as referred_city',
+            ]);
+
+        if (Schema::hasColumn('referraldata', 'referrer_user_id')) {
+            AdminCircleScope::applyDedDistrictScope($query, $admin, 'rd.referrer_user_id');
+        } else {
+            $query->whereRaw('1=0');
+        }
+
+        $referralDateColumn = Schema::hasColumn('referraldata', 'used_at')
+            ? 'rd.used_at'
+            : (Schema::hasColumn('referraldata', 'created_at') ? 'rd.created_at' : null);
+        if ($referralDateColumn) {
+            $this->applyDateFilters($query, $request, $referralDateColumn);
+        }
+        $query->when($request->query('search'), function ($q, $term): void {
+            $like = '%' . str_replace(['%', '_'], ['\%', '\_'], (string) $term) . '%';
+            $q->where(function ($inner) use ($like): void {
+                $inner->where('referrer.email', 'ILIKE', $like)
+                    ->orWhere('referred.email', 'ILIKE', $like)
+                    ->orWhere('referrer.display_name', 'ILIKE', $like)
+                    ->orWhere('referred.display_name', 'ILIKE', $like);
+                if (Schema::hasColumn('referraldata', 'referral_code')) {
+                    $inner->orWhere('rd.referral_code', 'ILIKE', $like);
+                }
+            });
+        });
+
+        if ($referralDateColumn) {
+            $query->orderByDesc($referralDateColumn);
+        } elseif (Schema::hasColumn('referraldata', 'id')) {
+            $query->orderByDesc('rd.id');
+        }
+
+        $paginator = $query->paginate($this->perPage($request));
+
+        return [
+            'items' => $paginator->items(),
+            'meta' => $this->paginationMeta($paginator),
+        ];
+    }
+
+    public function lifeImpact(Request $request, AdminUser $admin): array
+    {
+        $query = $this->usersQuery($admin);
+        $this->applyCircleFilterToUsers($query, $request->query('circle_id'));
+        $query->when($request->query('search'), function ($q, $term): void {
+            $like = '%' . str_replace(['%', '_'], ['\%', '\_'], (string) $term) . '%';
+            $q->where(function ($inner) use ($like): void {
+                $inner->where('display_name', 'ILIKE', $like)
+                    ->orWhere('first_name', 'ILIKE', $like)
+                    ->orWhere('last_name', 'ILIKE', $like)
+                    ->orWhere('email', 'ILIKE', $like)
+                    ->orWhere('phone', 'ILIKE', $like)
+                    ->orWhere('company_name', 'ILIKE', $like)
+                    ->orWhere('city', 'ILIKE', $like);
+            });
+        });
+
+        $paginator = $query->orderByDesc('life_impacted_count')->paginate($this->perPage($request));
+        $items = collect($paginator->items())->map(fn (User $user): array => array_merge($this->userSummary($user), [
+            'life_impacted_count' => (int) ($user->life_impacted_count ?? 0),
+        ]))->values();
+
+        return [
+            'items' => $items,
+            'meta' => $this->paginationMeta($paginator),
+        ];
     }
 
     public function filterPendingQuery(EloquentBuilder $query, Request $request, string $type): EloquentBuilder
@@ -769,14 +968,27 @@ class DedApiService
     private function reviewEventJoining(AdminUser $admin, User $actor, string $id, string $action, string $note)
     {
         $record = $this->eventJoiningRequestsQuery($admin)->findOrFail($id);
-        $record->status = $action === 'approve' ? 'approved' : 'rejected';
-        $record->admin_note = $note ?: ($action === 'approve' ? 'Approved by DED.' : 'Rejected by DED.');
+        $table = $record->getTable();
+        if (Schema::hasColumn($table, 'status')) {
+            $record->status = $action === 'approve' ? 'approved' : 'rejected';
+        }
+        if (Schema::hasColumn($table, 'admin_note')) {
+            $record->admin_note = $note ?: ($action === 'approve' ? 'Approved by DED.' : 'Rejected by DED.');
+        }
         if ($action === 'approve') {
-            $record->approved_by_user_id = $actor->id;
-            $record->approved_at = now();
+            if (Schema::hasColumn($table, 'approved_by_user_id')) {
+                $record->approved_by_user_id = $actor->id;
+            }
+            if (Schema::hasColumn($table, 'approved_at')) {
+                $record->approved_at = now();
+            }
         } else {
-            $record->rejected_by_user_id = $actor->id;
-            $record->rejected_at = now();
+            if (Schema::hasColumn($table, 'rejected_by_user_id')) {
+                $record->rejected_by_user_id = $actor->id;
+            }
+            if (Schema::hasColumn($table, 'rejected_at')) {
+                $record->rejected_at = now();
+            }
         }
         $record->save();
         $this->audit($admin, $actor, 'event_joining_request.' . $action, $record->id, ['status' => $record->status]);

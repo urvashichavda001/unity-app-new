@@ -94,6 +94,11 @@ Common error statuses: `401` unauthenticated, `403` not a DED / missing district
 | GET | `/peers` | District peers | `search`, `circle_id`, `membership_status`, `status`, `per_page`, `page` |
 | GET | `/peers/{id}` | District peer detail | path UUID; 403 outside district |
 | GET | `/activities/summary` | Peer activity summary and top 5 district peers | `search`, `circle_id`, `date_from`, `date_to`, `per_page`, `page` |
+| GET | `/activities/recommend-a-peer` | District-scoped recommend-a-peer activity submissions | `search`, `circle_id`, `date_from`, `date_to`, `per_page`, `page` |
+| GET | `/activities/find-build-collaborations` | District-scoped collaboration posts | `search`, `circle_id`, `status`, `date_from`, `date_to`, `per_page`, `page` |
+| GET | `/activities/register-a-visitor` | District-scoped register-a-visitor activity submissions | `search`, `circle_id`, `status`, `date_from`, `date_to`, `per_page`, `page` |
+| GET | `/referral-report` | District-scoped referral report | `search`, `date_from`, `date_to`, `per_page`, `page` |
+| GET | `/life-impact` | District-scoped life impact report | `search`, `circle_id`, `per_page`, `page` |
 | GET | `/activities/testimonials` | District testimonials | `search`, `circle_id`, `date_from`, `date_to`, `has_media`, `per_page`, `page` |
 | GET | `/activities/testimonials/{id}` | Testimonial detail | path UUID; 403/404 outside district scope |
 | GET | `/activities/requirements` | District requirements | `search`, `circle_id`, `status`, `category`, `date_from`, `date_to`, `per_page`, `page` |

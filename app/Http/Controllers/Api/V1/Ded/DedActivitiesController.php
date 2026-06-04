@@ -35,6 +35,49 @@ class DedActivitiesController extends Controller
         return $this->ded->success($paginator->items(), 'DED activities loaded.', $this->ded->paginationMeta($paginator));
     }
 
+
+    public function recommendPeer(Request $request)
+    {
+        $request->validate($this->listRules() + ['search' => ['nullable', 'string', 'max:255']]);
+        $admin = $this->ded->admin($request);
+        $this->ded->assertCircleInScope($admin, $request->query('circle_id'));
+        $paginator = $this->ded->peerRecommendationsQuery($admin, $request)
+            ->latest('created_at')
+            ->paginate($this->ded->perPage($request));
+
+        return $this->ded->success($paginator->items(), 'DED recommend-a-peer activities loaded.', $this->ded->paginationMeta($paginator));
+    }
+
+    public function findBuildCollaborations(Request $request)
+    {
+        $request->validate($this->listRules() + [
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'max:100'],
+        ]);
+        $admin = $this->ded->admin($request);
+        $this->ded->assertCircleInScope($admin, $request->query('circle_id'));
+        $paginator = $this->ded->collaborationsQuery($admin, $request)
+            ->latest('created_at')
+            ->paginate($this->ded->perPage($request));
+
+        return $this->ded->success($paginator->items(), 'DED collaboration activities loaded.', $this->ded->paginationMeta($paginator));
+    }
+
+    public function registerVisitor(Request $request)
+    {
+        $request->validate($this->listRules() + [
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'max:100'],
+        ]);
+        $admin = $this->ded->admin($request);
+        $this->ded->assertCircleInScope($admin, $request->query('circle_id'));
+        $paginator = $this->ded->registerVisitorQuery($admin, $request)
+            ->latest('created_at')
+            ->paginate($this->ded->perPage($request));
+
+        return $this->ded->success($paginator->items(), 'DED visitor registration activities loaded.', $this->ded->paginationMeta($paginator));
+    }
+
     public function show(Request $request, string $type, string $id)
     {
         $query = $this->ded->activityQuery($type, $this->ded->admin($request), $request);
