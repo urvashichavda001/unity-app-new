@@ -19,10 +19,13 @@ use App\Models\EventOccurrence;
 use App\Models\EventRegistration;
 use App\Models\EventRegistrationRequest;
 use App\Models\EventRsvp;
+use App\Models\ScanAppUser;
+use App\Models\User;
 use App\Services\Events\EventCheckinService;
 use App\Services\Events\EventPaymentService;
 use App\Services\Events\EventPaymentSyncService;
 use App\Services\Events\EventRegistrationService;
+use App\Services\Events\EventScannerQrScanService;
 use App\Services\Events\EventService;
 use App\Services\Events\EventQrService;
 use App\Services\Events\EventRazorpayPaymentFinalizer;
@@ -37,6 +40,7 @@ class EventController extends BaseApiController
         private readonly EventService $events,
         private readonly EventRegistrationService $registrations,
         private readonly EventCheckinService $checkins,
+        private readonly EventScannerQrScanService $scannerQrScans,
         private readonly EventPaymentService $payments,
         private readonly EventPaymentSyncService $eventPaymentSync,
         private readonly EventRazorpayPaymentService $razorpayPayments,
@@ -597,9 +601,48 @@ class EventController extends BaseApiController
 
     public function scan(ScanEventQrRequest $request)
     {
-        $registration = $this->checkins->scan($request->input('qr_token'), $request->user(), (bool) $request->boolean('force'));
+        $authUser = $request->user();
+        $qrToken = trim((string) $request->input('qr_token'));
 
-        return $this->success(new EventRegistrationResource($registration), 'Attendance marked successfully.');
+        if ($authUser instanceof ScanAppUser) {
+            return $this->scannerScanResponse(
+                $this->scannerQrScans->scan($authUser, $qrToken, $this->deviceInfo($request))
+            );
+        }
+
+        if ($authUser instanceof User) {
+            $registration = $this->checkins->scan($qrToken, $authUser, (bool) $request->boolean('force'));
+
+            return $this->success(new EventRegistrationResource($registration), 'Attendance marked successfully.');
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthenticated.',
+        ], 401);
+    }
+
+    private function scannerScanResponse(array $result)
+    {
+        if ($result['success']) {
+            return $this->success($result['data'], $result['message'], $result['status']);
+        }
+
+        if ($result['errors'] !== null) {
+            return $this->error($result['message'], $result['status'], $result['errors']);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $result['message'],
+        ], $result['status']);
+    }
+
+    private function deviceInfo(Request $request): ?array
+    {
+        $deviceInfo = $request->input('device_info');
+
+        return is_array($deviceInfo) ? $deviceInfo : null;
     }
 
     public function attendance(Request $request, string $eventId)

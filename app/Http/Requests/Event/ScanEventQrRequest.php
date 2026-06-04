@@ -12,6 +12,7 @@ class ScanEventQrRequest extends FormRequest
     {
         return [
             'qr_token' => ['required', 'string', 'max:512'],
+            'device_info' => ['nullable', 'array'],
             'scanner_user_id' => ['nullable', 'uuid', 'exists:users,id'],
             'force' => ['sometimes', 'boolean'],
         ];
