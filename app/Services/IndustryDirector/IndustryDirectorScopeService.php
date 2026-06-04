@@ -133,15 +133,23 @@ class IndustryDirectorScopeService
     public function memberIds(string $selectedIndustryId): array
     {
         $industryIdsForFilter = $this->industryIdsForFilter($selectedIndustryId);
-        $memberIds = $this->applyUsersScope(User::query()->select('users.id'), $selectedIndustryId)
+        $directMemberIds = $this->applyUsersScope(User::query()->select('users.id'), $selectedIndustryId)
             ->pluck('users.id')
             ->map(fn ($id) => (string) $id)
+            ->values()
+            ->all();
+        $mappingMemberIds = $this->memberIdsFromMappingView($selectedIndustryId, $industryIdsForFilter);
+        $memberIds = collect($mappingMemberIds)
+            ->merge($directMemberIds)
+            ->unique()
             ->values()
             ->all();
 
         Log::info('IDE Scope Debug', [
             'admin_user_id' => Auth::guard('admin')->id(),
             'assigned_industry_id' => $selectedIndustryId,
+            'mapping_member_count' => count($mappingMemberIds),
+            'direct_member_count' => count($directMemberIds),
             'matched_member_ids' => $memberIds,
             'matched_member_count' => count($memberIds),
         ]);
@@ -181,7 +189,11 @@ class IndustryDirectorScopeService
             return $query->whereRaw('1 = 0');
         }
 
-        return $this->applyUsersScope($query, $selectedIndustryId);
+        $memberIds = $this->memberIds($selectedIndustryId);
+
+        return $memberIds === []
+            ? $query->whereRaw('1 = 0')
+            : $query->whereIn('users.id', $memberIds);
     }
 
     public function applyPostsScope($query, string $selectedIndustryId)
@@ -355,6 +367,55 @@ class IndustryDirectorScopeService
         }
 
         return in_array((string) $circleId, $this->circleIdsForAdmin($adminUser), true);
+    }
+
+
+    private function memberIdsFromMappingView(string $selectedIndustryId, array $industryIds): array
+    {
+        if (! Schema::hasTable('industry_director_user_mappings')) {
+            return [];
+        }
+
+        $adminUserId = (string) Auth::guard('admin')->id();
+        $industryIds = $this->cleanIds($industryIds);
+
+        $query = DB::table('industry_director_user_mappings')
+            ->select('user_id')
+            ->distinct()
+            ->where(function ($scope) use ($adminUserId, $industryIds): void {
+                $hasCondition = false;
+
+                if ($adminUserId !== '') {
+                    $adminIds = $this->idsForColumn('industry_director_user_mappings', 'industry_director_id', [$adminUserId]);
+                    if ($adminIds !== []) {
+                        $scope->orWhereIn('industry_director_id', $adminIds);
+                        $hasCondition = true;
+                    }
+                }
+
+                $mainCategoryIds = $this->idsForColumn('industry_director_user_mappings', 'main_category_id', $industryIds);
+                if ($mainCategoryIds !== []) {
+                    $scope->orWhereIn('main_category_id', $mainCategoryIds);
+                    $hasCondition = true;
+                }
+
+                $subCategoryIds = $this->idsForColumn('industry_director_user_mappings', 'sub_category_id', $industryIds);
+                if ($subCategoryIds !== []) {
+                    $scope->orWhereIn('sub_category_id', $subCategoryIds);
+                    $hasCondition = true;
+                }
+
+                if (! $hasCondition) {
+                    $scope->whereRaw('1 = 0');
+                }
+            });
+
+        return $query->pluck('user_id')
+            ->map(fn ($id) => (string) $id)
+            ->filter(fn (string $id) => $id !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     private function applyUsersIndustryColumns($query, array $industryIds, string $table)
