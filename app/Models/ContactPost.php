@@ -33,6 +33,26 @@ class ContactPost extends Model
         'addresses',
     ];
 
+    protected $visible = [
+        'id',
+        'user_id',
+        'full_name',
+        'phone',
+        'first_name',
+        'middle_name',
+        'last_name',
+        'nickname',
+        'email',
+        'company',
+        'job_title',
+        'notes',
+        'emails',
+        'phones',
+        'addresses',
+        'created_at',
+        'updated_at',
+    ];
+
     protected $casts = [
         'emails' => 'array',
         'phones' => 'array',
