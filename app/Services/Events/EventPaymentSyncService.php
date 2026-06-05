@@ -9,7 +9,10 @@ use Illuminate\Support\Facades\Schema;
 
 class EventPaymentSyncService
 {
-    public function __construct(private readonly ZohoBillingPaymentLinkService $zohoPaymentLinks) {}
+    public function __construct(
+        private readonly ZohoBillingPaymentLinkService $zohoPaymentLinks,
+        private readonly EventRegistrationQrService $registrationQr,
+    ) {}
 
     public function syncRegistrationPayment(EventRegistration $registration, array $options = []): array
     {
@@ -44,11 +47,15 @@ class EventPaymentSyncService
             ]);
         }
 
+        if (in_array(strtolower((string) ($registration->payment_status ?? '')), ['paid', 'success', 'completed'], true)) {
+            $registration = $this->registrationQr->ensureQrGenerated($registration);
+        }
+
         return [
             'registration' => $registration->fresh(['event', 'occurrence', 'user']),
             'payment_status' => $registration->payment_status,
             'zoho_invoice_status' => $registration->zoho_invoice_status,
-            'qr_code_url' => $registration->qr_code_path ? app(EventQrService::class)->url($registration->qr_code_path) : $registration->qr_code_url,
+            'qr_code_url' => $this->registrationQr->qrCodeUrl($registration),
         ];
     }
 

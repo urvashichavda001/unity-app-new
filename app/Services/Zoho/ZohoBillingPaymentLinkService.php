@@ -3,7 +3,7 @@
 namespace App\Services\Zoho;
 
 use App\Models\EventRegistration;
-use App\Services\Events\EventQrService;
+use App\Services\Events\EventRegistrationQrService;
 use App\Services\Events\EventZohoInvoiceSyncService;
 use App\Support\Zoho\ZohoBillingClient;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +14,7 @@ class ZohoBillingPaymentLinkService
 {
     public function __construct(
         private readonly ZohoBillingClient $client,
-        private readonly EventQrService $qrService,
+        private readonly EventRegistrationQrService $registrationQr,
         private readonly EventZohoInvoiceSyncService $invoiceSyncService,
     ) {}
 
@@ -297,17 +297,7 @@ class ZohoBillingPaymentLinkService
         $registration->refresh();
         Log::info('zoho_payment_id_saved_from_payment_link', ['registration_id' => (string) $registration->id, 'payment_id' => $paymentId]);
 
-        if (empty($registration->qr_code_url) && empty($registration->qr_code_path)) {
-            try {
-                $this->qrService->generateAndStore($registration);
-                Log::info('zoho_billing_payment_link_qr_generated', ['registration_id' => (string) $registration->id]);
-            } catch (\Throwable $e) {
-                Log::warning('zoho_billing_payment_link_qr_generation_skipped', [
-                    'registration_id' => (string) $registration->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        $registration = $this->registrationQr->ensureQrGenerated($registration);
 
         Log::info('zoho_billing_payment_link_marked_paid', ['registration_id' => (string) $registration->id]);
 

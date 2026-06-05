@@ -34,7 +34,7 @@
             @php
                 $attendeeName = $registration->user ? ($registration->user->display_name ?? trim(($registration->user->first_name ?? '').' '.($registration->user->last_name ?? ''))) : $registration->visitor_name;
                 $attendeeEmail = $registration->user?->email ?? $registration->visitor_email;
-                $hasQr = !empty($registration->qr_code_url) || !empty($registration->qr_code_path);
+                $hasQr = !empty($registration->qr_code_url) || !empty($registration->qr_code_path) || !empty($registration->qr_code_svg);
                 $gateway = $registration->payment_gateway ?: null;
                 $gatewayLabel = match ($gateway) {
                     'zoho_billing_payment_link' => 'Zoho Billing',
