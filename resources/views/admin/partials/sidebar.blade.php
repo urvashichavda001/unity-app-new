@@ -7,16 +7,11 @@
     $isGlobalAdmin = \App\Support\AdminAccess::isGlobalAdmin($adminUser);
     $isIndustryDirector = $adminUser?->roles?->pluck('key')->contains('industry_director') ?? false;
 
-    $dashboardItem = ($isCircleScoped || $isDed)
-        ? ($isDed ? ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.ded.dashboard'] : null)
-        : ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.dashboard'];
-
-    $navItems = ($isCircleScoped || $isDed)
     $dashboardItem = $isIndustryDirector
         ? ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.industry-director.dashboard']
-        : ($isCircleScoped
-        ? null
-        : ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.dashboard']);
+        : (($isCircleScoped || $isDed)
+            ? ($isDed ? ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.ded.dashboard'] : null)
+            : ['icon' => 'bi-speedometer2', 'label' => 'Dashboard', 'route' => 'admin.dashboard']);
 
     $navItems = $isIndustryDirector
         ? [
@@ -68,7 +63,6 @@
             ['icon' => 'bi-gear', 'label' => 'System Settings', 'route' => '#'],
         ]);
 
-    $activityMenu = ($isSuper || $isCircleScoped || $isDed) ? [
     $fullActivityMenu = [
         ['label' => 'Summary', 'route' => 'admin.activities.index'],
         ['label' => 'Testimonials', 'route' => 'admin.activities.testimonials.index'],
