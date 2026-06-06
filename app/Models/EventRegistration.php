@@ -88,6 +88,7 @@ class EventRegistration extends Model
         'razorpay_signature',
         'razorpay_payment_id',
         'razorpay_order_id',
+        'visitor_registration_form_url',
     ];
 
     protected $casts = [

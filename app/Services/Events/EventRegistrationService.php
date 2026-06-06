@@ -337,6 +337,26 @@ class EventRegistrationService
         return trim((string) ($user->display_name ?: trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: $user->email ?: $user->phone ?: 'Event Attendee'));
     }
 
+    public function visitorRegistrationFormUrl(EventRegistration $registration): string
+    {
+        return url('/events/'.$registration->event_id.'/occurrences/'.$registration->occurrence_id.'/visitor-register?registration_id='.$registration->id);
+    }
+
+    public function ensureVisitorRegistrationFormUrl(EventRegistration $registration): EventRegistration
+    {
+        if (! Schema::hasColumn('event_registrations', 'visitor_registration_form_url')) {
+            return $registration;
+        }
+
+        $url = $this->visitorRegistrationFormUrl($registration);
+        if ($registration->visitor_registration_form_url !== $url) {
+            $registration->forceFill(['visitor_registration_form_url' => $url])->save();
+            $registration->refresh();
+        }
+
+        return $registration;
+    }
+
     public function qrDetails(EventRegistration $registration): array
     {
         $hasGeneratedQr = ! empty($registration->qr_code_path) || ! empty($registration->qr_code_url) || ! empty($registration->qr_code_svg);
@@ -414,6 +434,7 @@ class EventRegistrationService
                     $existing->forceFill($updates)->save();
                 }
 
+                $existing = $this->ensureVisitorRegistrationFormUrl($existing);
                 $existing = $this->registrationQr->ensureQrGenerated($existing);
 
                 return $existing->fresh(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']);
@@ -438,6 +459,8 @@ class EventRegistrationService
                 'currency' => $this->payments->currency($event),
                 'registration_type' => $registrationType,
             ])));
+
+            $registration = $this->ensureVisitorRegistrationFormUrl($registration);
 
             if (! $paymentRequired) {
                 $registration = $this->registrationQr->ensureQrGenerated($registration);

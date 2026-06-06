@@ -142,7 +142,7 @@ class ZohoBillingPaymentLinkService
     {
         $registration->loadMissing(['event', 'occurrence', 'user']);
 
-        if (($registration->payment_gateway ?? null) !== 'zoho_billing_payment_link') {
+        if (! $this->usesZohoPaymentLink($registration)) {
             return $registration;
         }
 
@@ -184,6 +184,14 @@ class ZohoBillingPaymentLinkService
         Log::info('zoho_billing_payment_link_sync_no_paid_status', ['registration_id' => (string) $registration->id]);
 
         return $registration->fresh(['event', 'occurrence', 'user']);
+    }
+
+    private function usesZohoPaymentLink(EventRegistration $registration): bool
+    {
+        return ($registration->payment_gateway ?? null) === 'zoho_billing_payment_link'
+            || ! empty($registration->zoho_payment_link_url)
+            || ! empty($registration->zoho_checkout_url)
+            || ! empty($registration->zoho_hosted_page_url);
     }
 
     private function syncEndpoints(EventRegistration $registration): array
