@@ -109,6 +109,57 @@ class ScanAppEventScanFlowTest extends TestCase
     }
 
 
+    public function test_scan_app_login_token_scans_extracted_qr_token_without_unity_login(): void
+    {
+        [$attendee, $event, $scanner] = $this->createScanReadyRegistration('LOGIN_FLOW_QR_TOKEN');
+
+        $loginResponse = $this->postJson('/api/v1/scan-app/login', [
+            'username' => $scanner->username,
+            'password' => 'password',
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Login successful.')
+            ->assertJsonPath('data.scanner.id', $scanner->id);
+
+        $token = $loginResponse->json('data.token');
+        $this->assertIsString($token);
+        $this->assertNotEmpty($token);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/scan-app/scan', [
+                'qr_token' => 'LOGIN_FLOW_QR_TOKEN',
+                'device_info' => ['platform' => 'android'],
+            ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Attendance marked successfully.')
+            ->assertJsonPath('data.event_id', $event->id)
+            ->assertJsonPath('data.checked_in_user.id', $attendee->id)
+            ->assertJsonPath('data.scanner.id', $scanner->id);
+
+        $registration = EventRegistration::query()->where('qr_token', 'LOGIN_FLOW_QR_TOKEN')->firstOrFail();
+        $this->assertSame('checked_in', $registration->checkin_status);
+        $this->assertSame('scan_app', $registration->attendance_source);
+    }
+
+    public function test_scan_app_scan_endpoint_accepts_scanned_qr_url_and_stores_only_token(): void
+    {
+        [$attendee, $event, $scanner] = $this->createScanReadyRegistration('URL_FLOW_QR_TOKEN');
+
+        Sanctum::actingAs($scanner);
+
+        $this->postJson('/api/v1/scan-app/scan', [
+            'qr_token' => 'https://peersunity.com/api/v1/events/checkin/qr/URL_FLOW_QR_TOKEN',
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.event_id', $event->id)
+            ->assertJsonPath('data.checked_in_user.id', $attendee->id);
+
+        $scanLog = EventQrScanLog::query()->firstOrFail();
+        $this->assertSame('URL_FLOW_QR_TOKEN', $scanLog->qr_token);
+        $this->assertSame('success', $scanLog->scan_status);
+    }
+
+
     public function test_legacy_checkin_scan_accepts_scan_app_token_without_event_id(): void
     {
         $attendee = User::query()->create([
@@ -273,6 +324,14 @@ class ScanAppEventScanFlowTest extends TestCase
                 'success' => false,
                 'message' => 'This API is only available for scanner app users.',
             ]);
+
+        $this->postJson('/api/v1/scan-app/scan', [
+            'qr_token' => 'ATTENDEE_QR_TOKEN',
+        ])->assertForbidden()
+            ->assertJson([
+                'success' => false,
+                'message' => 'This API is only available for scanner app users.',
+            ]);
     }
 
     public function test_scanner_token_cannot_use_unity_event_registration_api(): void
@@ -330,6 +389,57 @@ class ScanAppEventScanFlowTest extends TestCase
         ])->assertForbidden()
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Scanner is not assigned to this event.');
+    }
+
+
+    private function createScanReadyRegistration(string $qrToken): array
+    {
+        $attendee = User::query()->create([
+            'id' => (string) Str::uuid(),
+            'first_name' => 'Scanner',
+            'last_name' => 'Attendee',
+            'display_name' => 'Scanner Attendee',
+            'email' => Str::lower($qrToken).'@example.com',
+            'phone' => (string) random_int(1000000000, 9999999999),
+            'password_hash' => Hash::make('password'),
+        ]);
+        $event = Event::query()->create([
+            'id' => (string) Str::uuid(),
+            'title' => 'Scanner Login Event',
+            'qr_checkin_enabled' => true,
+        ]);
+        $occurrence = EventOccurrence::query()->create([
+            'id' => (string) Str::uuid(),
+            'event_id' => $event->id,
+            'occurrence_date' => '2026-06-10',
+            'start_at' => '2026-06-10 10:00:00',
+            'end_at' => '2026-06-10 12:00:00',
+            'status' => 'scheduled',
+        ]);
+        EventRegistration::query()->create([
+            'id' => (string) Str::uuid(),
+            'event_id' => $event->id,
+            'occurrence_id' => $occurrence->id,
+            'user_id' => $attendee->id,
+            'qr_token' => $qrToken,
+            'qr_code_path' => 'event-qrcodes/'.$event->id.'/'.Str::slug($qrToken).'.png',
+            'status' => 'registered',
+            'payment_required' => false,
+            'payment_status' => 'not_required',
+            'checkin_status' => 'pending',
+            'registered_at' => now(),
+        ]);
+        $scanner = ScanAppUser::query()->create([
+            'id' => (string) Str::uuid(),
+            'name' => 'Login Flow Scanner',
+            'username' => 'scanner-'.Str::lower($qrToken),
+            'password_hash' => Hash::make('password'),
+            'hotel_name' => 'Hotel Scanner',
+            'event_id' => $event->id,
+            'is_active' => true,
+        ]);
+
+        return [$attendee, $event, $scanner];
     }
 
     private function setUpInMemoryDatabase(): void
@@ -426,7 +536,7 @@ class ScanAppEventScanFlowTest extends TestCase
         });
 
         Schema::create('personal_access_tokens', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->id();
             $table->string('tokenable_type');
             $table->uuid('tokenable_id');
             $table->string('name');

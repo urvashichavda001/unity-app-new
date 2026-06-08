@@ -122,6 +122,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/me', [ScanAppAuthController::class, 'me']);
             Route::post('/logout', [ScanAppAuthController::class, 'logout']);
             Route::get('/events', [ScanAppEventController::class, 'index']);
+            Route::post('/scan', [ScanAppEventController::class, 'scanAny']);
             Route::post('/events/{event_id}/scan', [ScanAppEventController::class, 'scan'])->whereUuid('event_id');
             Route::get('/events/{event}/attendance-history', [ScanAppEventController::class, 'attendanceHistory'])->whereUuid('event');
         });

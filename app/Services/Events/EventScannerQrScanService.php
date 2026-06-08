@@ -15,6 +15,8 @@ class EventScannerQrScanService
 
     public function scan(ScanAppUser $scanner, string $qrToken, ?array $deviceInfo = null, ?string $expectedEventId = null): array
     {
+        $qrToken = $this->extractQrToken($qrToken);
+
         if (! $scanner->is_active) {
             $this->writeScanLog($expectedEventId ?? $scanner->event_id, null, $scanner->id, $qrToken, 'inactive_scanner', 'Scanner account is inactive.', $deviceInfo, [
                 'scanner_event_id' => $scanner->event_id,
@@ -84,6 +86,29 @@ class EventScannerQrScanService
 
             return $this->result(false, 'Unable to scan QR. Please try again.', 500, null, ['scan_status' => 'failed']);
         }
+    }
+
+
+    private function extractQrToken(string $qrToken): string
+    {
+        $value = trim($qrToken);
+        $path = parse_url($value, PHP_URL_PATH);
+
+        if (! is_string($path) || $path === '') {
+            return $value;
+        }
+
+        $marker = '/api/v1/events/checkin/qr/';
+        $position = strpos($path, $marker);
+
+        if ($position === false) {
+            return $value;
+        }
+
+        $token = substr($path, $position + strlen($marker));
+        $token = trim($token, '/');
+
+        return $token !== '' ? urldecode($token) : $value;
     }
 
     private function result(bool $success, string $message, int $status, ?array $data = null, ?array $errors = null): array
