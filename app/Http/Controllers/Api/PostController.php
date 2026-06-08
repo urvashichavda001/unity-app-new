@@ -93,7 +93,7 @@ class PostController extends BaseApiController
             ->selectRaw('false as is_saved_by_me')
             ->selectRaw('impacts.created_at as created_at')
             ->selectRaw('impacts.updated_at as updated_at')
-            ->selectRaw('COALESCE(impacts.timeline_posted_at, impacts.approved_at, impacts.created_at) as sort_at')
+            ->selectRaw('impacts.timeline_posted_at as sort_at')
             ->selectRaw("'impact' as source_type")
             ->selectRaw('NULL::text as post_source_type')
             ->selectRaw('NULL::uuid as post_source_id')
@@ -109,10 +109,7 @@ class PostController extends BaseApiController
             ->selectRaw('impacts.action as impact_action')
             ->selectRaw('COALESCE(impacts.life_impacted, 1) as life_impacted')
             ->where('impacts.status', 'approved')
-            ->where(function ($query): void {
-                $query->whereNotNull('impacts.timeline_posted_at')
-                    ->orWhereNotNull('impacts.approved_at');
-            });
+            ->whereNotNull('impacts.timeline_posted_at');
 
         $union = $postRows->unionAll($impactRows);
         $orderedRows = DB::query()->fromSub($union, 'feed_rows')->orderByDesc('sort_at');
