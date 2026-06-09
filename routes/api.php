@@ -245,6 +245,10 @@ Route::prefix('v1')->group(function () {
     });
     Route::post('/zoho/events/form-webhook', ZohoEventFormWebhookController::class);
     Route::post('/payments/zoho-billing/payment-link/webhook', [ZohoPaymentLinkWebhookController::class, 'handle']);
+    // Local: use the current ngrok HTTPS URL and update Zoho whenever ngrok restarts.
+    // Live: use https://peersunity.com/api/v1/webhooks/zoho/payments?secret=LIVE_SECRET (never ngrok).
+    Route::get('/webhooks/zoho/payments/health', [ZohoPaymentWebhookController::class, 'health']);
+    Route::get('/webhooks/zoho/payments', [ZohoPaymentWebhookController::class, 'active']);
     Route::post('/webhooks/zoho/payments', [ZohoPaymentWebhookController::class, 'handle']);
     Route::post('/zoho/payments/webhook', [ZohoPaymentWebhookController::class, 'handle']);
 

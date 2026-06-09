@@ -17,14 +17,14 @@ class ZohoWebhookController extends Controller
 
     public function handle(Request $request)
     {
-        $token = $request->header('X-Webhook-Token') ?? $request->header('x-webhook-token');
-        $configuredSecret = (string) (config('services.zoho.webhook_token', '') ?: config('zoho_billing.webhook_secret', ''));
+        $token = $request->header('X-Webhook-Token');
+        $configuredSecret = (string) (config('services.zoho.webhook_secret') ?: config('zoho_billing.webhook_secret') ?: env('ZOHO_WEBHOOK_SECRET', ''));
 
         if ($configuredSecret === '' || ! is_string($token) || ! hash_equals($configuredSecret, $token)) {
             Log::warning('Zoho webhook unauthorized token mismatch', [
                 'ip' => $request->ip(),
                 'headers' => [
-                    'x-webhook-token' => $request->header('X-Webhook-Token') ?? $request->header('x-webhook-token'),
+                    'has_x_webhook_token' => $request->header('X-Webhook-Token') !== null,
                     'user-agent' => $request->userAgent(),
                     'content-type' => $request->header('Content-Type'),
                 ],
@@ -57,10 +57,8 @@ class ZohoWebhookController extends Controller
         }
 
         Log::info('Zoho webhook received', [
-            'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
-            'event_id' => $event['event_id'] ?? ($event['eventId'] ?? null),
-            'keys' => array_keys($event),
-            'raw_preview' => mb_substr((string) $raw, 0, 1000),
+            'event_type' => data_get($event, 'event_type') ?? data_get($event, 'event.type') ?? data_get($event, 'event') ?? data_get($event, 'eventType'),
+            'payload' => $event,
         ]);
 
         $ok = false;
@@ -70,19 +68,19 @@ class ZohoWebhookController extends Controller
             $ok = $this->zohoBillingService->applyWebhookEvent($event);
         } catch (Throwable $throwable) {
             Log::error('Zoho webhook processing failed', [
-                'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
+                'event_type' => data_get($event, 'event_type') ?? data_get($event, 'event.type') ?? data_get($event, 'event') ?? data_get($event, 'eventType'),
                 'message' => $throwable->getMessage(),
             ]);
         }
 
         Log::info('Zoho webhook handled', [
-            'event_type' => $event['event_type'] ?? ($event['eventType'] ?? null),
+            'event_type' => data_get($event, 'event_type') ?? data_get($event, 'event.type') ?? data_get($event, 'event') ?? data_get($event, 'eventType'),
             'ok' => $ok,
         ]);
 
         return response()->json([
             'success' => true,
-            'handled' => $ok,
+            'message' => 'Webhook processed successfully',
         ], 200);
     }
 }

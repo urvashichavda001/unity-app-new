@@ -36,6 +36,7 @@ return [
     ],
 
     'zoho' => [
+        'webhook_secret' => env('ZOHO_WEBHOOK_SECRET'),
         'webhook_token' => env('ZOHO_WEBHOOK_TOKEN'),
         'billing_org_id' => env('ZOHO_BILLING_ORG_ID'),
     ],

@@ -3,6 +3,7 @@
 namespace App\Support\Membership;
 
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -29,8 +30,11 @@ class MembershipUpdater
     public function applyPaidMembership(User $user, array $attributes = []): bool
     {
         $membershipEndsAt = $attributes['membership_ends_at'] ?? $attributes['membership_expiry'] ?? null;
+        $table = (new User())->getTable();
 
-        $fields = array_filter([
+        $fields = [];
+
+        foreach ([
             'zoho_customer_id' => $attributes['zoho_customer_id'] ?? null,
             'zoho_subscription_id' => $attributes['zoho_subscription_id'] ?? null,
             'zoho_plan_code' => $attributes['zoho_plan_code'] ?? null,
@@ -38,8 +42,16 @@ class MembershipUpdater
             'membership_starts_at' => $attributes['membership_starts_at'] ?? null,
             'membership_ends_at' => $membershipEndsAt,
             'membership_expiry' => $membershipEndsAt,
+            'membership_start_date' => $attributes['membership_start_date'] ?? $this->dateOnly($attributes['membership_starts_at'] ?? null),
+            'membership_end_date' => $attributes['membership_end_date'] ?? $this->dateOnly($membershipEndsAt),
             'last_payment_at' => $attributes['last_payment_at'] ?? now(),
-        ], static fn ($value) => ! is_null($value));
+            'membership_approved_at' => $attributes['membership_approved_at'] ?? now(),
+            'membership_approved_by' => $attributes['membership_approved_by'] ?? null,
+        ] as $column => $value) {
+            if (! is_null($value) && Schema::hasColumn($table, $column)) {
+                $fields[$column] = $value;
+            }
+        }
 
         $membershipColumn = $this->resolveMembershipColumn();
 
@@ -77,12 +89,12 @@ class MembershipUpdater
 
     private function resolveMembershipStatusFromPlanCode(string $planCode): string
     {
-        return match (trim($planCode)) {
-            '012' => 'Only Unity Peer',
-            '013' => 'Circle Peer',
-            '014' => 'Multi Circle Peer',
-            '015' => 'Charter Peer',
-            default => 'free_peer',
+        return match (strtolower(trim($planCode))) {
+            '01', '012', 'unity_peer', 'only_unity_peer', 'only unity peer' => 'Only Unity Peer',
+            '013', 'circle_peer' => 'Circle Peer',
+            '014', 'multi_circle_peer' => 'Multi Circle Peer',
+            '015', 'charter_peer' => 'Charter Peer',
+            default => 'Only Unity Peer',
         };
     }
 
@@ -100,6 +112,20 @@ class MembershipUpdater
         ]);
 
         return 'free_peer';
+    }
+
+
+    private function dateOnly(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function resolveMembershipColumn(): ?string

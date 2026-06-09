@@ -11,6 +11,24 @@ class ZohoPaymentWebhookController extends Controller
 {
     public function __construct(private readonly ZohoPaymentWebhookService $webhooks) {}
 
+    public function active()
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Zoho webhook endpoint is active. Please use POST.',
+        ]);
+    }
+
+    public function health()
+    {
+        return response()->json([
+            'success' => true,
+            'message' => 'Zoho payment webhook endpoint is active.',
+            'environment' => app()->environment(),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+    }
+
     public function handle(Request $request)
     {
         if (! $this->webhooks->verify($request)) {

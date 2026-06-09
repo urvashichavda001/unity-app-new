@@ -2,10 +2,16 @@
 
 namespace App\Services\Zoho;
 
+use App\Models\CircleSubscription;
 use App\Models\EventRegistration;
+use App\Models\Payment;
+use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Services\Events\EventPaymentSyncService;
+use App\Support\Membership\MembershipUpdater;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -14,7 +20,10 @@ class ZohoPaymentWebhookService
 {
     private ?string $lastLookupError = null;
 
-    public function __construct(private readonly EventPaymentSyncService $paymentSync) {}
+    public function __construct(
+        private readonly EventPaymentSyncService $paymentSync,
+        private readonly MembershipUpdater $membershipUpdater,
+    ) {}
 
     public function handle(Request $request): array
     {
@@ -23,8 +32,11 @@ class ZohoPaymentWebhookService
         $normalized['external_event_id'] = $normalized['external_event_id'] ?: $request->header('X-Zoho-Webhook-Id');
         $event = null;
 
+        Log::info('zoho_webhook_received', $this->context(null, $normalized) + [
+            'request_url' => $request->fullUrl(),
+        ]);
         Log::info('zoho_payment_webhook_received_raw', $this->context(null, $normalized));
-        Log::info('zoho_payment_webhook_payload_normalized', $this->context(null, $normalized) + ['normalized' => $normalized]);
+        Log::info('zoho_webhook_payment_normalized', $this->context(null, $normalized) + ['normalized' => $normalized]);
 
         try {
             $event = $this->storeEvent($request, $payload, $normalized);
@@ -81,8 +93,19 @@ class ZohoPaymentWebhookService
         ])->save();
 
         Log::info('zoho_payment_webhook_lookup_started', $this->context($event, $normalized));
+
+        if ($this->isSubscriptionPaymentWebhook($normalized) && ! $this->hasStrongEventRegistrationHint($normalized)) {
+            Log::info('zoho_webhook_detected_subscription_payment', $this->context($event, $normalized));
+            return $this->processSubscriptionPaymentEvent($event, $payload, $normalized);
+        }
+
         $registration = $this->findRegistration($payload, $normalized, $event);
         if (! $registration) {
+            if ($this->isSubscriptionPaymentWebhook($normalized)) {
+                Log::info('zoho_webhook_detected_subscription_payment', $this->context($event, $normalized));
+                return $this->processSubscriptionPaymentEvent($event, $payload, $normalized);
+            }
+
             $lookupError = $this->lastLookupError ?: 'Registration not found for webhook.';
             $event->forceFill(['status' => 'ignored', 'processed_at' => now(), 'error' => $lookupError])->save();
             Log::warning('zoho_payment_webhook_registration_not_found', $this->context($event, $normalized));
@@ -182,21 +205,37 @@ class ZohoPaymentWebhookService
     {
         $payment = (array) data_get($payload, 'payment', []);
         $dataPayment = (array) data_get($payload, 'data.payment', []);
+        $invoice = (array) (data_get($payload, 'payment.invoices.0') ?? data_get($payload, 'data.payment.invoices.0') ?? []);
         $description = $payment['description'] ?? data_get($payload, 'description') ?? data_get($payload, 'data.description') ?? ($dataPayment['description'] ?? null);
         $parsed = $this->parseDescriptionIdentifiers((string) $description);
+        $paymentLinkId = array_key_exists('payment_link_id', $payment)
+            ? (string) $payment['payment_link_id']
+            : (string) (data_get($payload, 'payment_link.payment_link_id') ?? data_get($payload, 'payment_link_id') ?? data_get($payload, 'data.payment_link_id') ?? data_get($payload, 'data.payment_link.payment_link_id') ?? data_get($payload, 'payment_link.id') ?? '');
+        $subscriptionIds = data_get($invoice, 'subscription_ids', []);
+        $subscriptionId = is_array($subscriptionIds) ? ($subscriptionIds[0] ?? null) : $subscriptionIds;
 
         return [
             'event_type' => data_get($payload, 'event') ?? data_get($payload, 'event_type') ?? data_get($payload, 'type') ?? data_get($payload, 'event_name') ?? 'customer_payment',
             'external_event_id' => data_get($payload, 'event_id') ?? data_get($payload, 'id') ?? data_get($payload, 'webhook_id'),
             'payment_id' => $payment['payment_id'] ?? data_get($payload, 'payment_id') ?? data_get($payload, 'data.payment_id') ?? ($dataPayment['payment_id'] ?? null) ?? data_get($payload, 'payment.id') ?? data_get($payload, 'customer_payments.0.payment_id') ?? data_get($payload, 'payment_link.customer_payments.0.payment_id'),
-            'payment_link_id' => $this->blankToNull($payment['payment_link_id'] ?? data_get($payload, 'payment_link.payment_link_id') ?? data_get($payload, 'payment_link_id') ?? data_get($payload, 'data.payment_link_id') ?? data_get($payload, 'data.payment_link.payment_link_id') ?? data_get($payload, 'payment_link.id')),
+            'payment_status' => $payment['payment_status'] ?? ($dataPayment['payment_status'] ?? null),
+            'status' => $payment['status'] ?? $payment['payment_status'] ?? data_get($payload, 'status') ?? data_get($payload, 'payment_link.status') ?? data_get($payload, 'data.status') ?? ($dataPayment['status'] ?? null) ?? ($dataPayment['payment_status'] ?? null),
+            'payment_link_id' => $paymentLinkId,
             'reference_number' => $payment['reference_number'] ?? data_get($payload, 'reference_number') ?? data_get($payload, 'data.reference_number') ?? ($dataPayment['reference_number'] ?? null),
             'online_transaction_id' => $payment['online_transaction_id'] ?? data_get($payload, 'online_transaction_id') ?? data_get($payload, 'data.online_transaction_id') ?? ($dataPayment['online_transaction_id'] ?? null),
             'description' => $description,
             'customer_id' => $payment['customer_id'] ?? data_get($payload, 'customer_id') ?? data_get($payload, 'data.customer_id') ?? ($dataPayment['customer_id'] ?? null),
+            'customer_email' => $payment['email'] ?? data_get($payload, 'email') ?? data_get($payload, 'data.email') ?? ($dataPayment['email'] ?? null),
+            'customer_name' => $payment['customer_name'] ?? data_get($payload, 'customer_name') ?? data_get($payload, 'data.customer_name') ?? ($dataPayment['customer_name'] ?? null),
             'amount' => $payment['amount'] ?? data_get($payload, 'amount') ?? data_get($payload, 'data.amount') ?? ($dataPayment['amount'] ?? null),
             'payment_date' => $payment['date'] ?? $payment['payment_date'] ?? data_get($payload, 'payment_date') ?? data_get($payload, 'date') ?? data_get($payload, 'data.date') ?? ($dataPayment['date'] ?? null),
-            'status' => $payment['payment_status'] ?? $payment['status'] ?? data_get($payload, 'status') ?? data_get($payload, 'payment_link.status') ?? data_get($payload, 'data.status') ?? ($dataPayment['payment_status'] ?? null) ?? ($dataPayment['status'] ?? null),
+            'invoice_id' => data_get($invoice, 'invoice_id'),
+            'invoice_number' => data_get($invoice, 'invoice_number'),
+            'hosted_page_id' => data_get($invoice, 'hosted_page_id') ?? data_get($invoice, 'hostedpage_id'),
+            'subscription_id' => $subscriptionId,
+            'balance_amount' => data_get($invoice, 'balance_amount'),
+            'amount_applied' => data_get($invoice, 'amount_applied'),
+            'transaction_type' => data_get($invoice, 'transaction_type'),
             'parsed_registration_id' => $parsed['registration_id'] ?? null,
             'parsed_payment_link_id' => $parsed['payment_link_id'] ?? null,
             'parsed_original_payment_id' => $parsed['original_payment_id'] ?? null,
@@ -347,6 +386,38 @@ class ZohoPaymentWebhookService
             }
         }
 
+        if (! empty($info['customer_email']) && $info['amount'] !== null && Schema::hasColumn('event_registrations', 'visitor_email')) {
+            $amount = (float) $info['amount'];
+            Log::info('zoho_payment_webhook_lookup_by_email_amount_start', $this->context($event, $info) + ['amount' => $amount]);
+            $candidates = EventRegistration::query()
+                ->where('visitor_email', (string) $info['customer_email'])
+                ->whereIn('payment_status', ['pending', 'processing'])
+                ->where('created_at', '>=', now()->subDays(7))
+                ->where(function ($query) use ($amount): void {
+                    if (Schema::hasColumn('event_registrations', 'amount')) {
+                        $query->orWhereRaw('CAST(amount AS NUMERIC) BETWEEN ? AND ?', [$amount - 0.01, $amount + 0.01]);
+                    }
+                    if (Schema::hasColumn('event_registrations', 'payment_amount')) {
+                        $query->orWhereRaw('CAST(payment_amount AS NUMERIC) BETWEEN ? AND ?', [$amount - 0.01, $amount + 0.01]);
+                    }
+                })
+                ->latest('created_at')
+                ->limit(2)
+                ->get();
+
+            if ($candidates->count() === 1) {
+                $registration = $candidates->first();
+                Log::info('zoho_payment_webhook_lookup_by_email_amount_found', $this->context($event, $info) + ['registration_id' => (string) $registration->id, 'amount' => $amount]);
+                return $registration;
+            }
+
+            if ($candidates->count() > 1) {
+                $this->lastLookupError = 'Multiple matching registrations found for email/amount fallback.';
+                Log::warning('zoho_payment_webhook_lookup_multiple_candidates', $this->context($event, $info) + ['candidate_count' => $candidates->count(), 'amount' => $amount]);
+                return null;
+            }
+        }
+
         $this->lastLookupError = 'Registration not found for webhook.';
         return null;
     }
@@ -363,17 +434,31 @@ class ZohoPaymentWebhookService
     private function primePaidFields(EventRegistration $registration, array $payload, array $info): void
     {
         $registration->forceFill($this->filter([
-            'zoho_payment_id' => $registration->zoho_payment_id ?: ($info['parsed_original_payment_id'] ?? $info['payment_id']),
+            'zoho_payment_id' => $registration->zoho_payment_id ?: ($info['payment_id'] ?? ($info['parsed_original_payment_id'] ?? null)),
+            'zoho_payment_link_id' => $registration->zoho_payment_link_id ?: ($info['parsed_payment_link_id'] ?? null),
             'zoho_payment_status' => 'paid',
             'payment_status' => 'paid',
+            'zoho_invoice_id' => $info['invoice_id'] ?? $registration->zoho_invoice_id,
+            'zoho_invoice_number' => $info['invoice_number'] ?? $registration->zoho_invoice_number,
+            'zoho_invoice_status' => 'paid',
+            'zoho_invoice_sync_error' => null,
+            'status' => 'registered',
             'payment_completed_at' => $registration->payment_completed_at ?: ($info['payment_date'] ? now()->parse((string) $info['payment_date']) : now()),
             'zoho_payment_webhook_payload' => $payload,
             'webhook_payload' => $payload,
             'metadata' => array_merge((array) ($registration->metadata ?? []), [
                 'zoho_webhook_payment_id' => $info['payment_id'] ?? null,
                 'zoho_webhook_reference_number' => $info['reference_number'] ?? null,
+                'zoho_webhook_original_payment_id' => $info['parsed_original_payment_id'] ?? null,
+                'zoho_webhook_payment_link_id' => $info['parsed_payment_link_id'] ?? null,
             ]),
         ]))->save();
+
+        $registration->refresh();
+        if (empty($registration->qr_code_url) && empty($registration->qr_code_path) && empty($registration->qr_token)) {
+            app(\App\Services\Events\EventQrService::class)->generateAndStore($registration);
+            Log::info('zoho_payment_webhook_qr_generated', $this->context(null, $info) + ['registration_id' => (string) $registration->id]);
+        }
     }
 
     private function markCancelledOrExpired(EventRegistration $registration, array $payload, string $status): void
@@ -388,15 +473,333 @@ class ZohoPaymentWebhookService
         ]))->save();
     }
 
+    private function isSubscriptionPaymentWebhook(array $info): bool
+    {
+        return filled($info['subscription_id'] ?? null) || filled($info['hosted_page_id'] ?? null);
+    }
+
+    private function hasStrongEventRegistrationHint(array $info): bool
+    {
+        return filled($info['parsed_registration_id'] ?? null)
+            || filled($info['payment_link_id'] ?? null)
+            || filled($info['parsed_payment_link_id'] ?? null);
+    }
+
+    private function processSubscriptionPaymentEvent(WebhookEvent $event, array $payload, array $info): array
+    {
+        Log::info('zoho_subscription_payment_lookup_start', $this->context($event, $info));
+
+        $lookup = $this->findSubscriptionPaymentTarget($info);
+        $record = $lookup['record'];
+        $user = $lookup['user'];
+
+        if (! $user) {
+            $error = 'Subscription/member payment user not found for Zoho webhook.';
+            $event->forceFill(['status' => 'ignored', 'processed_at' => now(), 'error' => $error])->save();
+            Log::warning('zoho_subscription_payment_record_not_found', $this->context($event, $info));
+
+            return [
+                'message' => 'Webhook received but subscription/member payment record was not found.',
+                'normalized' => $info,
+                'webhook_event_id' => $event->id,
+                'subscription_payment_found' => false,
+                'error' => $error,
+            ];
+        }
+
+        Log::info('zoho_subscription_payment_user_found', $this->context($event, $info) + ['user_id' => $user->id]);
+        Log::info('zoho_subscription_payment_apply_start', $this->context($event, $info) + ['user_id' => $user->id, 'record_type' => $record ? $record::class : null, 'record_id' => $record?->getKey()]);
+
+        if (! $this->isPaidSubscriptionPayment($info)) {
+            $error = 'Subscription/member payment webhook is not paid/successful.';
+            $event->forceFill(['status' => 'ignored', 'processed_at' => now(), 'error' => $error])->save();
+            Log::warning('zoho_subscription_payment_apply_failed', $this->context($event, $info) + ['user_id' => $user->id, 'error' => $error]);
+
+            return ['message' => 'Webhook received but subscription/member payment was not paid.', 'normalized' => $info, 'webhook_event_id' => $event->id, 'error' => $error];
+        }
+
+        try {
+            $this->applySubscriptionPayment($record, $user, $payload, $info);
+            $event->forceFill(['status' => 'processed', 'processed_at' => now(), 'error' => null])->save();
+
+            Log::info('zoho_subscription_payment_apply_success', $this->context($event, $info) + ['user_id' => $user->id, 'record_type' => $record ? $record::class : null, 'record_id' => $record?->getKey()]);
+
+            return [
+                'message' => 'Subscription/member payment webhook processed.',
+                'normalized' => $info,
+                'webhook_event_id' => $event->id,
+                'subscription_payment_found' => true,
+                'user_id' => $user->id,
+            ];
+        } catch (\Throwable $throwable) {
+            $event->forceFill(['status' => 'failed', 'processed_at' => now(), 'error' => $throwable->getMessage()])->save();
+            Log::error('zoho_subscription_payment_apply_failed', $this->context($event, $info) + ['user_id' => $user->id, 'exception_message' => $throwable->getMessage()]);
+
+            return [
+                'message' => 'Webhook received but subscription/member payment processing failed.',
+                'normalized' => $info,
+                'webhook_event_id' => $event->id,
+                'error' => $throwable->getMessage(),
+            ];
+        }
+    }
+
+    private function findSubscriptionPaymentTarget(array $info): array
+    {
+        $record = null;
+        $user = null;
+
+        if (filled($info['subscription_id'] ?? null)) {
+            Log::info('zoho_subscription_payment_lookup_by_subscription_id', $this->context(null, $info));
+            $record = $this->findRecordByColumnOrJson('payments', Payment::class, ['zoho_subscription_id'], (string) $info['subscription_id'], ['metadata', 'webhook_payload', 'raw_webhook_payload']);
+            $record ??= $this->findRecordByColumnOrJson('circle_subscriptions', CircleSubscription::class, ['zoho_subscription_id'], (string) $info['subscription_id'], ['raw_webhook_payload', 'raw_checkout_response']);
+            $user = $this->userFromRecord($record);
+            $user ??= $this->findUserByColumn('zoho_subscription_id', (string) $info['subscription_id']);
+        }
+
+        if (! $user && filled($info['hosted_page_id'] ?? null)) {
+            Log::info('zoho_subscription_payment_lookup_by_hosted_page_id', $this->context(null, $info));
+            $hostedPageColumns = ['zoho_hosted_page_id', 'zoho_hostedpage_id', 'hosted_page_id', 'hostedpage_id', 'zoho_hosted_page_url', 'zoho_hostedpage_url', 'hosted_page_url', 'hostedpage_url', 'zoho_hosted_page_session_id', 'hosted_page_session_id'];
+            $record = $this->findRecordByColumnOrJson('payments', Payment::class, $hostedPageColumns, (string) $info['hosted_page_id'], ['metadata', 'webhook_payload', 'raw_webhook_payload']);
+            $record ??= $this->findRecordByColumnOrJson('circle_subscriptions', CircleSubscription::class, ['zoho_hosted_page_id'], (string) $info['hosted_page_id'], ['raw_webhook_payload', 'raw_checkout_response']);
+            $user = $this->userFromRecord($record);
+        }
+
+        if (! $user && filled($info['invoice_id'] ?? null)) {
+            Log::info('zoho_subscription_payment_lookup_by_invoice_id', $this->context(null, $info));
+            $invoiceColumns = ['zoho_invoice_id', 'zoho_last_invoice_id', 'invoice_id'];
+            $record = $this->findRecordByColumnOrJson('payments', Payment::class, $invoiceColumns, (string) $info['invoice_id'], ['metadata', 'webhook_payload', 'raw_webhook_payload']);
+            $record ??= $this->findRecordByColumnOrJson('circle_subscriptions', CircleSubscription::class, $invoiceColumns, (string) $info['invoice_id'], ['raw_webhook_payload', 'raw_checkout_response']);
+            $user = $this->userFromRecord($record);
+            $user ??= $this->findUserByColumn('zoho_last_invoice_id', (string) $info['invoice_id']);
+        }
+
+        if (! $user && filled($info['customer_id'] ?? null)) {
+            Log::info('zoho_subscription_payment_lookup_by_customer_id', $this->context(null, $info));
+            $user = $this->findUserByColumn('zoho_customer_id', (string) $info['customer_id']);
+        }
+
+        if (! $user && filled($info['customer_email'] ?? null)) {
+            Log::info('zoho_subscription_payment_lookup_by_email', $this->context(null, $info));
+            $user = User::query()->where('email', (string) $info['customer_email'])->first();
+        }
+
+        if ($user && ! $record) {
+            $record = $this->findRecentPendingSubscriptionPayment($user, $info);
+        }
+
+        if ($record || $user) {
+            Log::info('zoho_subscription_payment_record_found', $this->context(null, $info) + ['user_id' => $user?->id, 'record_type' => $record ? $record::class : null, 'record_id' => $record?->getKey()]);
+        } else {
+            Log::warning('zoho_subscription_payment_record_not_found', $this->context(null, $info));
+        }
+
+        return ['record' => $record, 'user' => $user];
+    }
+
+    private function findRecordByColumnOrJson(string $table, string $modelClass, array $columns, string $value, array $jsonColumns = []): ?Model
+    {
+        if (! Schema::hasTable($table) || $value === '') {
+            return null;
+        }
+
+        foreach ($columns as $column) {
+            if (Schema::hasColumn($table, $column)) {
+                $query = $modelClass::query();
+                if (str_contains($column, 'url') || str_contains($column, 'session')) {
+                    $query->where($column, 'like', '%'.$value.'%');
+                } else {
+                    $query->where($column, $value);
+                }
+
+                $record = $query->latest('created_at')->first();
+                if ($record) {
+                    return $record;
+                }
+            }
+        }
+
+        foreach ($jsonColumns as $column) {
+            if (Schema::hasColumn($table, $column)) {
+                $record = $modelClass::query()
+                    ->whereRaw($this->jsonTextLikeExpression($column), ['%'.$value.'%'])
+                    ->latest('created_at')
+                    ->first();
+                if ($record) {
+                    return $record;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function jsonTextLikeExpression(string $column): string
+    {
+        $driver = Schema::getConnection()->getDriverName();
+        return match ($driver) {
+            'pgsql' => $column.'::text LIKE ?',
+            'sqlite' => $column.' LIKE ?',
+            default => 'CAST('.$column.' AS CHAR) LIKE ?',
+        };
+    }
+
+    private function userFromRecord(?Model $record): ?User
+    {
+        if (! $record || ! isset($record->user_id)) {
+            return null;
+        }
+
+        return User::query()->where('id', $record->user_id)->first();
+    }
+
+    private function findUserByColumn(string $column, string $value): ?User
+    {
+        if (! Schema::hasColumn('users', $column) || $value === '') {
+            return null;
+        }
+
+        return User::query()->where($column, $value)->first();
+    }
+
+    private function findRecentPendingSubscriptionPayment(User $user, array $info): ?Payment
+    {
+        if (! Schema::hasTable('payments') || ! Schema::hasColumn('payments', 'user_id')) {
+            return null;
+        }
+
+        $query = Payment::query()->where('user_id', $user->id)->where('created_at', '>=', now()->subDays(7));
+
+        if (Schema::hasColumn('payments', 'status')) {
+            $query->whereIn('status', ['pending', 'processing', 'created']);
+        }
+
+        $amount = $info['amount'] ?? null;
+        if ($amount !== null) {
+            $amount = (float) $amount;
+            $query->where(function ($amountQuery) use ($amount): void {
+                foreach (['amount', 'total_amount', 'base_amount'] as $column) {
+                    if (Schema::hasColumn('payments', $column)) {
+                        $amountQuery->orWhereBetween($column, [$amount - 0.01, $amount + 0.01]);
+                    }
+                }
+            });
+        }
+
+        return $query->latest('created_at')->first();
+    }
+
+    private function isPaidSubscriptionPayment(array $info): bool
+    {
+        $paymentStatus = strtolower((string) ($info['payment_status'] ?? ''));
+        $status = strtolower((string) ($info['status'] ?? ''));
+        $amountApplied = (float) ($info['amount_applied'] ?? 0);
+        $balanceAmount = (float) ($info['balance_amount'] ?? 0);
+
+        return ($paymentStatus === 'paid' || $status === 'success')
+            && $amountApplied > 0
+            && abs($balanceAmount) < 0.00001;
+    }
+
+    private function applySubscriptionPayment(?Model $record, User $user, array $payload, array $info): void
+    {
+        $paidAt = $this->parseDate($info['payment_date'] ?? null) ?? now();
+        $startsAt = $user->membership_starts_at ?: now();
+        $endsAt = $user->membership_ends_at ?: Carbon::parse($startsAt)->copy()->addYear();
+
+        if ($record) {
+            $this->updateSubscriptionPaymentRecord($record, $payload, $info, $paidAt);
+        }
+
+        $this->membershipUpdater->applyPaidMembership($user, [
+            'zoho_customer_id' => $info['customer_id'] ?: $user->zoho_customer_id,
+            'zoho_subscription_id' => $info['subscription_id'] ?: $user->zoho_subscription_id,
+            'zoho_plan_code' => $user->zoho_plan_code ?: 'unity_peer',
+            'zoho_last_invoice_id' => $info['invoice_id'] ?: $user->zoho_last_invoice_id,
+            'membership_starts_at' => $startsAt,
+            'membership_ends_at' => $endsAt,
+            'membership_start_date' => Carbon::parse($startsAt)->toDateString(),
+            'membership_end_date' => Carbon::parse($endsAt)->toDateString(),
+            'last_payment_at' => $paidAt,
+            'membership_approved_at' => now(),
+        ]);
+
+        $userUpdates = [];
+        if (Schema::hasColumn('users', 'is_paid_member')) {
+            $userUpdates['is_paid_member'] = true;
+        }
+        if (Schema::hasColumn('users', 'membership_started_at')) {
+            $userUpdates['membership_started_at'] = $startsAt;
+        }
+        if (Schema::hasColumn('users', 'membership_expires_at')) {
+            $userUpdates['membership_expires_at'] = $endsAt;
+        }
+        if ($userUpdates !== []) {
+            $user->forceFill($userUpdates)->save();
+        }
+
+        Log::info('zoho_subscription_user_membership_updated', $this->context(null, $info) + ['user_id' => $user->id]);
+    }
+
+    private function updateSubscriptionPaymentRecord(Model $record, array $payload, array $info, Carbon $paidAt): void
+    {
+        $table = $record->getTable();
+        $updates = [];
+        foreach ([
+            'payment_status' => 'paid',
+            'status' => 'paid',
+            'zoho_payment_status' => 'paid',
+            'zoho_payment_id' => $info['payment_id'] ?? null,
+            'zoho_invoice_id' => $info['invoice_id'] ?? null,
+            'zoho_invoice_number' => $info['invoice_number'] ?? null,
+            'zoho_subscription_id' => $info['subscription_id'] ?? null,
+            'zoho_hosted_page_id' => $info['hosted_page_id'] ?? null,
+            'zoho_hostedpage_id' => $info['hosted_page_id'] ?? null,
+            'payment_completed_at' => $paidAt,
+            'paid_at' => $paidAt,
+            'webhook_payload' => $payload,
+            'zoho_payment_webhook_payload' => $payload,
+            'raw_webhook_payload' => $payload,
+            'invoice_status' => 'paid',
+            'zoho_invoice_status' => 'paid',
+        ] as $column => $value) {
+            if ($value !== null && Schema::hasColumn($table, $column)) {
+                $updates[$column] = $value;
+            }
+        }
+
+        if ($updates !== []) {
+            $record->forceFill($updates)->save();
+        }
+    }
+
+    private function parseDate(mixed $value): ?Carbon
+    {
+        if (! $value) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     private function isPaidWebhook(array $info): bool
     {
         $type = strtolower((string) ($info['event_type'] ?? ''));
         $status = strtolower((string) ($info['status'] ?? ''));
-        return $type === 'customer_payment'
-            || str_contains($type, 'paid')
+        $paymentStatus = strtolower((string) ($info['payment_status'] ?? ''));
+        $amountApplied = (float) ($info['amount_applied'] ?? 0);
+        $balanceAmount = (float) ($info['balance_amount'] ?? 0);
+        $invoiceLooksPaid = $amountApplied > 0 && abs($balanceAmount) < 0.00001;
+
+        return str_contains($type, 'paid')
             || str_contains($type, 'success')
             || in_array($status, ['paid', 'success', 'succeeded'], true)
-            || ! empty($info['payment_id']);
+            || in_array($paymentStatus, ['paid', 'success', 'succeeded'], true)
+            || ($type === 'customer_payment' && ! empty($info['payment_id']) && ($invoiceLooksPaid || in_array($status, ['paid', 'success'], true) || $paymentStatus === 'paid'));
     }
 
     private function isAlreadyFullySynced(EventRegistration $registration): bool
@@ -437,12 +840,19 @@ class ZohoPaymentWebhookService
             'webhook_event_id' => $event?->id,
             'event_type' => $info['event_type'] ?? $event?->event_type,
             'payment_link_id' => $info['payment_link_id'] ?? $event?->payment_link_id,
+            'parsed_registration_id' => $info['parsed_registration_id'] ?? null,
             'parsed_payment_link_id' => $info['parsed_payment_link_id'] ?? null,
             'parsed_original_payment_id' => $info['parsed_original_payment_id'] ?? null,
             'payment_id' => $info['payment_id'] ?? $event?->payment_id,
+            'payment_status' => $info['payment_status'] ?? null,
+            'invoice_id' => $info['invoice_id'] ?? null,
+            'invoice_number' => $info['invoice_number'] ?? null,
+            'hosted_page_id' => $info['hosted_page_id'] ?? null,
+            'subscription_id' => $info['subscription_id'] ?? null,
             'reference_number' => $info['reference_number'] ?? null,
             'description' => $info['description'] ?? null,
             'customer_id' => $info['customer_id'] ?? null,
+            'email' => $info['customer_email'] ?? null,
             'amount' => $info['amount'] ?? null,
             'registration_id' => $info['registration_id'] ?? $event?->registration_id,
             'status' => $info['status'] ?? $event?->status,
