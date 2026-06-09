@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -52,31 +53,126 @@ class EventService
 
     public function listOccurrences(array $filters, ?User $user = null, int $perPage = 20): LengthAwarePaginator
     {
+        $eventType = $filters['event_type'] ?? $filters['type'] ?? null;
+        $search = $filters['search'] ?? $filters['title'] ?? null;
+
         $query = EventOccurrence::query()
             ->with(['event.circle', 'registrations' => fn ($q) => $user ? $q->where('user_id', $user->id) : $q->whereRaw('1 = 0')])
-            ->withCount(['registrations as registered_count' => fn ($q) => $q
-                ->whereNull('deleted_at')
-                ->where(function ($countQuery): void {
-                    $countQuery->where('status', 'registered')
-                        ->orWhere('payment_status', 'paid')
-                        ->orWhere(function ($inner): void {
-                            $inner->where('payment_required', false)->where('status', '!=', 'cancelled');
-                        });
-                })])
-            ->whereHas('event', function (Builder $eventQuery) use ($filters): void {
-                $eventQuery->when($filters['event_type'] ?? null, fn ($q, $v) => $q->where('event_type', $v))
+            ->withCount([
+                'registrations as registered_count' => fn ($q) => $q
+                    ->whereNull('deleted_at')
+                    ->where(function ($countQuery): void {
+                        $countQuery->where('status', 'registered')
+                            ->orWhere('payment_status', 'paid')
+                            ->orWhere(function ($inner): void {
+                                $inner->where('payment_required', false)->where('status', '!=', 'cancelled');
+                            });
+                    }),
+                'registrations as checked_in_count' => fn ($q) => $q
+                    ->whereNull('deleted_at')
+                    ->where('checkin_status', 'checked_in'),
+            ])
+            ->whereHas('event', function (Builder $eventQuery) use ($filters, $eventType, $search, $user): void {
+                $eventQuery->when($eventType, fn ($q, $v) => $q->where('event_type', $v))
                     ->when($filters['circle_id'] ?? null, fn ($q, $v) => $q->where('circle_id', $v))
-                    ->when($filters['mode'] ?? null, fn ($q, $v) => $q->where('mode', $v));
+                    ->when($filters['mode'] ?? null, fn ($q, $v) => $q->where('mode', $v))
+                    ->when($search, function ($q, $v): void {
+                        $operator = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+                        $q->where('title', $operator, '%'.$v.'%');
+                    });
+
+                $this->applyValidEventStatusScope($eventQuery);
+                $this->applyEventVisibilityScope($eventQuery, $user);
             });
 
+        $this->applyValidOccurrenceStatusScope($query);
+
         if (($filters['upcoming'] ?? 'true') !== 'false') {
-            $query->where('start_at', '>=', now());
+            $query->where('start_at', '>=', now()->startOfDay());
         }
 
-        $query->when($filters['from_date'] ?? null, fn ($q, $v) => $q->where('start_at', '>=', $v))
-            ->when($filters['to_date'] ?? null, fn ($q, $v) => $q->where('start_at', '<=', $v));
+        $query->when($filters['from_date'] ?? null, fn ($q, $v) => $q->where('start_at', '>=', Carbon::parse($v)->startOfDay()))
+            ->when($filters['to_date'] ?? null, fn ($q, $v) => $q->where('start_at', '<=', Carbon::parse($v)->endOfDay()));
 
         return $query->orderBy('start_at')->paginate($perPage);
+    }
+
+    private function applyValidEventStatusScope(Builder $query): void
+    {
+        if (Schema::hasColumn('events', 'is_active')) {
+            $query->where('is_active', true);
+        }
+
+        if (Schema::hasColumn('events', 'status')) {
+            $validStatuses = ['scheduled', 'live', 'upcoming', 'published', 'active'];
+
+            $query->where(function (Builder $statusQuery) use ($validStatuses): void {
+                $statusQuery->whereNull('status')
+                    ->orWhereIn('status', $validStatuses);
+            });
+        }
+    }
+
+    private function applyValidOccurrenceStatusScope(Builder $query): void
+    {
+        if (! Schema::hasColumn('event_occurrences', 'status')) {
+            return;
+        }
+
+        $validStatuses = ['scheduled', 'live', 'upcoming', 'published', 'active'];
+
+        $query->where(function (Builder $statusQuery) use ($validStatuses): void {
+            $statusQuery->whereNull('status')
+                ->orWhereIn('status', $validStatuses);
+        });
+    }
+
+    private function applyEventVisibilityScope(Builder $query, ?User $user): void
+    {
+        if (! $user || $this->isAdmin($user)) {
+            return;
+        }
+
+        $hasEventType = Schema::hasColumn('events', 'event_type');
+        $hasVisibility = Schema::hasColumn('events', 'visibility');
+        $hasIsPublic = Schema::hasColumn('events', 'is_public');
+        $hasCircleId = Schema::hasColumn('events', 'circle_id');
+
+        if (! $hasEventType && ! $hasVisibility && ! $hasIsPublic) {
+            return;
+        }
+
+        $memberCircleIds = $hasCircleId && Schema::hasTable('circle_members')
+            ? CircleMember::query()
+                ->where('user_id', $user->id)
+                ->whereIn('status', ['approved', 'active'])
+                ->whereNull('deleted_at')
+                ->pluck('circle_id')
+                ->all()
+            : [];
+
+        $query->where(function (Builder $visibilityQuery) use ($hasEventType, $hasVisibility, $hasIsPublic, $hasCircleId, $memberCircleIds): void {
+            if ($hasEventType) {
+                $visibilityQuery->whereIn('event_type', ['global_event', 'public_event']);
+            }
+
+            if ($hasVisibility) {
+                $method = $hasEventType ? 'orWhere' : 'where';
+                $visibilityQuery->{$method}('visibility', 'public');
+            }
+
+            if ($hasIsPublic) {
+                $method = ($hasEventType || $hasVisibility) ? 'orWhere' : 'where';
+                $visibilityQuery->{$method}('is_public', true);
+            }
+
+            if ($hasEventType && $hasCircleId && $memberCircleIds !== []) {
+                $visibilityQuery->orWhere(function (Builder $circleQuery) use ($memberCircleIds): void {
+                    $circleQuery->where('event_type', 'circle_meeting')
+                        ->whereIn('circle_id', $memberCircleIds);
+                });
+            }
+        });
     }
 
     public function isEligible(Event $event, ?User $user): bool
@@ -140,6 +236,10 @@ class EventService
 
     private function allowedAdminRoleKeys(): array
     {
+        if (! Schema::hasTable('roles') || ! Schema::hasTable('admin_user_roles')) {
+            return [];
+        }
+
         $validRoleKeys = Role::query()
             ->pluck('key')
             ->map(fn ($key): string => (string) $key)
