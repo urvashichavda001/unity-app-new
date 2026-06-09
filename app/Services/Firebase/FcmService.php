@@ -12,8 +12,18 @@ use Throwable;
 
 class FcmService
 {
-    public function sendToToken(string $token, string $title, string $body, array $data = [], ?string $imageUrl = null, array $context = []): void
-    {
+    public function sendToDevice(
+        string $deviceToken,
+        string $title,
+        string $body,
+        array $data = [],
+        ?string $channelId = null,
+        int $badge = 1,
+        array $context = [],
+        ?string $imageUrl = null,
+    ): array {
+        $notificationType = $context['notification_type'] ?? ($data['notification_type'] ?? ($data['type'] ?? null));
+
         try {
             $projectId = (string) config('firebase.project_id');
 
@@ -23,115 +33,186 @@ class FcmService
 
             $accessToken = $this->getAccessToken();
             $endpoint = sprintf('https://fcm.googleapis.com/v1/projects/%s/messages:send', $projectId);
+            $payload = $this->buildMessagePayload($deviceToken, $title, $body, $data, $channelId, $badge, $imageUrl);
 
-            $resolvedImageUrl = $imageUrl;
-
-            if ($resolvedImageUrl === null) {
-                $candidateImageUrl = $data['image_url'] ?? null;
-                if (is_string($candidateImageUrl) && $candidateImageUrl !== '') {
-                    $resolvedImageUrl = $candidateImageUrl;
-                }
-            }
-
-            if ($resolvedImageUrl !== null) {
-                $data['image_url'] = $resolvedImageUrl;
-            }
-
-            $notification = [
+            Log::info('Sending FCM HTTP v1 request', [
+                'token_masked' => $this->maskToken($deviceToken),
                 'title' => $title,
-                'body' => $body,
-            ];
-
-            $androidNotification = [];
-
-            if ($resolvedImageUrl !== null) {
-                $notification['image'] = $resolvedImageUrl;
-                $androidNotification['image'] = $resolvedImageUrl;
-            }
-
-            $androidNotification = array_merge([
-                'sound' => 'default',
-            ], $androidNotification);
-
-            $payload = [
-                'message' => [
-                    'token' => $token,
-                    'notification' => $notification,
-                    'data' => $this->normalizeData($data),
-                    'apns' => [
-                        'headers' => [
-                            'apns-priority' => '10',
-                        ],
-                        'payload' => [
-                            'aps' => [
-                                'alert' => [
-                                    'title' => $title,
-                                    'body' => $body,
-                                ],
-                                'sound' => 'default',
-                                'badge' => 1,
-                            ],
-                        ],
-                    ],
-                    'android' => [
-                        'priority' => 'high',
-                        'notification' => $androidNotification,
-                    ],
-                ],
-            ];
-
-            Log::info('Sending FCM request', [
-                'token_prefix' => substr($token, 0, 20) . '...',
-                'title' => $title,
-                'has_image' => $resolvedImageUrl !== null,
+                'has_image' => isset($payload['message']['notification']['image']),
                 'user_id' => $context['user_id'] ?? null,
+                'device_id' => $context['device_id'] ?? null,
                 'platform' => $context['platform'] ?? null,
                 'device_type' => $context['device_type'] ?? ($context['platform'] ?? null),
-                'notification_type' => $context['notification_type'] ?? ($data['notification_type'] ?? null),
+                'notification_type' => $notificationType,
             ]);
 
             $response = Http::withToken($accessToken)
                 ->acceptJson()
                 ->post($endpoint, $payload);
 
-            if ($response->successful()) {
-                return;
+            $firebaseResponse = $response->json();
+            if (! is_array($firebaseResponse)) {
+                $firebaseResponse = ['raw_body' => $response->body()];
             }
 
-            if ($this->isInvalidTokenResponse($response->json())) {
-                UserPushToken::where('token', $token)->delete();
-
-                Log::warning('FCM token removed after invalid token response', [
-                    'token_prefix' => substr($token, 0, 20) . '...',
+            if ($response->successful()) {
+                Log::info('FCM HTTP v1 send succeeded', [
+                    'token_masked' => $this->maskToken($deviceToken),
                     'user_id' => $context['user_id'] ?? null,
+                    'device_id' => $context['device_id'] ?? null,
                     'platform' => $context['platform'] ?? null,
-                'device_type' => $context['device_type'] ?? ($context['platform'] ?? null),
-                    'notification_type' => $context['notification_type'] ?? ($data['notification_type'] ?? null),
+                    'notification_type' => $notificationType,
+                    'firebase_message_name' => $firebaseResponse['name'] ?? null,
                 ]);
 
-                return;
+                return [
+                    'success' => true,
+                    'firebase_response' => $firebaseResponse,
+                    'error' => null,
+                ];
             }
 
-            Log::error('FCM send failed', [
-                'token_prefix' => substr($token, 0, 20) . '...',
+            if ($this->isInvalidTokenResponse($firebaseResponse)) {
+                UserPushToken::where('token', $deviceToken)->delete();
+
+                Log::warning('FCM token removed after invalid token response', [
+                    'token_masked' => $this->maskToken($deviceToken),
+                    'user_id' => $context['user_id'] ?? null,
+                    'device_id' => $context['device_id'] ?? null,
+                    'platform' => $context['platform'] ?? null,
+                    'device_type' => $context['device_type'] ?? ($context['platform'] ?? null),
+                    'notification_type' => $notificationType,
+                    'firebase_error' => $response->body(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'firebase_response' => $firebaseResponse,
+                    'error' => 'Invalid or unregistered Firebase device token.',
+                ];
+            }
+
+            Log::error('FCM HTTP v1 send failed', [
+                'token_masked' => $this->maskToken($deviceToken),
                 'user_id' => $context['user_id'] ?? null,
+                'device_id' => $context['device_id'] ?? null,
                 'platform' => $context['platform'] ?? null,
                 'device_type' => $context['device_type'] ?? ($context['platform'] ?? null),
-                'notification_type' => $context['notification_type'] ?? ($data['notification_type'] ?? null),
+                'notification_type' => $notificationType,
                 'firebase_error' => $response->body(),
             ]);
 
-            throw new RuntimeException('FCM send failed: ' . $response->body());
+            return [
+                'success' => false,
+                'firebase_response' => $firebaseResponse,
+                'error' => 'FCM send failed with HTTP status '.$response->status().'.',
+            ];
         } catch (Throwable $throwable) {
             report($throwable);
-            throw $throwable;
+
+            Log::error('FCM HTTP v1 send exception', [
+                'token_masked' => $this->maskToken($deviceToken),
+                'user_id' => $context['user_id'] ?? null,
+                'device_id' => $context['device_id'] ?? null,
+                'platform' => $context['platform'] ?? null,
+                'device_type' => $context['device_type'] ?? ($context['platform'] ?? null),
+                'notification_type' => $notificationType,
+                'error' => $throwable->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'firebase_response' => null,
+                'error' => $throwable->getMessage(),
+            ];
         }
+    }
+
+    public function sendToToken(string $token, string $title, string $body, array $data = [], ?string $imageUrl = null, array $context = []): array
+    {
+        return $this->sendToDevice($token, $title, $body, $data, null, 1, $context, $imageUrl);
+    }
+
+    public function buildMessagePayload(
+        string $deviceToken,
+        string $title,
+        string $body,
+        array $data = [],
+        ?string $channelId = null,
+        int $badge = 1,
+        ?string $imageUrl = null,
+    ): array {
+        $resolvedImageUrl = $imageUrl;
+
+        if ($resolvedImageUrl === null) {
+            $candidateImageUrl = $data['image_url'] ?? null;
+            if (is_string($candidateImageUrl) && $candidateImageUrl !== '') {
+                $resolvedImageUrl = $candidateImageUrl;
+            }
+        }
+
+        if ($resolvedImageUrl !== null) {
+            $data['image_url'] = $resolvedImageUrl;
+        }
+
+        $notification = [
+            'title' => $title,
+            'body' => $body,
+        ];
+
+        $androidNotification = [
+            'title' => $title,
+            'body' => $body,
+            'sound' => 'default',
+            'channel_id' => $channelId ?: (string) config('firebase.default_android_channel_id', 'default'),
+            'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+            'notification_priority' => 'PRIORITY_HIGH',
+            'visibility' => 'PUBLIC',
+        ];
+
+        if ($resolvedImageUrl !== null) {
+            $notification['image'] = $resolvedImageUrl;
+            $androidNotification['image'] = $resolvedImageUrl;
+        }
+
+        $normalizedData = $this->normalizeData($data);
+
+        return [
+            'message' => [
+                'token' => $deviceToken,
+                'notification' => $notification,
+                'data' => $normalizedData === [] ? (object) [] : $normalizedData,
+                'android' => [
+                    'priority' => 'high',
+                    'ttl' => '86400s',
+                    'notification' => $androidNotification,
+                ],
+                'apns' => [
+                    'headers' => [
+                        'apns-priority' => '10',
+                        'apns-push-type' => 'alert',
+                    ],
+                    'payload' => [
+                        'aps' => [
+                            'alert' => [
+                                'title' => $title,
+                                'body' => $body,
+                            ],
+                            'sound' => 'default',
+                            'badge' => $badge,
+                            'mutable-content' => 1,
+                            'content-available' => 1,
+                        ],
+                    ],
+                ],
+            ],
+        ];
     }
 
     private function getAccessToken(): string
     {
         return Cache::remember('firebase.fcm.access_token', now()->addMinutes(50), function (): string {
-            $credentialsPath = (string) config('firebase.credentials');
+            $credentialsPath = (string) config('firebase.credentials_path');
 
             if ($credentialsPath === '' || ! is_file($credentialsPath)) {
                 throw new RuntimeException('Firebase credentials file is not available.');
@@ -214,12 +295,27 @@ class FcmService
         $normalized = [];
 
         foreach ($data as $key => $value) {
-            $normalized[(string) $key] = is_scalar($value) || $value === null
+            if ($value === null) {
+                $normalized[(string) $key] = '';
+                continue;
+            }
+
+            if (is_bool($value)) {
+                $normalized[(string) $key] = $value ? 'true' : 'false';
+                continue;
+            }
+
+            $normalized[(string) $key] = is_scalar($value)
                 ? (string) $value
                 : (json_encode($value) ?: '');
         }
 
         return $normalized;
+    }
+
+    private function maskToken(string $token): string
+    {
+        return substr($token, 0, 8).'****';
     }
 
     private function isInvalidTokenResponse(mixed $response): bool

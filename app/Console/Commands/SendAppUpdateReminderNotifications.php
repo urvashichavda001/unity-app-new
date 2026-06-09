@@ -88,14 +88,16 @@ class SendAppUpdateReminderNotifications extends Command
             ];
 
             try {
-                $fcmService->sendToToken(
+                $fcmService->sendToDevice(
                     (string) $pushToken->token,
                     $title,
                     $body,
                     $data,
                     null,
+                    1,
                     [
                         'user_id' => (string) $pushToken->user_id,
+                        'device_id' => $pushToken->device_id,
                         'platform' => $pushToken->platform,
                         'notification_type' => 'app_update',
                     ],

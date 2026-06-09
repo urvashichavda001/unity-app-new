@@ -51,30 +51,47 @@ class SendPushNotificationJob implements ShouldQueue
             foreach ($tokens as $token) {
                 try {
                     Log::info('Sending push to token', [
-                        'token_prefix' => substr((string) $token->token, 0, 20) . '...',
+                        'token_masked' => substr((string) $token->token, 0, 8) . '****',
                         'has_image' => $hasImage,
                         'image_url_prefix' => $hasImage ? substr((string) $imageUrl, 0, 40) . '...' : null,
                     ]);
 
-                    $fcmService->sendToToken(
+                    $result = $fcmService->sendToDevice(
                         (string) $token->token,
                         $this->title,
                         $this->body,
                         $this->data,
                         null,
+                        1,
                         [
                             'user_id' => (string) $this->user->id,
+                            'device_id' => $token->device_id,
                             'platform' => $token->platform,
                             'device_type' => $token->platform,
-                            'notification_type' => $this->data['notification_type'] ?? null,
+                            'notification_type' => $this->data['notification_type'] ?? ($this->data['type'] ?? null),
                         ],
+                        $hasImage ? (string) $imageUrl : null,
                     );
 
-                    Log::info('Push sent successfully');
+                    if ($result['success'] ?? false) {
+                        Log::info('Push sent successfully', [
+                            'user_id' => (string) $this->user->id,
+                            'device_id' => $token->device_id,
+                            'notification_type' => $this->data['notification_type'] ?? ($this->data['type'] ?? null),
+                        ]);
+                    } else {
+                        Log::warning('Push send returned failure', [
+                            'user_id' => (string) $this->user->id,
+                            'device_id' => $token->device_id,
+                            'platform' => $token->platform,
+                            'notification_type' => $this->data['notification_type'] ?? ($this->data['type'] ?? null),
+                            'error' => $result['error'] ?? null,
+                        ]);
+                    }
                 } catch (Throwable $e) {
                     Log::error('Push send failed', [
                         'error' => $e->getMessage(),
-                        'token_prefix' => substr((string) $token->token, 0, 20) . '...',
+                        'token_masked' => substr((string) $token->token, 0, 8) . '****',
                         'user_id' => (string) $this->user->id,
                         'platform' => $token->platform,
                         'device_type' => $token->platform,
