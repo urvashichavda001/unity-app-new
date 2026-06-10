@@ -653,7 +653,6 @@
                                            data-role-key="{{ $role->key }}"
                                            @checked(in_array($role->id, $currentRoleIds))
                                            @disabled($hasAssignedAdminRole)>
-                                           @checked(in_array($role->id, $currentRoleIds))>
                                     <label class="form-check-label" for="role-{{ $role->id }}">
                                         <strong>{{ $role->name }}</strong>
                                         <div class="small text-muted">{{ $role->description }}</div>
