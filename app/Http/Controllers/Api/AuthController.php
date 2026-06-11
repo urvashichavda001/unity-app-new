@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends BaseApiController
@@ -65,7 +66,17 @@ class AuthController extends BaseApiController
         $referralPreview = $referralService->validateReferralCodeOrFail($normalizedReferralCode);
         $data['resolved_referred_by_user_id'] = $this->resolveRegisterReferrerUserId($data, $referralPreview);
 
-        $transactionUser = $this->createRegisteredUser($data);
+        $data['profile_photo_path'] = $this->storeRegisterProfilePhoto($request);
+
+        try {
+            $transactionUser = $this->createRegisteredUser($data);
+        } catch (\Throwable $e) {
+            if (! empty($data['profile_photo_path'])) {
+                Storage::disk('public')->delete($data['profile_photo_path']);
+            }
+
+            throw $e;
+        }
 
         if (! $transactionUser->exists || blank($transactionUser->id)) {
             throw new \RuntimeException('Registration failed: user model was not persisted.');
@@ -597,6 +608,10 @@ class AuthController extends BaseApiController
                 'name' => (string) $businessCategory->name,
             ]
             : null;
+        $storedProfilePhotoPath = $user->getRawOriginal('profile_photo_url');
+        $payload['profile_photo_url'] = $storedProfilePhotoPath
+            ? $this->resolvePublicDiskUrl($storedProfilePhotoPath)
+            : $user->profile_photo_url;
         $payload['city_of_residence'] = $user->getAttribute('city_of_residence');
         $payload['referred_by'] = $referrer
             ? [
@@ -678,8 +693,21 @@ class AuthController extends BaseApiController
         $user->designation = $data['designation'] ?? null;
         $user->city_id = $data['city_id'] ?? null;
 
+        $this->fillIfUserColumnExists($user, 'profile_photo_url', $data['profile_photo_path'] ?? null);
+        $this->fillIfUserColumnExists($user, 'city', $data['city'] ?? null);
+        $this->fillIfUserColumnExists($user, 'state', $data['state'] ?? null);
+        $this->fillIfUserColumnExists($user, 'district', $data['district'] ?? null);
+        $this->fillIfUserColumnExists($user, 'country', $data['country'] ?? null);
+        $this->fillIfUserColumnExists($user, 'business_website', $data['business_website'] ?? null);
+        $this->fillIfUserColumnExists($user, 'business_description', $data['business_description'] ?? null);
+        $this->fillIfUserColumnExists($user, 'business_address', $data['company_address'] ?? null);
+        $this->fillIfUserColumnExists($user, 'secondary_mobile', $data['whatsapp_number'] ?? null);
+        $this->fillIfUserColumnExists($user, 'linkedin_profile', $data['linkedin_url'] ?? null);
+        $this->fillIfUserColumnExists($user, 'instagram_handle', $data['instagram_url'] ?? null);
+        $this->fillIfUserColumnExists($user, 'facebook_profile', $data['facebook_url'] ?? null);
+
         if (Schema::hasColumn('users', 'city_of_residence')) {
-            $user->city_of_residence = $data['city_of_residence'] ?? null;
+            $user->city_of_residence = $data['city_of_residence'] ?? $data['city'] ?? null;
         }
 
         if (Schema::hasColumn('users', 'main_business_category_id')) {
@@ -753,6 +781,31 @@ class AuthController extends BaseApiController
         }
 
         return $user;
+    }
+
+    private function resolvePublicDiskUrl(string $pathOrUrl): string
+    {
+        if (filter_var($pathOrUrl, FILTER_VALIDATE_URL)) {
+            return $pathOrUrl;
+        }
+
+        return Storage::disk('public')->url($pathOrUrl);
+    }
+
+    private function storeRegisterProfilePhoto(RegisterRequest $request): ?string
+    {
+        if (! $request->hasFile('profile_photo')) {
+            return null;
+        }
+
+        return $request->file('profile_photo')->store('profile-photos', 'public');
+    }
+
+    private function fillIfUserColumnExists(User $user, string $column, mixed $value): void
+    {
+        if (Schema::hasColumn('users', $column)) {
+            $user->{$column} = $value;
+        }
     }
 
     public function login(Request $request)
