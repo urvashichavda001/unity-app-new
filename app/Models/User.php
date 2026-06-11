@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 use Throwable;
@@ -805,11 +806,25 @@ class User extends Authenticatable
 
     public function getProfilePhotoUrlAttribute(): ?string
     {
-        if (! $this->profile_photo_file_id) {
+        $profilePhotoId = $this->attributes['profile_photo_file_id']
+            ?? $this->attributes['profile_photo_id']
+            ?? null;
+
+        if ($profilePhotoId) {
+            return url('/api/v1/files/' . $profilePhotoId);
+        }
+
+        $storedProfilePhotoUrl = $this->attributes['profile_photo_url'] ?? null;
+
+        if (blank($storedProfilePhotoUrl)) {
             return null;
         }
 
-        return url('/api/v1/files/' . $this->profile_photo_file_id);
+        if (filter_var($storedProfilePhotoUrl, FILTER_VALIDATE_URL)) {
+            return $storedProfilePhotoUrl;
+        }
+
+        return Storage::disk('public')->url($storedProfilePhotoUrl);
     }
 
     public function getProfileVideoUrlAttribute(): ?string

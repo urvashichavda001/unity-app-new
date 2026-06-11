@@ -114,18 +114,42 @@ class P2pMeetingController extends BaseApiController
                 'is_deleted' => false,
             ]);
 
-            $coinsLedger = app(CoinsService::class)->rewardForActivity(
-                $authUser,
-                'p2p_meeting',
-                null,
-                'Activity: p2p_meeting',
-                $authUser->id
-            );
+            $coinsService = app(CoinsService::class);
+            $authCoinsLedger = null;
 
-            if ($coinsLedger) {
+            $coinUserIds = collect([$authUser->id, $meeting->peer_user_id])
+                ->filter()
+                ->unique()
+                ->values();
+
+            foreach ($coinUserIds as $coinUserId) {
+                $coinUser = (string) $coinUserId === (string) $authUser->id
+                    ? $authUser
+                    : User::find($coinUserId);
+
+                if (! $coinUser) {
+                    continue;
+                }
+
+                $coinsLedger = $coinsService->rewardForActivity(
+                    $coinUser,
+                    'p2p_meeting',
+                    null,
+                    'P2P Meeting Completed',
+                    $authUser->id,
+                    'p2p_meeting',
+                    $meeting->id
+                );
+
+                if ((string) $coinUser->id === (string) $authUser->id) {
+                    $authCoinsLedger = $coinsLedger;
+                }
+            }
+
+            if ($authCoinsLedger) {
                 $meeting->setAttribute('coins', [
-                    'earned' => $coinsLedger->amount,
-                    'balance_after' => $coinsLedger->balance_after,
+                    'earned' => $authCoinsLedger->amount,
+                    'balance_after' => $authCoinsLedger->balance_after,
                 ]);
             }
 

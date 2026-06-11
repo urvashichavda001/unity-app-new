@@ -5,6 +5,7 @@ namespace App\Services\Coins;
 use App\Models\CoinsLedger;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class CoinsService
@@ -14,7 +15,9 @@ class CoinsService
         string $activityType,
         $activityId = null,
         ?string $reference = null,
-        ?string $createdBy = null
+        ?string $createdBy = null,
+        ?string $sourceType = null,
+        mixed $sourceId = null
     ): ?CoinsLedger {
         $amount = config('coins.activity_rewards')[$activityType] ?? 0;
 
@@ -22,8 +25,20 @@ class CoinsService
             return null;
         }
 
-        return DB::transaction(function () use ($user, $activityType, $activityId, $reference, $createdBy, $amount) {
+        return DB::transaction(function () use ($user, $activityType, $activityId, $reference, $createdBy, $sourceType, $sourceId, $amount) {
             $user = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
+
+            if ($sourceType !== null && $sourceId !== null && $this->hasSourceColumns()) {
+                $existingLedger = CoinsLedger::query()
+                    ->where('user_id', $user->id)
+                    ->where('source_type', $sourceType)
+                    ->where('source_id', (string) $sourceId)
+                    ->first();
+
+                if ($existingLedger) {
+                    return $existingLedger;
+                }
+            }
 
             $newBalance = $user->coins_balance + $amount;
 
@@ -40,6 +55,11 @@ class CoinsService
                 'created_by' => $createdBy ?? $user->id,
                 'created_at' => now(),
             ];
+
+            if ($sourceType !== null && $sourceId !== null && $this->hasSourceColumns()) {
+                $ledgerData['source_type'] = $sourceType;
+                $ledgerData['source_id'] = (string) $sourceId;
+            }
 
             return CoinsLedger::create($ledgerData);
         });
@@ -85,4 +105,11 @@ class CoinsService
             return CoinsLedger::create($ledgerData);
         });
     }
+
+    private function hasSourceColumns(): bool
+    {
+        return Schema::hasColumn('coins_ledger', 'source_type')
+            && Schema::hasColumn('coins_ledger', 'source_id');
+    }
 }
+
