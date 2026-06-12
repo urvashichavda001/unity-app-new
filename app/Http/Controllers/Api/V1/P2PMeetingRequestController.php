@@ -238,7 +238,7 @@ class P2PMeetingRequestController extends BaseApiController
     {
         $authUser = $request->user();
         $validated = $request->validate([
-            'new_scheduled_at' => ['required', 'date'],
+            'new_scheduled_at' => ['required', 'date', 'after:now'],
             'new_place' => ['nullable', 'string', 'max:2000'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -252,10 +252,33 @@ class P2PMeetingRequestController extends BaseApiController
         }
 
         if (! $this->isParticipant($meetingRequest, (string) $authUser->id)) {
-            return $this->error('Forbidden.', 403);
+            return $this->error('You are not allowed to reschedule this meeting.', 403);
         }
 
-        if (! $this->canRequestReschedule($meetingRequest, (string) $authUser->id)) {
+        $status = $this->normalizedMeetingStatus($meetingRequest);
+
+        if ($status === 'reschedule_requested') {
+            return $this->error('A pending reschedule request already exists for this meeting.', 422);
+        }
+
+        $pendingExists = P2PMeetingRescheduleRequest::query()
+            ->where('p2p_meeting_request_id', $meetingRequest->id)
+            ->whereRaw('LOWER(status) = ?', ['pending'])
+            ->exists();
+
+        if ($pendingExists) {
+            return $this->error('A pending reschedule request already exists for this meeting.', 422);
+        }
+
+        if ($status === 'pending' && (string) $meetingRequest->requester_id === (string) $authUser->id) {
+            return $this->error('Only the invitee can request reschedule before accepting the meeting.', 422);
+        }
+
+        if (in_array($status, ['rejected', 'cancelled', 'completed'], true)) {
+            return $this->error("This meeting cannot be rescheduled because it is already {$status}.", 422);
+        }
+
+        if (! $this->canRequestReschedule($meetingRequest, (string) $authUser->id, $status)) {
             return $this->error('This meeting cannot be rescheduled.', 422);
         }
 
@@ -266,15 +289,6 @@ class P2PMeetingRequestController extends BaseApiController
 
         if ($peerBlockService->isBlockedEitherWay((string) $authUser->id, $otherUserId)) {
             return $this->error('You cannot interact with this peer.', 422);
-        }
-
-        $pendingExists = P2PMeetingRescheduleRequest::query()
-            ->where('p2p_meeting_request_id', $meetingRequest->id)
-            ->where('status', 'pending')
-            ->exists();
-
-        if ($pendingExists) {
-            return $this->error('A pending reschedule request already exists for this meeting.', 422);
         }
 
         $newScheduledAt = Carbon::parse($validated['new_scheduled_at']);
@@ -312,7 +326,10 @@ class P2PMeetingRequestController extends BaseApiController
             'new_scheduled_at' => $rescheduleRequest->new_scheduled_at?->toIso8601String(),
             'old_place' => $rescheduleRequest->old_place,
             'new_place' => $rescheduleRequest->new_place,
+            'reason' => $rescheduleRequest->reason,
             'status' => (string) $rescheduleRequest->status,
+            'requested_by_user_id' => (string) $rescheduleRequest->requested_by_user_id,
+            'requested_to_user_id' => (string) $rescheduleRequest->requested_to_user_id,
         ], 'P2P meeting reschedule request sent successfully.', 201);
     }
 
@@ -361,16 +378,21 @@ class P2PMeetingRequestController extends BaseApiController
     }
 
 
-    private function canRequestReschedule(P2PMeetingRequest $meetingRequest, string $authUserId): bool
+    private function canRequestReschedule(P2PMeetingRequest $meetingRequest, string $authUserId, ?string $status = null): bool
     {
-        $status = (string) $meetingRequest->status;
+        $status ??= $this->normalizedMeetingStatus($meetingRequest);
 
-        if (in_array($status, ['accepted', 'scheduled'], true)) {
+        if (in_array($status, ['accepted', 'scheduled', 'reschedule_rejected'], true)) {
             return true;
         }
 
         return $status === 'pending'
             && (string) $meetingRequest->invitee_id === $authUserId;
+    }
+
+    private function normalizedMeetingStatus(P2PMeetingRequest $meetingRequest): string
+    {
+        return strtolower(trim((string) $meetingRequest->status));
     }
 
     private function otherParticipantId(P2PMeetingRequest $meetingRequest, string $authUserId): ?string
