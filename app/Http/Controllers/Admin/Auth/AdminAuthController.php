@@ -202,6 +202,10 @@ class AdminAuthController extends Controller
             return false;
         }
 
+        if (! Schema::hasTable('industry_director_assignments')) {
+            return false;
+        }
+
         return IndustryDirectorAssignment::query()
             ->where('admin_user_id', $adminUser->id)
             ->where('is_active', true)
