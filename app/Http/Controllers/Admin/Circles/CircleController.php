@@ -18,6 +18,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -355,15 +356,7 @@ class CircleController extends Controller
 
     public function show(Request $request, Circle $circle): View
     {
-        $allowedCircleIds = $request->attributes->get('allowed_circle_ids');
-
-        if (is_array($allowedCircleIds) && ! in_array($circle->id, $allowedCircleIds, true)) {
-            abort(403);
-        }
-
-        if (! $this->industryScope->circleInScope(Auth::guard('admin')->user(), (string) $circle->id)) {
-            abort(403);
-        }
+        $this->authorizeCircleView($request, $circle);
 
         $validatedFilters = $request->validate([
             'peer_name' => ['nullable', 'string', 'max:120'],
@@ -437,6 +430,52 @@ class CircleController extends Controller
             'categoryFeatureEnabled' => $this->categoryFeatureEnabled(),
             'peerMembers' => $peerMembers,
             'peerFilters' => $peerFilters,
+        ]);
+    }
+
+
+    private function authorizeCircleView(Request $request, Circle $circle): void
+    {
+        $admin = Auth::guard('admin')->user();
+        $roleKeys = AdminAccess::adminRoleKeys($admin);
+
+        if (AdminAccess::isGlobalAdmin($admin)) {
+            return;
+        }
+
+        if (AdminAccess::isDed($admin)) {
+            $allowedCircleIds = AdminCircleScope::getDedCircleIds($admin);
+            if (in_array((string) $circle->id, $allowedCircleIds, true)) {
+                return;
+            }
+
+            $this->logCircleViewDenied($admin, $roleKeys, $circle, 'ded_scope_mismatch');
+            abort(403);
+        }
+
+        if ((bool) $request->attributes->get('is_circle_scoped')) {
+            $allowedCircleIds = $request->attributes->get('allowed_circle_ids', []);
+            if (is_array($allowedCircleIds) && in_array((string) $circle->id, $allowedCircleIds, true)) {
+                return;
+            }
+
+            $this->logCircleViewDenied($admin, $roleKeys, $circle, 'circle_scope_mismatch');
+            abort(403);
+        }
+
+        if (! $this->industryScope->circleInScope($admin, (string) $circle->id)) {
+            $this->logCircleViewDenied($admin, $roleKeys, $circle, 'industry_scope_mismatch');
+            abort(403);
+        }
+    }
+
+    private function logCircleViewDenied($admin, array $roleKeys, Circle $circle, string $reason): void
+    {
+        Log::warning('admin_circle_view_denied', [
+            'admin_id' => $admin?->id,
+            'admin_roles' => $roleKeys,
+            'circle_id' => $circle->id,
+            'reason' => $reason,
         ]);
     }
 
