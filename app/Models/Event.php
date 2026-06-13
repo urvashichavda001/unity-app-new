@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
@@ -35,6 +36,7 @@ class Event extends Model
         'metadata',
         'district_id',
         'event_type',
+        'state_name',
         'event_category',
         'mode',
         'organizer_user_id',
@@ -104,6 +106,12 @@ class Event extends Model
     public function circle(): BelongsTo
     {
         return $this->belongsTo(Circle::class);
+    }
+
+    public function circles(): BelongsToMany
+    {
+        return $this->belongsToMany(Circle::class, 'event_circles', 'event_id', 'circle_id')
+            ->withTimestamps();
     }
 
     public function createdByUser(): BelongsTo

@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class EventManagementController extends Controller
@@ -36,7 +38,7 @@ class EventManagementController extends Controller
     public function index(Request $request): View
     {
         $query = Event::query()
-            ->with('circle')
+            ->with(['circle', 'circles'])
             ->withCount(['registrations as registered_count' => fn ($q) => $q->where('status', '!=', 'cancelled')])
             ->withCount(['registrations as checked_in_count' => fn ($q) => $q->where('checkin_status', 'checked_in')])
             ->when($request->event_type, fn ($q, $v) => $q->where('event_type', $v))
@@ -163,17 +165,17 @@ class EventManagementController extends Controller
     {
         abort_if(AdminAccess::isDed(Auth::guard('admin')->user()), 403);
 
-        return view('admin.events.create', ['circles' => Circle::query()->orderBy('name')->get(['id', 'name'])]);
+        return view('admin.events.create', ['circles' => Circle::query()->with('cityRef')->orderBy('name')->get()]);
     }
 
     public function edit(string $id): View
     {
-        $event = Event::query()->findOrFail($id);
+        $event = Event::query()->with('circles')->findOrFail($id);
         abort_unless($this->canAccessEvent((string) $event->id), 403);
 
         return view('admin.events.create', [
             'event' => $event,
-            'circles' => Circle::query()->orderBy('name')->get(['id', 'name']),
+            'circles' => Circle::query()->with('cityRef')->orderBy('name')->get(),
         ]);
     }
 
@@ -184,6 +186,7 @@ class EventManagementController extends Controller
         $data = $this->prepareEventData($request, $this->validated($request));
         $event = DB::transaction(function () use ($data): Event {
             $event = Event::query()->create($this->filterColumns($this->withDefaults($data)));
+            $this->syncEventCircles($event, $data['circle_ids'] ?? null);
             $this->occurrences->generate($event);
 
             return $event;
@@ -201,6 +204,7 @@ class EventManagementController extends Controller
         DB::transaction(function () use ($event, $data): void {
             $event->fill($this->filterColumns($this->withDefaults($data)));
             $event->save();
+            $this->syncEventCircles($event, $data['circle_ids'] ?? null);
             $this->occurrences->regenerateFuture($event);
         });
 
@@ -209,7 +213,7 @@ class EventManagementController extends Controller
 
     public function show(string $id): View
     {
-        $event = Event::query()->with(['circle', 'occurrences' => fn ($q) => $q->orderBy('start_at'), 'registrations.user', 'registrations.occurrence'])->findOrFail($id);
+        $event = Event::query()->with(['circle', 'circles', 'occurrences' => fn ($q) => $q->orderBy('start_at'), 'registrations.user', 'registrations.occurrence'])->findOrFail($id);
         abort_unless($this->canAccessEvent((string) $event->id), 403);
 
         $event->registrations->each(function (EventRegistration $registration): void {
@@ -293,9 +297,12 @@ class EventManagementController extends Controller
         return $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'event_type' => ['required', 'string', 'in:circle_meeting,global_event,public_event,training'],
+            'event_type' => ['required', 'string', 'in:circle_meeting,global_event,state_event,public_event,public_visitor_event,training,training_workshop'],
+            'circle_ids' => [Rule::requiredIf(fn () => in_array($request->input('event_type'), ['global_event', 'state_event'], true)), 'array', 'min:1'],
+            'circle_ids.*' => ['uuid', 'distinct', 'exists:circles,id'],
+            'state_name' => [Rule::requiredIf(fn () => $request->input('event_type') === 'state_event'), 'nullable', 'string', 'max:255'],
             'event_category' => ['nullable', 'string', 'max:100'],
-            'circle_id' => ['nullable', 'uuid', 'exists:circles,id'],
+            'circle_id' => [Rule::requiredIf(fn () => $request->input('event_type') === 'circle_meeting'), 'nullable', 'uuid', 'exists:circles,id'],
             'mode' => ['required', 'string', 'in:offline,online,hybrid'],
             'location_text' => ['nullable', 'string'],
             'venue_name' => ['nullable', 'string', 'max:255'],
@@ -342,6 +349,14 @@ class EventManagementController extends Controller
 
     private function prepareEventData(Request $request, array $data, ?Event $event = null): array
     {
+        $data['event_type'] = match ($data['event_type'] ?? null) {
+            'public_visitor_event' => 'public_event',
+            'training_workshop' => 'training',
+            default => $data['event_type'] ?? null,
+        };
+        if (in_array($data['event_type'] ?? null, ['global_event', 'state_event'], true) && empty($data['circle_id']) && ! empty($data['circle_ids'][0])) {
+            $data['circle_id'] = $data['circle_ids'][0];
+        }
         $data['agenda'] = $this->cleanAgenda($data['agenda'] ?? []);
         $data['speakers'] = $this->cleanSpeakers($data['speakers'] ?? []);
 
@@ -366,6 +381,26 @@ class EventManagementController extends Controller
         unset($data['banner'], $data['what_youll_gain'], $data['organizer_name'], $data['organizer_phone'], $data['organizer_email'], $data['organizer_website']);
 
         return $data;
+    }
+
+    private function syncEventCircles(Event $event, ?array $circleIds): void
+    {
+        if ($circleIds === null || ! Schema::hasTable('event_circles')) {
+            return;
+        }
+        $circleIds = collect($circleIds)->filter()->unique()->values()->all();
+        if ($circleIds === []) {
+            DB::table('event_circles')->where('event_id', $event->id)->delete();
+            return;
+        }
+
+        DB::table('event_circles')->where('event_id', $event->id)->whereNotIn('circle_id', $circleIds)->delete();
+        foreach ($circleIds as $circleId) {
+            DB::table('event_circles')->updateOrInsert(
+                ['event_id' => $event->id, 'circle_id' => $circleId],
+                ['id' => (string) Str::uuid(), 'created_at' => now(), 'updated_at' => now()]
+            );
+        }
     }
 
     private function withDefaults(array $data): array
@@ -394,7 +429,7 @@ class EventManagementController extends Controller
             $data['metadata'] = array_merge((array) ($data['metadata'] ?? []), $locationMeta);
         }
 
-        unset($data['venue_name'], $data['address_line'], $data['city'], $data['state'], $data['google_maps_url']);
+        unset($data['venue_name'], $data['address_line'], $data['city'], $data['state'], $data['google_maps_url'], $data['circle_ids']);
 
         foreach (['is_paid', 'qr_checkin_enabled', 'visitor_registration_enabled', 'member_registration_enabled'] as $key) {
             $data[$key] = (bool) ($data[$key] ?? false);

@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Event;
 
+use App\Models\Circle;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpsertAdminEventRequest extends FormRequest
 {
@@ -14,7 +16,10 @@ class UpsertAdminEventRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'circle_id' => ['nullable', 'uuid', 'exists:circles,id'],
+            'circle_id' => [Rule::requiredIf(fn () => $this->input('event_type') === 'circle_meeting'), 'nullable', 'uuid', 'exists:circles,id'],
+            'circle_ids' => [Rule::requiredIf(fn () => in_array($this->input('event_type'), ['global_event', 'state_event'], true)), 'array', 'min:1'],
+            'circle_ids.*' => ['uuid', 'distinct', 'exists:circles,id'],
+            'state_name' => [Rule::requiredIf(fn () => $this->input('event_type') === 'state_event'), 'nullable', 'string', 'max:255'],
             'district_id' => ['nullable', 'uuid'],
             'created_by_user_id' => ['nullable', 'uuid', 'exists:users,id'],
             'organizer_user_id' => ['nullable', 'uuid', 'exists:users,id'],
@@ -48,7 +53,7 @@ class UpsertAdminEventRequest extends FormRequest
             'visibility' => ['sometimes', 'string', 'in:public,circle,connections,private'],
             'is_paid' => ['sometimes', 'boolean'],
             'metadata' => ['nullable', 'array'],
-            'event_type' => ['sometimes', 'string', 'in:circle_meeting,global_event,public_event,training'],
+            'event_type' => ['sometimes', 'string', 'in:circle_meeting,global_event,state_event,public_event,public_visitor_event,training,training_workshop'],
             'event_category' => ['nullable', 'string', 'max:100'],
             'registration_limit' => ['nullable', 'integer', 'min:1'],
             'ticket_price' => ['nullable', 'numeric', 'min:0'],
@@ -66,5 +71,28 @@ class UpsertAdminEventRequest extends FormRequest
             'recurrence_month' => ['nullable', 'integer', 'min:1', 'max:12'],
             'recurrence_ends_at' => ['nullable', 'date', 'after:start_at'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            if ($this->input('event_type') !== 'state_event' || ! is_array($this->input('circle_ids'))) {
+                return;
+            }
+
+            $state = trim((string) $this->input('state_name'));
+            if ($state === '') {
+                return;
+            }
+
+            $circles = Circle::query()->with('cityRef')->whereIn('id', $this->input('circle_ids'))->get();
+            foreach ($circles as $circle) {
+                $circleState = $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? null;
+                if ($circleState && strcasecmp((string) $circleState, $state) !== 0) {
+                    $validator->errors()->add('circle_ids', 'Selected circles must belong to the selected state.');
+                    return;
+                }
+            }
+        });
     }
 }

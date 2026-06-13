@@ -8,6 +8,7 @@
     $eventTypes = [
         'circle_meeting' => 'Circle Meeting',
         'global_event' => 'Global Event',
+        'state_event' => 'State Event',
         'public_event' => 'Public / Visitor Event',
         'training' => 'Training / Workshop',
     ];
@@ -24,6 +25,8 @@
     $gainRows = old('what_youll_gain', data_get($metadata, 'what_youll_gain', []));
     $gainRows = count($gainRows ?: []) ? $gainRows : [''];
     $organizer = data_get($metadata, 'organizer', []);
+    $selectedCircleIds = collect(old('circle_ids', $isEdit ? $event->circles->pluck('id')->all() : []))->map(fn ($id) => (string) $id)->all();
+    $stateOptions = $circles->map(fn ($circle) => $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? null)->filter()->unique()->sort()->values();
 @endphp
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -45,7 +48,9 @@
                 <div class="col-md-6"><label class="form-label">Event Title</label><input class="form-control" name="title" value="{{ old('title', $event->title ?? '') }}" required placeholder="e.g. Winners Circle Weekly Meeting"></div>
                 <div class="col-md-3"><label class="form-label">Event Type</label><select class="form-select" name="event_type" required>@foreach($eventTypes as $value => $label)<option value="{{ $value }}" @selected(old('event_type', $event->event_type ?? null)===$value)>{{ $label }}</option>@endforeach</select></div>
                 <div class="col-md-3"><label class="form-label">Category</label><input class="form-control" name="event_category" value="{{ old('event_category', $event->event_category ?? '') }}" placeholder="training, workshop, networking"></div>
-                <div class="col-md-4"><label class="form-label">Circle</label><select class="form-select" name="circle_id"><option value="">No specific circle</option>@foreach($circles as $circle)<option value="{{ $circle->id }}" @selected(old('circle_id', $event->circle_id ?? null)===$circle->id)>{{ $circle->name }}</option>@endforeach</select></div>
+                <div class="col-md-4 single-circle-field"><label class="form-label">Circle</label><select class="form-select" name="circle_id" id="singleCircleSelect"><option value="">No specific circle</option>@foreach($circles as $circle)<option value="{{ $circle->id }}" @selected(old('circle_id', $event->circle_id ?? null)===$circle->id)>{{ $circle->name }}</option>@endforeach</select></div>
+                <div class="col-md-4 state-event-field d-none"><label class="form-label">State</label><select class="form-select" name="state_name" id="stateNameSelect"><option value="">Select state</option>@foreach($stateOptions as $state)<option value="{{ $state }}" @selected(old('state_name', $event->state_name ?? data_get($metadata, 'state')) === $state)>{{ $state }}</option>@endforeach</select><div class="form-text">Required for State Event.</div></div>
+                <div class="col-md-8 multi-circle-field d-none"><label class="form-label">Selected Circles</label><select class="form-select" name="circle_ids[]" id="multiCircleSelect" multiple size="6">@foreach($circles as $circle)@php($circleState = $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? '')<option value="{{ $circle->id }}" data-state="{{ $circleState }}" @selected(in_array((string) $circle->id, $selectedCircleIds, true))>{{ $circle->name }}{{ $circleState ? ' — '.$circleState : '' }}</option>@endforeach</select><div class="form-text">Hold Ctrl/Cmd to select multiple circles. Selected circles are normal member circles for Global/State Events.</div><div class="text-danger small d-none" id="multiCircleError">Please select at least one circle.</div></div>
                 <div class="col-md-3"><label class="form-label">Event Mode</label><select class="form-select" name="mode" id="modeSelect">@foreach(['offline' => 'Offline / Venue', 'online' => 'Online', 'hybrid' => 'Hybrid'] as $value => $label)<option value="{{ $value }}" @selected(old('mode', $event->mode ?? 'offline')===$value)>{{ $label }}</option>@endforeach</select></div>
                 <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3" placeholder="What should attendees know about this event?">{{ old('description', $event->description ?? '') }}</textarea></div>
             </div>
@@ -183,6 +188,13 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('eventCreateForm');
+    const eventType = document.querySelector('[name="event_type"]');
+    const singleCircleField = document.querySelector('.single-circle-field');
+    const stateEventField = document.querySelector('.state-event-field');
+    const multiCircleField = document.querySelector('.multi-circle-field');
+    const singleCircleSelect = document.getElementById('singleCircleSelect');
+    const multiCircleSelect = document.getElementById('multiCircleSelect');
+    const stateNameSelect = document.getElementById('stateNameSelect');
     const mode = document.getElementById('modeSelect');
     const recurrenceType = document.getElementById('recurrenceType');
     const interval = document.getElementById('recurrenceInterval');
@@ -219,6 +231,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const ed = document.getElementById('endDate').value, et = document.getElementById('endTime').value;
         document.getElementById('startAtHidden').value = sd && st ? `${sd}T${st}` : '';
         document.getElementById('endAtHidden').value = ed && et ? `${ed}T${et}` : '';
+    }
+
+    function updateEventType() {
+        const type = eventType.value;
+        const isMulti = type === 'global_event' || type === 'state_event';
+        singleCircleField.classList.toggle('d-none', isMulti);
+        multiCircleField.classList.toggle('d-none', !isMulti);
+        stateEventField.classList.toggle('d-none', type !== 'state_event');
+        singleCircleSelect.disabled = isMulti;
+        multiCircleSelect.disabled = !isMulti;
+        stateNameSelect.disabled = type !== 'state_event';
+        Array.from(multiCircleSelect.options).forEach(option => {
+            const visible = type !== 'state_event' || !stateNameSelect.value || option.dataset.state === stateNameSelect.value;
+            option.hidden = !visible;
+            if (!visible) option.selected = false;
+        });
+        if (isMulti && multiCircleSelect.selectedOptions.length && !singleCircleSelect.value) {
+            singleCircleSelect.disabled = false;
+            singleCircleSelect.value = multiCircleSelect.selectedOptions[0].value;
+            singleCircleSelect.disabled = true;
+        }
     }
 
     function updateMode() {
@@ -261,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type === 'yearly') preview.textContent = `This event will repeat every ${every} year(s) on ${months[document.getElementById('recurrenceMonth').value] || '—'} ${document.getElementById('yearlyDayOfMonth').value}${untilText()}.`;
     }
 
-    document.querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { syncDateTimes(); updateMode(); updateRecurrence(); }));
+    document.querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { syncDateTimes(); updateEventType(); updateMode(); updateRecurrence(); }));
     document.getElementById('monthlyDayOfWeek').addEventListener('change', e => document.getElementById('dayOfWeek').value = e.target.value);
     document.getElementById('yearlyDayOfMonth').addEventListener('change', e => document.getElementById('dayOfMonth').value = e.target.value);
 
@@ -269,13 +302,19 @@ document.addEventListener('DOMContentLoaded', () => {
         syncDateTimes();
         const start = document.getElementById('startAtHidden').value ? new Date(document.getElementById('startAtHidden').value) : null;
         const end = document.getElementById('endAtHidden').value ? new Date(document.getElementById('endAtHidden').value) : null;
+        if ((eventType.value === 'global_event' || eventType.value === 'state_event') && multiCircleSelect.selectedOptions.length === 0) {
+            document.getElementById('multiCircleError').classList.remove('d-none');
+            e.preventDefault();
+            return;
+        }
+        document.getElementById('multiCircleError').classList.add('d-none');
         const invalid = start && end && end <= start;
         document.getElementById('dateTimeError').classList.toggle('d-none', !invalid);
         if (invalid) e.preventDefault();
     });
 
     initDateTimeFields();
-    updateMode(); updateRecurrence();
+    updateEventType(); updateMode(); updateRecurrence();
 });
 </script>
 @endsection
