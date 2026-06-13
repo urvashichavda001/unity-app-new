@@ -104,6 +104,7 @@
             ['label' => 'Event Joining Requests', 'route' => 'admin.event-joining-requests.index'],
             ['label' => 'Coin Claims', 'route' => 'admin.coin-claims.index'],
             ['label' => 'Circle Joining Requests', 'route' => 'admin.circle-joining-requests.index'],
+            ['label' => 'Certifications', 'route' => 'admin.certifications.index'],
             ['label' => 'Pending Impacts', 'route' => 'admin.impacts.pending'],
         ];
 
@@ -113,6 +114,7 @@
         request()->routeIs('admin.coin-claims.*') ||
         request()->routeIs('admin.event-joining-requests.*') ||
         request()->routeIs('admin.circle-joining-requests.*') ||
+        request()->routeIs('admin.certifications.*') ||
         request()->routeIs('admin.impacts.pending');
 
     $leadsMenu = $isIndustryDirector ? [] : $leadsMenu;

@@ -2,6 +2,8 @@
 
 namespace App\Console;
 
+use App\Console\Commands\GenerateMissingCertificationCertificates;
+use App\Console\Commands\RegenerateCertificationPdfs;
 use App\Console\Commands\LifeImpactBackfillCommand;
 use App\Console\Commands\RetryIgnoredZohoWebhooks;
 use App\Console\Commands\RetryZohoWebhook;
@@ -20,6 +22,8 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 class Kernel extends ConsoleKernel
 {
     protected $commands = [
+        GenerateMissingCertificationCertificates::class,
+        RegenerateCertificationPdfs::class,
         LifeImpactBackfillCommand::class,
         LifeImpactRecalculateUsersCommand::class,
         SendAppUpdateReminderNotifications::class,
