@@ -397,6 +397,12 @@ class Circle extends Model
             ->withTimestamps();
     }
 
+    public function selectedEvents(): BelongsToMany
+    {
+        return $this->belongsToMany(Event::class, 'event_circles', 'circle_id', 'event_id')
+            ->withTimestamps();
+    }
+
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(CircleCategory::class, 'circle_category_mappings', 'circle_id', 'category_id')

@@ -17,7 +17,7 @@ class EventAdminController extends BaseApiController
     public function index(Request $request): JsonResponse
     {
         $items = Event::query()
-            ->with(['circle', 'occurrences'])
+            ->with(['circle', 'circles.cityRef', 'occurrences'])
             ->withCount(['registrations', 'occurrences'])
             ->when($request->input('event_type'), fn ($q, $v) => $q->where('event_type', $v))
             ->when($request->input('circle_id'), fn ($q, $v) => $q->where('circle_id', $v))
@@ -37,7 +37,7 @@ class EventAdminController extends BaseApiController
     public function show(string $id): JsonResponse
     {
         $event = Event::query()
-            ->with(['circle', 'occurrences' => fn ($q) => $q->withCount(['registrations as registered_count' => fn ($r) => $r->where('status', '!=', 'cancelled')])->orderBy('start_at')])
+            ->with(['circle', 'circles.cityRef', 'occurrences' => fn ($q) => $q->withCount(['registrations as registered_count' => fn ($r) => $r->where('status', '!=', 'cancelled')])->orderBy('start_at')])
             ->withCount(['registrations', 'occurrences'])
             ->findOrFail($id);
 

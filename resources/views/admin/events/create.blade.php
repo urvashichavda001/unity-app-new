@@ -8,6 +8,7 @@
     $eventTypes = [
         'circle_meeting' => 'Circle Meeting',
         'global_event' => 'Global Event',
+        'state_event' => 'State Event',
         'public_event' => 'Public / Visitor Event',
         'training' => 'Training / Workshop',
     ];
@@ -24,6 +25,8 @@
     $gainRows = old('what_youll_gain', data_get($metadata, 'what_youll_gain', []));
     $gainRows = count($gainRows ?: []) ? $gainRows : [''];
     $organizer = data_get($metadata, 'organizer', []);
+    $selectedCircleIds = collect(old('circle_ids', $isEdit ? $event->circles->pluck('id')->all() : []))->map(fn ($id) => (string) $id)->all();
+    $stateOptions = $circles->map(fn ($circle) => $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? null)->filter()->unique()->sort()->values();
 @endphp
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -45,7 +48,9 @@
                 <div class="col-md-6"><label class="form-label">Event Title</label><input class="form-control" name="title" value="{{ old('title', $event->title ?? '') }}" required placeholder="e.g. Winners Circle Weekly Meeting"></div>
                 <div class="col-md-3"><label class="form-label">Event Type</label><select class="form-select" name="event_type" required>@foreach($eventTypes as $value => $label)<option value="{{ $value }}" @selected(old('event_type', $event->event_type ?? null)===$value)>{{ $label }}</option>@endforeach</select></div>
                 <div class="col-md-3"><label class="form-label">Category</label><input class="form-control" name="event_category" value="{{ old('event_category', $event->event_category ?? '') }}" placeholder="training, workshop, networking"></div>
-                <div class="col-md-4"><label class="form-label">Circle</label><select class="form-select" name="circle_id"><option value="">No specific circle</option>@foreach($circles as $circle)<option value="{{ $circle->id }}" @selected(old('circle_id', $event->circle_id ?? null)===$circle->id)>{{ $circle->name }}</option>@endforeach</select></div>
+                <div class="col-md-4 single-circle-field"><label class="form-label">Circle</label><select class="form-select" name="circle_id" id="singleCircleSelect"><option value="">No specific circle</option>@foreach($circles as $circle)<option value="{{ $circle->id }}" @selected(old('circle_id', $event->circle_id ?? null)===$circle->id)>{{ $circle->name }}</option>@endforeach</select></div>
+                <div class="col-md-4 state-event-field d-none"><label class="form-label">State</label><select class="form-select" name="state_name" id="stateNameSelect"><option value="">Select state</option>@foreach($stateOptions as $state)<option value="{{ $state }}" @selected(old('state_name', $event->state_name ?? data_get($metadata, 'state')) === $state)>{{ $state }}</option>@endforeach</select><div class="form-text">Required for State Event.</div></div>
+                <div class="col-md-8 multi-circle-field d-none"><label class="form-label">Selected Circles</label><div class="multi-select-dropdown" id="circleMultiSelect"><button type="button" class="form-control text-start multi-select-toggle" id="circleMultiSelectToggle"><span class="multi-select-placeholder">Select circles</span><span class="multi-select-caret">▾</span></button><div class="multi-select-menu d-none" id="circleMultiSelectMenu"><input type="text" class="form-control mb-2 circle-search" id="circleSearchInput" placeholder="Search circles..."><div class="circle-options" id="circleOptionsList">@foreach($circles as $circle)@php($circleState = $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? '')<label class="multi-select-option" data-state="{{ $circleState }}" data-label="{{ \Illuminate\Support\Str::lower($circle->name.' '.$circleState) }}"><input type="checkbox" name="circle_ids[]" value="{{ $circle->id }}" @checked(in_array((string) $circle->id, $selectedCircleIds, true))><span>{{ $circle->name }}{{ $circleState ? ' — '.$circleState : '' }}</span></label>@endforeach</div><div class="text-muted small d-none" id="circleNoResults">No circles found.</div></div></div><div class="text-danger small d-none" id="multiCircleError">Please select at least one circle.</div></div>
                 <div class="col-md-3"><label class="form-label">Event Mode</label><select class="form-select" name="mode" id="modeSelect">@foreach(['offline' => 'Offline / Venue', 'online' => 'Online', 'hybrid' => 'Hybrid'] as $value => $label)<option value="{{ $value }}" @selected(old('mode', $event->mode ?? 'offline')===$value)>{{ $label }}</option>@endforeach</select></div>
                 <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3" placeholder="What should attendees know about this event?">{{ old('description', $event->description ?? '') }}</textarea></div>
             </div>
@@ -180,9 +185,37 @@
     </form>
 </div>
 
+<style>
+.multi-select-dropdown { position: relative; width: 100%; }
+.multi-select-toggle { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: .5rem; overflow: hidden; }
+.multi-select-placeholder { display: flex; align-items: center; gap: .35rem; flex-wrap: nowrap; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multi-select-caret { color: #6c757d; flex: 0 0 auto; }
+.multi-select-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1055; width: 100%; padding: .75rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 .5rem 1rem rgba(15, 23, 42, .12); }
+.circle-options { max-height: 260px; overflow-y: auto; }
+.multi-select-option { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .45rem .5rem; border-radius: .375rem; cursor: pointer; font-size: .925rem; }
+.multi-select-option:hover { background: #f8f9fa; }
+.multi-select-option input { flex: 0 0 auto; }
+.multi-select-chip { display: inline-flex; align-items: center; max-width: 160px; padding: .15rem .45rem; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: .78rem; font-weight: 600; }
+.multi-select-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multi-select-chip-remove { border: 0; background: transparent; color: inherit; padding: 0 0 0 .35rem; line-height: 1; font-weight: 700; }
+</style>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('eventCreateForm');
+    const eventType = document.querySelector('[name="event_type"]');
+    const singleCircleField = document.querySelector('.single-circle-field');
+    const stateEventField = document.querySelector('.state-event-field');
+    const multiCircleField = document.querySelector('.multi-circle-field');
+    const singleCircleSelect = document.getElementById('singleCircleSelect');
+    const circleMultiSelect = document.getElementById('circleMultiSelect');
+    const circleMultiSelectToggle = document.getElementById('circleMultiSelectToggle');
+    const circleMultiSelectMenu = document.getElementById('circleMultiSelectMenu');
+    const circleSearchInput = document.getElementById('circleSearchInput');
+    const circleOptionsList = document.getElementById('circleOptionsList');
+    const circleNoResults = document.getElementById('circleNoResults');
+    const circleCheckboxes = Array.from(document.querySelectorAll('input[name="circle_ids[]"]'));
+    const stateNameSelect = document.getElementById('stateNameSelect');
     const mode = document.getElementById('modeSelect');
     const recurrenceType = document.getElementById('recurrenceType');
     const interval = document.getElementById('recurrenceInterval');
@@ -219,6 +252,84 @@ document.addEventListener('DOMContentLoaded', () => {
         const ed = document.getElementById('endDate').value, et = document.getElementById('endTime').value;
         document.getElementById('startAtHidden').value = sd && st ? `${sd}T${st}` : '';
         document.getElementById('endAtHidden').value = ed && et ? `${ed}T${et}` : '';
+    }
+
+    function selectedCircleCheckboxes() {
+        return circleCheckboxes.filter(checkbox => checkbox.checked && !checkbox.disabled && !checkbox.closest('.multi-select-option')?.classList.contains('d-none'));
+    }
+
+    function circleLabel(checkbox) {
+        return checkbox.closest('.multi-select-option')?.querySelector('span')?.textContent?.trim() || '';
+    }
+
+    function updateSelectedCircleText() {
+        const selected = selectedCircleCheckboxes();
+        const placeholder = circleMultiSelectToggle.querySelector('.multi-select-placeholder');
+        placeholder.innerHTML = '';
+
+        if (selected.length === 0) {
+            placeholder.textContent = 'Select circles';
+            singleCircleSelect.disabled = eventType.value === 'global_event' || eventType.value === 'state_event';
+            return;
+        }
+
+        selected.slice(0, 2).forEach(checkbox => {
+            const chip = document.createElement('span');
+            chip.className = 'multi-select-chip';
+            chip.innerHTML = `<span class="multi-select-chip-text"></span><button type="button" class="multi-select-chip-remove" aria-label="Remove selected circle">×</button>`;
+            chip.querySelector('.multi-select-chip-text').textContent = circleLabel(checkbox).split(' — ')[0];
+            chip.querySelector('.multi-select-chip-remove').addEventListener('click', (event) => {
+                event.stopPropagation();
+                checkbox.checked = false;
+                updateSelectedCircleText();
+            });
+            placeholder.appendChild(chip);
+        });
+
+        if (selected.length > 2) {
+            const more = document.createElement('span');
+            more.className = 'text-muted small';
+            more.textContent = `+${selected.length - 2} more`;
+            placeholder.appendChild(more);
+        }
+
+        if (eventType.value === 'global_event' || eventType.value === 'state_event') {
+            singleCircleSelect.disabled = false;
+            singleCircleSelect.value = selected[0].value;
+            singleCircleSelect.disabled = true;
+        }
+    }
+
+    function filterCircleOptions() {
+        const term = circleSearchInput.value.trim().toLowerCase();
+        let visibleCount = 0;
+        circleCheckboxes.forEach(checkbox => {
+            const option = checkbox.closest('.multi-select-option');
+            const matchesState = eventType.value !== 'state_event' || !stateNameSelect.value || option.dataset.state === stateNameSelect.value;
+            const matchesSearch = term === '' || (option.dataset.label || '').includes(term);
+            const visible = matchesState && matchesSearch;
+            option.classList.toggle('d-none', !visible);
+            checkbox.disabled = !(eventType.value === 'global_event' || eventType.value === 'state_event') || !matchesState;
+            if (!matchesState) checkbox.checked = false;
+            if (visible) visibleCount += 1;
+        });
+        circleNoResults.classList.toggle('d-none', visibleCount > 0);
+        updateSelectedCircleText();
+    }
+
+    function updateEventType() {
+        const type = eventType.value;
+        const isMulti = type === 'global_event' || type === 'state_event';
+        singleCircleField.classList.toggle('d-none', isMulti);
+        multiCircleField.classList.toggle('d-none', !isMulti);
+        stateEventField.classList.toggle('d-none', type !== 'state_event');
+        singleCircleSelect.disabled = isMulti;
+        stateNameSelect.disabled = type !== 'state_event';
+        if (!isMulti) {
+            circleMultiSelectMenu.classList.add('d-none');
+            circleCheckboxes.forEach(checkbox => { checkbox.disabled = true; });
+        }
+        filterCircleOptions();
     }
 
     function updateMode() {
@@ -261,7 +372,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (type === 'yearly') preview.textContent = `This event will repeat every ${every} year(s) on ${months[document.getElementById('recurrenceMonth').value] || '—'} ${document.getElementById('yearlyDayOfMonth').value}${untilText()}.`;
     }
 
-    document.querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { syncDateTimes(); updateMode(); updateRecurrence(); }));
+    document.querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { syncDateTimes(); updateEventType(); updateMode(); updateRecurrence(); }));
+    circleMultiSelectToggle.addEventListener('click', () => { if (!multiCircleField.classList.contains('d-none')) circleMultiSelectMenu.classList.toggle('d-none'); });
+    circleCheckboxes.forEach(checkbox => checkbox.addEventListener('change', updateSelectedCircleText));
+    circleSearchInput.addEventListener('input', filterCircleOptions);
+    stateNameSelect.addEventListener('change', () => { circleCheckboxes.forEach(checkbox => { checkbox.checked = false; }); circleSearchInput.value = ''; filterCircleOptions(); });
+    eventType.addEventListener('change', () => { circleSearchInput.value = ''; filterCircleOptions(); });
+    document.addEventListener('click', (event) => { if (!circleMultiSelect.contains(event.target)) circleMultiSelectMenu.classList.add('d-none'); });
     document.getElementById('monthlyDayOfWeek').addEventListener('change', e => document.getElementById('dayOfWeek').value = e.target.value);
     document.getElementById('yearlyDayOfMonth').addEventListener('change', e => document.getElementById('dayOfMonth').value = e.target.value);
 
@@ -269,13 +386,19 @@ document.addEventListener('DOMContentLoaded', () => {
         syncDateTimes();
         const start = document.getElementById('startAtHidden').value ? new Date(document.getElementById('startAtHidden').value) : null;
         const end = document.getElementById('endAtHidden').value ? new Date(document.getElementById('endAtHidden').value) : null;
+        if ((eventType.value === 'global_event' || eventType.value === 'state_event') && selectedCircleCheckboxes().length === 0) {
+            document.getElementById('multiCircleError').classList.remove('d-none');
+            e.preventDefault();
+            return;
+        }
+        document.getElementById('multiCircleError').classList.add('d-none');
         const invalid = start && end && end <= start;
         document.getElementById('dateTimeError').classList.toggle('d-none', !invalid);
         if (invalid) e.preventDefault();
     });
 
     initDateTimeFields();
-    updateMode(); updateRecurrence();
+    updateEventType(); updateSelectedCircleText(); updateMode(); updateRecurrence();
 });
 </script>
 @endsection

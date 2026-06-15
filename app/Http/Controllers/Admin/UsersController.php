@@ -230,6 +230,11 @@ class UsersController extends Controller
             ->with('success', 'Member created successfully.');
     }
 
+    private function industryDirectorAssignmentsTableExists(): bool
+    {
+        return Schema::hasTable('industry_director_assignments');
+    }
+
     private function getEditViewData(Request $request, string $userId): array
     {
         $user = User::query()
@@ -265,7 +270,7 @@ class UsersController extends Controller
         $assignedDedDistrictName = $assignedDedMapping->district_name ?? null;
         $assignedDedDistricts = $this->dedLocationService->getAvailableDistrictsByState($assignedDedStateId);
 
-        $industryDirectorAssignment = $adminUserForRoles
+        $industryDirectorAssignment = ($adminUserForRoles && $this->industryDirectorAssignmentsTableExists())
             ? IndustryDirectorAssignment::query()
                 ->where('admin_user_id', $adminUserForRoles->id)
                 ->where('is_active', true)
@@ -953,7 +958,7 @@ class UsersController extends Controller
 
                     Cache::forget('admin-access:roles:' . $adminUser->id);
 
-                    if ($industryDirectorSelected) {
+                    if ($industryDirectorSelected && $this->industryDirectorAssignmentsTableExists()) {
                         $assignmentExists = DB::table('industry_director_assignments')
                             ->where('admin_user_id', $adminUser->id)
                             ->exists();
@@ -967,7 +972,7 @@ class UsersController extends Controller
                                 'updated_at' => now(),
                             ], $assignmentExists ? [] : ['created_at' => now()]),
                         );
-                    } else {
+                    } elseif ($this->industryDirectorAssignmentsTableExists()) {
                         DB::table('industry_director_assignments')
                             ->where('admin_user_id', $adminUser->id)
                             ->update([
@@ -1121,12 +1126,14 @@ class UsersController extends Controller
 
             Cache::forget('admin-access:roles:' . $adminUser->id);
 
-            DB::table('industry_director_assignments')
-                ->where('admin_user_id', $adminUser->id)
-                ->update([
-                    'is_active' => false,
-                    'updated_at' => now(),
-                ]);
+            if ($this->industryDirectorAssignmentsTableExists()) {
+                DB::table('industry_director_assignments')
+                    ->where('admin_user_id', $adminUser->id)
+                    ->update([
+                        'is_active' => false,
+                        'updated_at' => now(),
+                    ]);
+            }
         });
 
         if (Schema::hasTable('admin_ded_districts')) {

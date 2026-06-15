@@ -46,9 +46,10 @@ class EventApiController extends BaseApiController
         $events = Event::query()
             ->with([
                 'circle',
+                'circles.cityRef',
                 'occurrences' => fn ($query) => $query->orderBy('start_at'),
             ])
-            ->when($circleId, fn ($query) => $query->where('circle_id', $circleId));
+            ->when($circleId, fn ($query) => $query->where(function ($circleQuery) use ($circleId): void { $circleQuery->where('circle_id', $circleId)->orWhereHas('circles', fn ($multiCircleQuery) => $multiCircleQuery->where('circles.id', $circleId)); }));
 
         $this->applyActiveEventScope($events);
 
@@ -156,6 +157,10 @@ class EventApiController extends BaseApiController
     {
         $occurrenceId = $occurrence?->id;
         $circlePayload = $event->circle ? $this->circlePayload($event->circle) : null;
+        $circles = $event->relationLoaded('circles') ? $event->circles->map(fn (Circle $circle) => $this->circlePayload($circle))->values()->all() : [];
+        if ($circles === [] && $circlePayload) {
+            $circles = [$circlePayload];
+        }
         $groupingStartAt = $this->dateTimeForGrouping($startAt, $timezone);
         $groupingEndAt = $this->dateTimeForGrouping($endAt, $timezone);
         $responseStartAt = $this->dateTimeForResponse($startAt);
@@ -182,6 +187,9 @@ class EventApiController extends BaseApiController
                 'image_url' => $this->imageUrl($event),
                 'location' => $event->location_text,
                 'meeting_link' => $event->online_meeting_url,
+                'circle_id' => $event->circle_id,
+                'circle_ids' => collect($circles)->pluck('id')->values()->all(),
+                'circles' => $circles,
                 'circle' => $circlePayload,
             ],
         ];
@@ -269,6 +277,7 @@ class EventApiController extends BaseApiController
             'id' => $circle->id,
             'name' => $circle->name,
             'slug' => $circle->slug,
+            'state_name' => $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? null,
         ];
     }
 }

@@ -286,6 +286,9 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/events/checkin/scan', [EventController::class, 'scan']);
+        Route::post('/events/{event}/occurrences/{occurrence}/register', [EventController::class, 'register'])
+            ->whereUuid('event')
+            ->whereUuid('occurrence');
     });
 
     Route::middleware(['auth:sanctum', 'unity.user'])->group(function () {

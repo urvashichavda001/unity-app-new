@@ -11,6 +11,7 @@ use App\Services\Admin\AdminScopeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class CircleManagementController extends BaseApiController
@@ -21,8 +22,42 @@ class CircleManagementController extends BaseApiController
 
     public function index(Request $request): JsonResponse
     {
-        $q = Circle::query()->withCount('members');
+        $q = Circle::query()->with('cityRef')->withCount('members');
+        if ($request->filled('state_name')) {
+            $state = $request->input('state_name');
+            $q->where(function ($query) use ($state): void {
+                $hasCircleState = Schema::hasColumn('circles', 'state');
+                $hasCircleStateName = Schema::hasColumn('circles', 'state_name');
+                $hasCityState = Schema::hasColumn('cities', 'state');
+                $hasCityStateName = Schema::hasColumn('cities', 'state_name');
+                if ($hasCircleState) {
+                    $query->where('state', $state);
+                }
+                if ($hasCircleStateName) {
+                    ($hasCircleState ? $query->orWhere('state_name', $state) : $query->where('state_name', $state));
+                }
+                if ($hasCityState || $hasCityStateName) {
+                    $method = ($hasCircleState || $hasCircleStateName) ? 'orWhereHas' : 'whereHas';
+                    $query->{$method}('cityRef', function ($cityQuery) use ($state, $hasCityState, $hasCityStateName): void {
+                        if ($hasCityState) {
+                            $cityQuery->where('state', $state);
+                        }
+                        if ($hasCityStateName) {
+                            ($hasCityState ? $cityQuery->orWhere('state_name', $state) : $cityQuery->where('state_name', $state));
+                        }
+                    });
+                }
+            });
+        }
         $this->scope->applyCircleScope($q, $request->user());
+        if ($request->filled('state_name')) {
+            return $this->success($q->orderBy('name')->get()->map(fn (Circle $circle) => [
+                'id' => $circle->id,
+                'name' => $circle->name,
+                'state_name' => $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? null,
+            ])->values(), 'Circles fetched successfully.');
+        }
+
         return $this->success($q->paginate((int) $request->input('per_page', 20)));
     }
 

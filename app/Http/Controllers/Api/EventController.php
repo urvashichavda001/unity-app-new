@@ -73,7 +73,7 @@ class EventController extends BaseApiController
     public function show(Request $request, string $id)
     {
         $event = Event::query()
-            ->with(['circle', 'occurrences' => fn ($q) => $q->with(['event.circle', 'registrations' => fn ($r) => $r->where('user_id', $request->user()?->id)])->withCount(['registrations as registered_count' => fn ($r) => $r->where('status', '!=', 'cancelled')])->orderBy('start_at')])
+            ->with(['circle', 'circles.cityRef', 'occurrences' => fn ($q) => $q->with(['event.circle', 'event.circles.cityRef', 'registrations' => fn ($r) => $r->where('user_id', $request->user()?->id)])->withCount(['registrations as registered_count' => fn ($r) => $r->where('status', '!=', 'cancelled')])->orderBy('start_at')])
             ->find($id);
 
         if (! $event) {
@@ -86,14 +86,15 @@ class EventController extends BaseApiController
     public function register(RegisterEventOccurrenceRequest $request, string $eventId, string $occurrenceId)
     {
         $user = $request->user();
-        $event = Event::query()->findOrFail($eventId);
+        $event = Event::query()->with('circles')->findOrFail($eventId);
         $occurrence = EventOccurrence::query()->where('event_id', $event->id)->findOrFail($occurrenceId);
         $eventCircleId = $event->circle_id;
+        $allowedCircleIds = $this->registrationAllowedCircleIds($event);
         Log::info('member_event_registration_start', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
         Log::info('member_event_circle_check_start', ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId]);
 
         $memberQuery = CircleMember::query()
-            ->where('circle_id', $eventCircleId)
+            ->whereIn('circle_id', $allowedCircleIds ?: array_filter([$eventCircleId]))
             ->where('user_id', $user->id)
             ->whereNull('deleted_at');
         if (\Illuminate\Support\Facades\Schema::hasColumn('circle_members', 'status')) {
@@ -105,11 +106,34 @@ class EventController extends BaseApiController
             });
         }
         $membership = $memberQuery->first();
-        $eligibilityContext = ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId];
+        $eligibilityContext = ['user_id' => $user->id, 'event_id' => $event->id, 'occurrence_id' => $occurrence->id, 'event_circle_id' => $eventCircleId, 'allowed_circle_ids' => $allowedCircleIds];
         Log::info('event_register_eligibility_check_start', $eligibilityContext);
 
         if (! $membership) {
             Log::info('cross_circle_registration_attempt', $eligibilityContext);
+
+            if ($this->isDirectPaidCrossCircleEvent($event)) {
+                Log::info('multi_circle_event_direct_cross_circle_registration_start', $eligibilityContext);
+                $registration = $this->registrations->registerCrossCircleMemberDirect(
+                    $event,
+                    $occurrence,
+                    $user,
+                    $request->input('source', 'app')
+                );
+                $payload = $this->payments->responsePayload($registration);
+                Log::info('multi_circle_event_direct_cross_circle_registration_success', $eligibilityContext + [
+                    'registration_id' => (string) $registration->id,
+                    'payment_required' => (bool) ($registration->payment_required ?? false),
+                    'payment_status' => $registration->payment_status ?? null,
+                ]);
+
+                return $this->success(
+                    $payload,
+                    ($payload['requires_payment'] ?? false) ? 'Payment required. Please complete payment.' : 'Event registration successful.',
+                    201
+                );
+            }
+
             $approvedRequest = EventRegistrationRequest::query()
                 ->where('event_id', $event->id)
                 ->where('occurrence_id', $occurrence->id)
@@ -199,10 +223,11 @@ class EventController extends BaseApiController
     public function createRegistrationRequest(Request $request, string $eventId, string $occurrenceId)
     {
         $user = $request->user();
-        $event = Event::query()->findOrFail($eventId);
+        $event = Event::query()->with('circles')->findOrFail($eventId);
         $occurrence = EventOccurrence::query()->where('event_id', $event->id)->findOrFail($occurrenceId);
         $eventCircleId = $event->circle_id;
-        $sameCircle = CircleMember::query()->where('circle_id', $eventCircleId)->where('user_id', $user->id)->whereNull('deleted_at')->whereIn('status', ['approved','active'])->exists();
+        $allowedCircleIds = $this->registrationAllowedCircleIds($event);
+        $sameCircle = CircleMember::query()->whereIn('circle_id', $allowedCircleIds ?: array_filter([$eventCircleId]))->where('user_id', $user->id)->whereNull('deleted_at')->whereIn('status', ['approved','active'])->exists();
         if ($sameCircle) return $this->success([], 'You are already a member of this circle. You can register directly.');
         $existingReg = EventRegistration::query()->where('occurrence_id',$occurrence->id)->where('user_id',$user->id)->where('status','!=','cancelled')->whereNull('deleted_at')->first();
         if ($existingReg) return $this->success(['registration_id'=>$existingReg->id], 'You are already registered for this event.');
@@ -216,6 +241,24 @@ class EventController extends BaseApiController
         ]);
         Log::info('cross_circle_registration_request_created', ['user_id'=>$user->id,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'request_id'=>$req->id]);
         return $this->success(['request_id'=>$req->id,'status'=>$req->status,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'user_id'=>$user->id], 'Registration request submitted successfully. Please wait for admin approval.');
+    }
+
+    private function isDirectPaidCrossCircleEvent(Event $event): bool
+    {
+        return in_array($event->event_type, ['global_event', 'state_event'], true);
+    }
+
+    private function registrationAllowedCircleIds(Event $event): array
+    {
+        if (in_array($event->event_type, ['global_event', 'state_event'], true)) {
+            $ids = $event->relationLoaded('circles')
+                ? $event->circles->pluck('id')->all()
+                : $event->circles()->pluck('circles.id')->all();
+
+            return array_values(array_filter(array_unique($ids)));
+        }
+
+        return array_values(array_filter([(string) $event->circle_id]));
     }
 
     public function myRegistrationRequests(Request $request)
@@ -240,7 +283,7 @@ class EventController extends BaseApiController
     public function adminRegistrationRequests(Request $request)
     {
         $query = EventRegistrationRequest::query()
-            ->with(['event.circle', 'occurrence', 'user.circleMemberships.circle', 'registration'])
+            ->with(['event.circle', 'event.circles.cityRef', 'occurrence', 'user.circleMemberships.circle', 'registration'])
             ->when($request->status, fn ($q, $v) => $q->where('status', $v))
             ->when($request->event_id, fn ($q, $v) => $q->where('event_id', $v))
             ->when($request->occurrence_id, fn ($q, $v) => $q->where('occurrence_id', $v))
@@ -291,7 +334,7 @@ class EventController extends BaseApiController
         $r = EventRegistrationRequest::query()->findOrFail($requestId);
         $r->forceFill(['status' => 'approved', 'admin_note' => $request->input('admin_note', 'Approved for cross-circle event registration.'), 'approved_by_user_id' => $request->user()->id, 'approved_at' => now()])->save();
         Log::info('cross_circle_registration_request_approved', ['request_id' => $r->id, 'user_id' => $r->user_id, 'event_id' => $r->event_id, 'occurrence_id' => $r->occurrence_id]);
-        $r->load(['event.circle', 'occurrence', 'user.circleMemberships.circle', 'registration']);
+        $r->load(['event.circle', 'event.circles.cityRef', 'occurrence', 'user.circleMemberships.circle', 'registration']);
         return $this->success($this->eventJoiningRequestPayload($r), 'Registration request approved successfully.');
     }
 
@@ -301,7 +344,7 @@ class EventController extends BaseApiController
         $r = EventRegistrationRequest::query()->findOrFail($requestId);
         $r->forceFill(['status' => 'rejected', 'admin_note' => $data['admin_note'], 'rejected_by_user_id' => $request->user()->id, 'rejected_at' => now()])->save();
         Log::info('cross_circle_registration_request_rejected', ['request_id' => $r->id, 'user_id' => $r->user_id, 'event_id' => $r->event_id, 'occurrence_id' => $r->occurrence_id]);
-        $r->load(['event.circle', 'occurrence', 'user.circleMemberships.circle', 'registration']);
+        $r->load(['event.circle', 'event.circles.cityRef', 'occurrence', 'user.circleMemberships.circle', 'registration']);
         return $this->success($this->eventJoiningRequestPayload($r), 'Registration request rejected successfully.');
     }
 
@@ -342,7 +385,7 @@ class EventController extends BaseApiController
                     'registration_id' => (string) $registration->id,
                     'error' => $e->getMessage(),
                 ]);
-                $registration = $registration->fresh(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']) ?? $registration;
+                $registration = $registration->fresh(['event.circle', 'event.circles.cityRef', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']) ?? $registration;
             }
         }
 
@@ -409,7 +452,7 @@ class EventController extends BaseApiController
         ]);
 
         try {
-            return $this->payments->attachCheckout($registration->fresh(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']));
+            return $this->payments->attachCheckout($registration->fresh(['event.circle', 'event.circles.cityRef', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']));
         } catch (\Throwable $e) {
             Log::error('event_registration_payment_url_regeneration_failed', [
                 'source' => $source,
@@ -424,7 +467,7 @@ class EventController extends BaseApiController
                 'zoho_invoice_sync_error' => $e->getMessage(),
             ], fn ($value, $key) => Schema::hasColumn('event_registrations', $key), ARRAY_FILTER_USE_BOTH))->save();
 
-            return $registration->fresh(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']) ?? $registration;
+            return $registration->fresh(['event.circle', 'event.circles.cityRef', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']) ?? $registration;
         }
     }
 
@@ -571,7 +614,7 @@ class EventController extends BaseApiController
             'razorpay_signature' => ['required', 'string'],
         ]);
 
-        $registration = EventRegistration::query()->with(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub'])->findOrFail($registrationId);
+        $registration = EventRegistration::query()->with(['event.circle', 'event.circles.cityRef', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub'])->findOrFail($registrationId);
         if ((string) ($registration->razorpay_order_id ?? '') !== (string) $data['razorpay_order_id']) {
             return $this->error('Payment order does not match this registration.', 422);
         }
@@ -606,7 +649,7 @@ class EventController extends BaseApiController
     public function publicOccurrence(string $eventId, string $occurrenceId)
     {
         $occurrence = EventOccurrence::query()
-            ->with(['event.circle'])
+            ->with(['event.circle', 'event.circles.cityRef'])
             ->where('event_id', $eventId)
             ->findOrFail($occurrenceId);
         $event = $occurrence->event;
@@ -635,7 +678,7 @@ class EventController extends BaseApiController
     public function publicRegistrationForm(string $eventId, string $occurrenceId)
     {
         $occurrence = EventOccurrence::query()
-            ->with(['event.circle'])
+            ->with(['event.circle', 'event.circles.cityRef'])
             ->where('event_id', $eventId)
             ->findOrFail($occurrenceId);
         $event = $occurrence->event;
@@ -683,7 +726,7 @@ class EventController extends BaseApiController
         }
 
         $query = EventRegistration::query()
-            ->with(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub'])
+            ->with(['event.circle', 'event.circles.cityRef', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub'])
             ->where(function ($q) use ($user): void {
                 $q->where('user_id', $user->id);
                 if ($user->email) {
@@ -725,7 +768,7 @@ class EventController extends BaseApiController
     public function myRegistrations(Request $request)
     {
         $items = EventRegistration::query()
-            ->with(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub'])
+            ->with(['event.circle', 'event.circles.cityRef', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub'])
             ->where('user_id', $request->user()->id)
             ->latest('registered_at')
             ->paginate(max(1, min((int) $request->input('per_page', 20), 100)));

@@ -110,6 +110,50 @@ class EventRegistrationService
         );
     }
 
+
+    public function registerCrossCircleMemberDirect(Event $event, EventOccurrence $occurrence, User $user, string $source = 'app'): EventRegistration
+    {
+        if ($occurrence->event_id !== $event->id) {
+            throw ValidationException::withMessages(['occurrence_id' => 'Occurrence does not belong to this event.']);
+        }
+
+        $existing = EventRegistration::query()
+            ->where('occurrence_id', $occurrence->id)
+            ->where('user_id', $user->id)
+            ->where('status', '!=', 'cancelled')
+            ->whereNull('deleted_at')
+            ->first();
+
+        if ($existing) {
+            $updates = $this->filterRegistrationColumns([
+                'registration_type' => 'cross_circle_member',
+            ]);
+            if (! empty($updates)) {
+                $existing->forceFill($updates)->save();
+            }
+
+            if ((bool) ($existing->payment_required ?? false)
+                && in_array(strtolower((string) ($existing->payment_status ?? '')), ['pending', 'failed', 'expired', 'processing'], true)) {
+                return $this->payments->attachCheckout($existing->fresh(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']));
+            }
+
+            $existing = $this->registrationQr->ensureQrGenerated($existing);
+
+            return $existing->fresh(['event.circle', 'occurrence', 'user', 'invitedByUser', 'businessCategoryMain', 'businessCategorySub']);
+        }
+
+        return $this->createRegistration(
+            $event,
+            $occurrence,
+            [
+                'user_id' => $user->id,
+                'source' => $source,
+                'registration_type' => 'cross_circle_member',
+            ],
+            true
+        );
+    }
+
     public function registerAppUserVisitor(Event $event, EventOccurrence $occurrence, User $user, string $source = 'app'): EventRegistration
     {
         if ($occurrence->event_id !== $event->id) {

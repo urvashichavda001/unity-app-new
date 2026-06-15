@@ -14,6 +14,18 @@ class EventDetailResource extends JsonResource
         $metadata = $this->normalizedMetadata($this->metadata);
         $zohoFormUrl = $this->zoho_form_url ?? data_get($metadata, 'zoho_form_url');
         $visitorRegistrationEnabled = app(EventService::class)->visitorRegistrationEnabled($this->resource);
+        $circles = $this->whenLoaded('circles', fn () => $this->circles->map(fn ($circle) => [
+            'id' => $circle->id,
+            'name' => $circle->name,
+            'state_name' => $circle->state_name ?? $circle->state ?? $circle->cityRef?->state_name ?? $circle->cityRef?->state ?? null,
+        ])->values()->all(), []);
+        if ($circles === [] && $this->circle) {
+            $circles = [[
+                'id' => $this->circle->id,
+                'name' => $this->circle->name,
+                'state_name' => $this->circle->state_name ?? $this->circle->state ?? $this->circle->cityRef?->state_name ?? $this->circle->cityRef?->state ?? null,
+            ]];
+        }
 
         $event = [
             'id' => $this->id,
@@ -21,7 +33,11 @@ class EventDetailResource extends JsonResource
             'description' => $this->description,
             'event_type' => $this->event_type,
             'event_category' => $this->event_category,
+            'state_name' => $this->state_name,
             'mode' => $this->mode,
+            'circle_id' => $this->circle_id,
+            'circle_ids' => collect($circles)->pluck('id')->values()->all(),
+            'circles' => $circles,
             'circle' => $this->circle ? ['id' => $this->circle->id, 'name' => $this->circle->name, 'slug' => $this->circle->slug ?? null] : null,
             'start_at' => optional($this->start_at)->toISOString(),
             'end_at' => optional($this->end_at)->toISOString(),
