@@ -111,6 +111,29 @@ class EventController extends BaseApiController
 
         if (! $membership) {
             Log::info('cross_circle_registration_attempt', $eligibilityContext);
+
+            if ($this->isDirectPaidCrossCircleEvent($event)) {
+                Log::info('multi_circle_event_direct_cross_circle_registration_start', $eligibilityContext);
+                $registration = $this->registrations->registerCrossCircleMemberDirect(
+                    $event,
+                    $occurrence,
+                    $user,
+                    $request->input('source', 'app')
+                );
+                $payload = $this->payments->responsePayload($registration);
+                Log::info('multi_circle_event_direct_cross_circle_registration_success', $eligibilityContext + [
+                    'registration_id' => (string) $registration->id,
+                    'payment_required' => (bool) ($registration->payment_required ?? false),
+                    'payment_status' => $registration->payment_status ?? null,
+                ]);
+
+                return $this->success(
+                    $payload,
+                    ($payload['requires_payment'] ?? false) ? 'Payment required. Please complete payment.' : 'Event registration successful.',
+                    201
+                );
+            }
+
             $approvedRequest = EventRegistrationRequest::query()
                 ->where('event_id', $event->id)
                 ->where('occurrence_id', $occurrence->id)
@@ -218,6 +241,11 @@ class EventController extends BaseApiController
         ]);
         Log::info('cross_circle_registration_request_created', ['user_id'=>$user->id,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'request_id'=>$req->id]);
         return $this->success(['request_id'=>$req->id,'status'=>$req->status,'event_id'=>$event->id,'occurrence_id'=>$occurrence->id,'user_id'=>$user->id], 'Registration request submitted successfully. Please wait for admin approval.');
+    }
+
+    private function isDirectPaidCrossCircleEvent(Event $event): bool
+    {
+        return in_array($event->event_type, ['global_event', 'state_event'], true);
     }
 
     private function registrationAllowedCircleIds(Event $event): array
