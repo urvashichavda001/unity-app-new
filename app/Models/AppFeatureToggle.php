@@ -11,7 +11,7 @@ class AppFeatureToggle extends Model
     use HasFactory;
     use HasUuids;
 
-    protected $table = 'app_feature_toggles';
+    protected $table = 'app_features';
 
     public $incrementing = false;
 

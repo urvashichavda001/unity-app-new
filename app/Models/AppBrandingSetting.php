@@ -11,7 +11,7 @@ class AppBrandingSetting extends Model
     use HasFactory;
     use HasUuids;
 
-    protected $table = 'app_branding_settings';
+    protected $table = 'app_config_settings';
 
     public $incrementing = false;
 

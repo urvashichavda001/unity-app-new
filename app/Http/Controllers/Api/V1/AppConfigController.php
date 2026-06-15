@@ -12,6 +12,7 @@ use App\Models\AppNavigationItem;
 use App\Models\AppSocialLink;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 
 class AppConfigController extends Controller
 {
@@ -41,8 +42,26 @@ class AppConfigController extends Controller
             'features' => $features,
             'navigation_menu' => AppNavigationItem::query()->where('is_enabled', true)->where(function ($q) use ($enabledFeatureKeys) { $q->whereNull('feature_key')->orWhereIn('feature_key', $enabledFeatureKeys); })->orderBy('sort_order')->get()->groupBy('menu_type')->map(fn ($items) => $items->values()->map(fn ($item) => collect($item)->only(['id','item_key','label_key','display_label','icon','route_name','feature_key','sort_order'])->all())->all())->union(['bottom_nav'=>[],'drawer'=>[],'plus_menu'=>[],'impact_menu'=>[]])->all(),
             'dashboard_widgets' => AppDashboardWidget::query()->orderBy('sort_order')->pluck('is_enabled', 'widget_key')->map(fn ($v) => (bool) $v)->all(),
-            'membership_labels' => AppMembershipLabel::query()->where('is_enabled', true)->pluck('display_label', 'membership_key')->all(),
+            'membership_labels' => self::membershipLabels(),
             'social_links' => AppSocialLink::query()->where('is_enabled', true)->orderBy('sort_order')->pluck('url', 'platform')->all(),
         ];
+    }
+
+    private static function membershipLabels(): array
+    {
+        if (! Schema::hasTable('app_membership_labels')) {
+            return [
+                'free_peer' => 'Free Member',
+                'unity_peer' => 'Green Member',
+                'only_unity_peer' => 'Eco Member',
+                'chartered_peer' => 'Premium Green Member',
+                'charter_investor' => 'Green Investor',
+            ];
+        }
+
+        return AppMembershipLabel::query()
+            ->where('is_enabled', true)
+            ->pluck('display_label', 'membership_key')
+            ->all();
     }
 }
