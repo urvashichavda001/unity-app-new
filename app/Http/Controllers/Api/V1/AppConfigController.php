@@ -47,7 +47,11 @@ class AppConfigController extends Controller
                 'exception' => $exception,
             ]);
 
-            return $this->error('App configuration is currently unavailable.');
+            return response()->json([
+                'success' => true,
+                'message' => 'Default app configuration fetched successfully.',
+                'data' => self::defaultPublicConfig(),
+            ]);
         }
     }
 
@@ -70,7 +74,7 @@ class AppConfigController extends Controller
             ->orderBy('sort_order')
             ->pluck('is_enabled', 'feature_key')
             ->map(fn ($value) => (bool) $value)
-            ->all();
+            ->all() ?: self::defaultFeatures();
 
         $enabledFeatureKeys = array_keys(array_filter($features));
 
@@ -90,12 +94,12 @@ class AppConfigController extends Controller
                 'website_url',
                 'support_email',
                 'support_phone',
-            ])->all() : null,
+            ])->all() : self::defaultAppInfo(),
             'labels' => AppLabel::query()
                 ->where('app_instance_id', $appInstanceId)
                 ->where('is_active', true)
                 ->pluck('label_value', 'label_key')
-                ->all(),
+                ->all() ?: self::defaultLabels(),
             'features' => $features,
             'navigation_menu' => self::navigationMenu($appInstanceId, $enabledFeatureKeys),
             'dashboard_widgets' => AppDashboardWidget::query()
@@ -103,14 +107,14 @@ class AppConfigController extends Controller
                 ->orderBy('sort_order')
                 ->pluck('is_enabled', 'widget_key')
                 ->map(fn ($value) => (bool) $value)
-                ->all(),
+                ->all() ?: self::defaultDashboardWidgets(),
             'membership_labels' => self::membershipLabels(),
             'social_links' => AppSocialLink::query()
                 ->where('app_instance_id', $appInstanceId)
                 ->where('is_enabled', true)
                 ->orderBy('sort_order')
                 ->pluck('url', 'platform')
-                ->all(),
+                ->all() ?: self::defaultSocialLinks(),
         ];
     }
 
@@ -144,6 +148,145 @@ class AppConfigController extends Controller
             'plus_menu' => [],
             'impact_menu' => [],
         ], $navigation);
+    }
+
+
+    private static function defaultPublicConfig(): array
+    {
+        return [
+            'app_info' => self::defaultAppInfo(),
+            'labels' => self::defaultLabels(),
+            'features' => self::defaultFeatures(),
+            'navigation_menu' => [
+                'bottom_nav' => [],
+                'drawer' => [],
+                'plus_menu' => [],
+                'impact_menu' => [],
+            ],
+            'dashboard_widgets' => self::defaultDashboardWidgets(),
+            'membership_labels' => self::defaultMembershipLabels(),
+            'social_links' => self::defaultSocialLinks(),
+        ];
+    }
+
+    private static function defaultFeatures(): array
+    {
+        return [
+            'events' => true,
+            'referrals' => true,
+            'business_deals' => true,
+            'p2p_meetings' => true,
+            'testimonials' => true,
+            'requirements' => true,
+            'collaborations' => true,
+            'collaboration_ask' => true,
+            'visitor_registration' => true,
+            'add_impact' => true,
+            'claim_coins' => true,
+            'coins_wallet' => true,
+            'leaderboard' => true,
+            'impact_score' => true,
+            'badges' => true,
+            'gratitude_score' => false,
+            'circles' => true,
+            'chat_messaging' => true,
+            'geo_nearby' => false,
+            'circulars' => true,
+            'gallery' => true,
+            'videos' => true,
+            'meeting_schedule' => true,
+            'invoices' => true,
+            'blocked_users' => true,
+            'welcome_creative' => true,
+            'feedback' => true,
+            'qr_scan' => true,
+            'community_feed' => true,
+            'leadership_form' => true,
+            'recommend_peer' => true,
+            'peers' => true,
+        ];
+    }
+
+    private static function defaultDashboardWidgets(): array
+    {
+        return [
+            'banner_carousel' => true,
+            'leaderboard_preview' => true,
+            'impact_tracker' => true,
+            'upcoming_events' => true,
+            'hot_deals' => true,
+            'membership_banner' => true,
+            'feed_composer' => true,
+            'circle_preview' => true,
+            'community_feed' => true,
+        ];
+    }
+
+    private static function defaultSocialLinks(): array
+    {
+        return [
+            'linkedin' => 'https://linkedin.com/company/greenpreneur',
+            'instagram' => 'https://instagram.com/greenpreneur',
+            'facebook' => 'https://facebook.com/greenpreneur',
+            'website' => 'https://greenpreneur.in',
+        ];
+    }
+
+    private static function defaultAppInfo(): array
+    {
+        return [
+            'app_name' => 'Greenpreneur',
+            'app_logo_url' => 'https://greenpreneur.in/uploads/greenpreneur_logo.png',
+            'splash_logo_url' => 'https://greenpreneur.in/uploads/greenpreneur_logo.png',
+            'primary_color' => '#2E7D32',
+            'secondary_color' => '#81C784',
+            'accent_color' => '#FFC107',
+            'splash_bg_color' => '#FFFFFF',
+            'button_color' => '#2E7D32',
+            'text_color' => '#212121',
+            'playstore_url' => null,
+            'appstore_url' => null,
+            'website_url' => 'https://greenpreneur.in',
+            'support_email' => 'support@greenpreneur.in',
+            'support_phone' => '+91XXXXXXXXXX',
+        ];
+    }
+
+    private static function defaultLabels(): array
+    {
+        return [
+            'app_name' => 'Greenpreneur',
+            'peer' => 'Green Member',
+            'peers' => 'Green Network',
+            'my_peers' => 'My Network',
+            'circle' => 'Eco-Circle',
+            'circles' => 'Eco-Circles',
+            'event' => 'Eco Event',
+            'events' => 'Eco Events',
+            'coin' => 'Green Coin',
+            'coins' => 'Green Coins',
+            'impact' => 'Green Impact',
+            'lives_impacted' => 'Impact Score',
+            'referral' => 'Green Referral',
+            'business_deal' => 'Green Deal',
+            'p2p_meeting' => 'Peer Meeting',
+            'requirement' => 'Need',
+            'post_an_ask' => 'Post a Need',
+            'visitor' => 'Guest',
+            'register_visitor' => 'Guest Pass',
+            'circular' => 'Announcement',
+            'circulars' => 'Announcements',
+            'chat' => 'Messages',
+            'leaderboard' => 'Green Leaderboard',
+            'badge' => 'Green Badge',
+            'welcome_title' => 'Welcome to the Greenpreneur Ecosystem',
+            'welcome_subtitle' => "Join India's growing green entrepreneurship network",
+            'register_button' => 'Join Now',
+            'login_button' => 'Login',
+            'activities_section_title' => 'GREEN ACTIONS',
+            'impact_section_title' => 'GREEN IMPACT DASHBOARD',
+            'share_message' => "I am part of Greenpreneur, India's green entrepreneurship network. Join now and become part of the green movement.",
+        ];
     }
 
     private static function membershipLabels(): array
