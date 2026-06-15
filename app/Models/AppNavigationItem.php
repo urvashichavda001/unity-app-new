@@ -17,10 +17,21 @@ class AppNavigationItem extends Model
 
     protected $keyType = 'string';
 
-    protected $guarded = [];
+    protected $fillable = [
+        'id',
+        'app_instance_id',
+        'menu_type',
+        'item_key',
+        'label_key',
+        'display_label',
+        'icon',
+        'route_name',
+        'feature_key',
+        'is_enabled',
+        'sort_order',
+    ];
 
     protected $casts = [
-        'is_active' => 'boolean',
         'is_enabled' => 'boolean',
         'sort_order' => 'integer',
     ];

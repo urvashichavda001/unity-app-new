@@ -17,11 +17,15 @@ class AppMembershipLabel extends Model
 
     protected $keyType = 'string';
 
-    protected $guarded = [];
+    protected $fillable = [
+        'id',
+        'membership_key',
+        'display_label',
+        'description',
+        'is_enabled',
+    ];
 
     protected $casts = [
-        'is_active' => 'boolean',
         'is_enabled' => 'boolean',
-        'sort_order' => 'integer',
     ];
 }

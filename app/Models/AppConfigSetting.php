@@ -6,12 +6,12 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class AppLabel extends Model
+class AppConfigSetting extends Model
 {
     use HasFactory;
     use HasUuids;
 
-    protected $table = 'app_labels';
+    protected $table = 'app_config_settings';
 
     public $incrementing = false;
 
@@ -20,16 +20,25 @@ class AppLabel extends Model
     protected $fillable = [
         'id',
         'app_instance_id',
-        'label_key',
-        'label_value',
-        'group_name',
-        'description',
+        'app_key',
+        'app_name',
+        'app_logo_url',
+        'splash_logo_url',
+        'primary_color',
+        'secondary_color',
+        'accent_color',
+        'splash_bg_color',
+        'button_color',
+        'text_color',
+        'playstore_url',
+        'appstore_url',
+        'website_url',
+        'support_email',
+        'support_phone',
         'is_active',
-        'sort_order',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'sort_order' => 'integer',
     ];
 }

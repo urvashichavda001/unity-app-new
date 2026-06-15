@@ -17,10 +17,18 @@ class AppSocialLink extends Model
 
     protected $keyType = 'string';
 
-    protected $guarded = [];
+    protected $fillable = [
+        'id',
+        'app_instance_id',
+        'platform',
+        'display_name',
+        'url',
+        'icon',
+        'is_enabled',
+        'sort_order',
+    ];
 
     protected $casts = [
-        'is_active' => 'boolean',
         'is_enabled' => 'boolean',
         'sort_order' => 'integer',
     ];
