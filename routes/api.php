@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\V1\AdController;
 use App\Http\Controllers\Api\V1\Admin\AppVersionController as AdminAppVersionController;
 use App\Http\Controllers\Api\V1\Admin\AdminOpsController;
 use App\Http\Controllers\Api\V1\Admin\AdminCampaignController;
+use App\Http\Controllers\Api\V1\Admin\CertificationSubmissionController;
 use App\Http\Controllers\Api\V1\Admin\CircleManagementController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
 use App\Http\Controllers\Api\V1\Admin\EventAdminController;
@@ -289,6 +290,22 @@ Route::prefix('v1')->group(function () {
         Route::post('/events/{event}/occurrences/{occurrence}/register', [EventController::class, 'register'])
             ->whereUuid('event')
             ->whereUuid('occurrence');
+    });
+
+    Route::middleware(['web', 'admin.auth'])->prefix('admin')->group(function () {
+        Route::get('/certifications/{id}/download', [CertificationSubmissionController::class, 'download'])->whereUuid('id');
+    });
+
+    Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+        // Certification approval API examples:
+        // GET /api/v1/admin/certifications
+        // POST /api/v1/admin/certifications/019ebbde-f5ca-71d8-a236-b6e162b0f4ba/approve
+        // Body: {"admin_note": "Certification approved after review."}
+        Route::get('/certifications', [CertificationSubmissionController::class, 'index']);
+        Route::get('/certifications/counts', [CertificationSubmissionController::class, 'counts']);
+        Route::get('/certifications/{id}', [CertificationSubmissionController::class, 'show'])->whereUuid('id');
+        Route::post('/certifications/{id}/approve', [CertificationSubmissionController::class, 'approve'])->whereUuid('id');
+        Route::post('/certifications/{id}/reject', [CertificationSubmissionController::class, 'reject'])->whereUuid('id');
     });
 
     Route::middleware(['auth:sanctum', 'unity.user'])->group(function () {
