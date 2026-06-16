@@ -61,6 +61,7 @@ use App\Http\Controllers\Api\V1\Ded\DedReportsController;
 use App\Http\Controllers\Api\V1\CollaborationTypeController;
 use App\Http\Controllers\Api\V1\AdController;
 use App\Http\Controllers\Api\V1\Admin\AppVersionController as AdminAppVersionController;
+use App\Http\Controllers\Api\V1\Admin\AppConfigAdminController;
 use App\Http\Controllers\Api\V1\Admin\AdminOpsController;
 use App\Http\Controllers\Api\V1\Admin\AdminCampaignController;
 use App\Http\Controllers\Api\V1\Admin\CertificationSubmissionController;
@@ -72,6 +73,7 @@ use App\Http\Controllers\Api\V1\Admin\IndustryManagementController;
 use App\Http\Controllers\Api\V1\Admin\LeadershipController;
 use App\Http\Controllers\Api\V1\Admin\UserManagementController;
 use App\Http\Controllers\Api\V1\AppVersionController;
+use App\Http\Controllers\Api\V1\AppConfigController;
 use App\Http\Controllers\Api\V1\Connections\MyConnectionsController;
 use App\Http\Controllers\Api\V1\CircleCategoryController;
 use App\Http\Controllers\Api\V1\CircleCategoryUsageController;
@@ -118,6 +120,7 @@ use App\Http\Controllers\Api\WalletController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+    Route::get('/app/config', [AppConfigController::class, 'publicConfig']);
     Route::prefix('scan-app')->group(function () {
         Route::post('/login', [ScanAppAuthController::class, 'login']);
 
@@ -407,6 +410,20 @@ Route::prefix('v1')->group(function () {
             Route::get('/campaigns/member-search', [AdminCampaignController::class, 'memberSearch']);
             Route::get('/campaigns/{campaign}', [AdminCampaignController::class, 'show'])->whereUuid('campaign');
             Route::post('/campaigns/{campaign}/send', [AdminCampaignController::class, 'send'])->whereUuid('campaign');
+
+            Route::get('/app-config', [AppConfigAdminController::class, 'adminConfig']);
+            Route::put('/app-config/branding', [AppConfigAdminController::class, 'updateBranding']);
+            Route::put('/app-config/labels', [AppConfigAdminController::class, 'bulkUpdateLabels']);
+            Route::put('/app-config/labels/{label_key}', [AppConfigAdminController::class, 'updateLabel']);
+            Route::put('/app-config/features', [AppConfigAdminController::class, 'bulkUpdateFeatures']);
+            Route::put('/app-config/features/{feature_key}', [AppConfigAdminController::class, 'updateFeature']);
+            Route::post('/app-config/navigation', [AppConfigAdminController::class, 'createNavigationItem']);
+            Route::put('/app-config/navigation/{id}', [AppConfigAdminController::class, 'updateNavigationItem'])->whereUuid('id');
+            Route::delete('/app-config/navigation/{id}', [AppConfigAdminController::class, 'deleteNavigationItem'])->whereUuid('id');
+            Route::put('/app-config/dashboard-widgets/{widget_key}', [AppConfigAdminController::class, 'updateDashboardWidget']);
+            Route::put('/app-config/social-links/{platform}', [AppConfigAdminController::class, 'updateSocialLink']);
+            Route::put('/app-config/membership-labels/{membership_key}', [AppConfigAdminController::class, 'updateMembershipLabel']);
+            Route::post('/app-config/clear-cache', [AppConfigAdminController::class, 'clearCache']);
 
             Route::post('/app/version', [AdminAppVersionController::class, 'upsert']);
             Route::get('/circle-join-requests', [CircleJoinRequestAdminController::class, 'index']);

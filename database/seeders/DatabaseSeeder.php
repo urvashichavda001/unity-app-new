@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(CategorySeeder::class);
         $this->call(AdSeeder::class);
+        $this->call(GreenpreneurAppConfigSeeder::class);
 
         User::query()->updateOrCreate(
             ['id' => 'b5d96183-2278-4dfb-b450-ff8896347fe4'],
