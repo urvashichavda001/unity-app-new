@@ -208,14 +208,22 @@ class AppConfigAdminController extends Controller
 
     public function updateDashboardWidget(Request $request, string $widget_key): JsonResponse
     {
-        $data = $request->validate(['is_enabled' => 'required|boolean', 'sort_order' => 'sometimes|required|integer']);
+        $data = $request->validate([
+            'is_enabled' => ['sometimes', 'required', 'boolean'],
+            'sort_order' => ['sometimes', 'required', 'integer', 'min:0'],
+        ]);
+
         $model = AppDashboardWidget::query()
             ->where('app_instance_id', $this->appInstanceId())
             ->where('widget_key', $widget_key)
             ->firstOrFail();
-        $model->update($data);
 
-        return $this->changed($model, 'Dashboard widget updated successfully.');
+        $model->update([
+            'is_enabled' => array_key_exists('is_enabled', $data) ? $request->boolean('is_enabled') : $model->is_enabled,
+            'sort_order' => $data['sort_order'] ?? $model->sort_order,
+        ]);
+
+        return $this->changed($model->fresh(), 'Dashboard widget updated successfully.');
     }
 
     public function updateSocialLink(Request $request, string $platform): JsonResponse
