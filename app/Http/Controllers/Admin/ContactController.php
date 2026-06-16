@@ -7,7 +7,7 @@ use App\Models\ContactPost;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
-class ContactPostController extends Controller
+class ContactController extends Controller
 {
     public function index(Request $request): View
     {
@@ -37,7 +37,7 @@ class ContactPostController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.contact-posts.index', [
+        return view('admin.contacts.index', [
             'contactPosts' => $contactPosts,
             'filters' => $filters,
         ]);
@@ -47,7 +47,7 @@ class ContactPostController extends Controller
     {
         $contactPost = ContactPost::query()->findOrFail($id);
 
-        return view('admin.contact-posts.show', [
+        return view('admin.contacts.show', [
             'contactPost' => $contactPost,
         ]);
     }

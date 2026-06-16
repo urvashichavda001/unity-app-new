@@ -1,17 +1,17 @@
 @extends('admin.layouts.app')
 
-@section('title', 'Contact Posts')
+@section('title', 'Contacts')
 
 @section('content')
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <p class="text-muted mb-1">Admin</p>
-        <h1 class="h4 mb-0">Contact Posts</h1>
+        <h1 class="h4 mb-0">Contacts</h1>
     </div>
 </div>
 
 <div class="card p-3 mb-3">
-    <form method="GET" action="{{ route('admin.contact-posts.index') }}" class="row g-3 align-items-end">
+    <form method="GET" action="{{ route('admin.contacts.index') }}" class="row g-3 align-items-end">
         <div class="col-12 col-lg-4">
             <label for="search" class="form-label">Search</label>
             <input type="text" id="search" name="search" value="{{ $filters['search'] ?? '' }}" class="form-control" placeholder="Name, email, phone, company...">
@@ -26,7 +26,7 @@
         </div>
         <div class="col-12 col-lg-2 d-flex gap-2">
             <button type="submit" class="btn btn-primary flex-fill">Filter</button>
-            <a href="{{ route('admin.contact-posts.index') }}" class="btn btn-outline-secondary flex-fill">Reset</a>
+            <a href="{{ route('admin.contacts.index') }}" class="btn btn-outline-secondary flex-fill">Reset</a>
         </div>
     </form>
 </div>
@@ -36,21 +36,19 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th>Sr No</th>
-                    <th>Full Name</th>
+                    <th>Name</th>
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Company</th>
                     <th>Job Title</th>
                     <th>Nickname</th>
-                    <th>Created Date</th>
+                    <th>Date</th>
                     <th class="text-end">Action</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($contactPosts as $contactPost)
                     <tr>
-                        <td>{{ $contactPosts->firstItem() + $loop->index }}</td>
                         <td>{{ $contactPost->full_name ?: trim(collect([$contactPost->first_name, $contactPost->middle_name, $contactPost->last_name])->filter()->implode(' ')) ?: '—' }}</td>
                         <td>{{ $contactPost->email ?: '—' }}</td>
                         <td>{{ $contactPost->phone ?: '—' }}</td>
@@ -59,12 +57,12 @@
                         <td>{{ $contactPost->nickname ?: '—' }}</td>
                         <td>{{ optional($contactPost->created_at)->format('d M Y, h:i A') ?: '—' }}</td>
                         <td class="text-end">
-                            <a href="{{ route('admin.contact-posts.show', $contactPost->id) }}" class="btn btn-sm btn-outline-primary">View Details</a>
+                            <a href="{{ route('admin.contacts.show', $contactPost->id) }}" class="btn btn-sm btn-outline-primary">View Details</a>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">No contact posts found.</td>
+                        <td colspan="8" class="text-center text-muted py-4">No contacts found.</td>
                     </tr>
                 @endforelse
             </tbody>
