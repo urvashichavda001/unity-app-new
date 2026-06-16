@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\CirclePeersController;
 use App\Http\Controllers\Admin\CoinsController;
 use App\Http\Controllers\Admin\LifeImpactController;
 use App\Http\Controllers\Admin\CollaborationPostController;
+use App\Http\Controllers\Admin\ContactPostController;
 use App\Http\Controllers\Admin\CoinClaimsController;
 use App\Http\Controllers\Admin\CircleJoinRequestsController;
 use App\Http\Controllers\Admin\EventGalleryController;
@@ -127,6 +128,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/collaborations', [CollaborationPostController::class, 'index'])->name('collaborations.index');
         Route::get('/collaborations/export', [CollaborationPostController::class, 'export'])->name('collaborations.export');
         Route::get('/collaborations/{id}', [CollaborationPostController::class, 'show'])->name('collaborations.show');
+        Route::get('/contact-posts', [ContactPostController::class, 'index'])->name('contact-posts.index');
+        Route::get('/contact-posts/{id}', [ContactPostController::class, 'show'])->name('contact-posts.show');
         Route::get('/activities/{peer}/become-a-leader', [ActivitiesLeaderInterestController::class, 'show'])
             ->whereUuid('peer')
             ->name('activities.become-a-leader.show');

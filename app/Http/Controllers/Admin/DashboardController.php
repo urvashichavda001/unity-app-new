@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Circle;
+use App\Models\ContactPost;
 use App\Models\User;
 use App\Support\AdminAccess;
 use App\Support\AdminCircleScope;
@@ -42,6 +43,9 @@ class DashboardController extends Controller
 
         $supportRequests = $this->safeCountTable('support_requests');
         $reportedPosts = $this->safeReportedPostsCount();
+        $totalContactPosts = ContactPost::count();
+        $todayContactPosts = ContactPost::whereDate('created_at', $today->toDateString())->count();
+        $recentContactPosts = ContactPost::latest('created_at')->take(5)->get();
 
         $coinsIssued = $this->safeCountTable('coin_ledgers');
         $walletCollections = $this->safeCountTable('wallet_transactions');
@@ -73,6 +77,9 @@ class DashboardController extends Controller
         return view('admin.dashboard', [
             'stats' => $stats,
             'pendingItems' => $pendingItems,
+            'totalContactPosts' => $totalContactPosts,
+            'todayContactPosts' => $todayContactPosts,
+            'recentContactPosts' => $recentContactPosts,
         ]);
     }
 
