@@ -167,15 +167,7 @@ class ContactController extends Controller
                 ->latest('created_at')
                 ->chunk(500, function ($contacts) use ($output, $columns): void {
                     foreach ($contacts as $contact) {
-                        $row = [];
-                        foreach ($columns as $column) {
-                            $value = $contact->{$column};
-                            if (in_array($column, ['emails', 'phones', 'addresses'], true)) {
-                                $value = filled($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : '';
-                            }
-                            $row[] = $value;
-                        }
-                        fputcsv($output, $row);
+                        fputcsv($output, $this->contactCsvRow($contact, $columns));
                     }
                 });
 
@@ -183,13 +175,217 @@ class ContactController extends Controller
         }, $fileName, ['Content-Type' => 'text/csv']);
     }
 
-    public function show(string $id): View
+    public function show(Request $request, string $id): View
     {
         $contactPost = ContactPost::with('user')->findOrFail($id);
+        $filters = $this->showFilters($request);
+        $detailData = $this->filteredDetailData($contactPost, $filters);
 
-        return view('admin.contacts.show', [
+        return view('admin.contacts.show', array_merge([
             'contactPost' => $contactPost,
-        ]);
+            'detailFilters' => $filters,
+        ], $detailData));
+    }
+
+    public function exportShow(Request $request, string $id): StreamedResponse
+    {
+        $contactPost = ContactPost::query()->findOrFail($id);
+        $filters = $this->showFilters($request);
+        $detailData = $this->filteredDetailData($contactPost, $filters);
+        $fileName = 'contact-detail-'.$contactPost->id.'.csv';
+        $columns = [
+            'id',
+            'user_id',
+            'full_name',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'email',
+            'phone',
+            'company',
+            'job_title',
+            'nickname',
+            'notes',
+            'emails',
+            'phones',
+            'addresses',
+            'created_at',
+            'updated_at',
+        ];
+
+        return response()->streamDownload(function () use ($columns, $contactPost, $detailData): void {
+            $output = fopen('php://output', 'wb');
+            fputcsv($output, $columns);
+            fputcsv($output, $this->contactCsvRow($contactPost, $columns, [
+                'emails' => $detailData['filteredEmails'],
+                'phones' => $detailData['filteredPhones'],
+                'addresses' => $detailData['filteredAddresses'],
+            ]));
+            fclose($output);
+        }, $fileName, ['Content-Type' => 'text/csv']);
+    }
+
+    private function showFilters(Request $request): array
+    {
+        return [
+            'search' => trim((string) $request->query('search', '')),
+            'data_type' => $request->query('data_type', 'all') ?: 'all',
+            'from_date' => $request->query('from_date'),
+            'to_date' => $request->query('to_date'),
+            'quick' => $request->query('quick', 'any') ?: 'any',
+        ];
+    }
+
+    private function filteredDetailData(ContactPost $contactPost, array $filters): array
+    {
+        $dateMatches = $this->contactMatchesDetailDateFilters($contactPost, $filters);
+        $dataType = $filters['data_type'] ?? 'all';
+        $search = $filters['search'] ?? '';
+
+        $emails = $dateMatches && in_array($dataType, ['all', 'emails'], true)
+            ? $this->filterDetailItems($this->normalizeDetailItems($contactPost->emails, ['email', 'value', 'address'], 'Email'), $search)
+            : [];
+        $phones = $dateMatches && in_array($dataType, ['all', 'phones'], true)
+            ? $this->filterDetailItems($this->normalizeDetailItems($contactPost->phones, ['phone', 'phone_number', 'number', 'value', 'mobile'], 'Phone'), $search)
+            : [];
+        $addresses = $dateMatches && in_array($dataType, ['all', 'addresses'], true)
+            ? $this->filterDetailItems($this->normalizeDetailItems($contactPost->addresses, ['address', 'value', 'full_address', 'line', 'formatted'], 'Address'), $search)
+            : [];
+
+        $notesMatches = $dateMatches
+            && in_array($dataType, ['all', 'notes'], true)
+            && ($search === '' || str_contains(mb_strtolower((string) $contactPost->notes), mb_strtolower($search)));
+
+        return [
+            'filteredEmails' => $emails,
+            'filteredPhones' => $phones,
+            'filteredAddresses' => $addresses,
+            'showBasicSection' => $dataType === 'all' && $search === '' && $dateMatches,
+            'showDateSection' => $dataType === 'all' && $search === '' && $dateMatches,
+            'showNotesSection' => $notesMatches,
+            'detailDateMatches' => $dateMatches,
+            'hasMatchingContactDetails' => $notesMatches || $emails !== [] || $phones !== [] || $addresses !== [],
+        ];
+    }
+
+    private function contactMatchesDetailDateFilters(ContactPost $contactPost, array $filters): bool
+    {
+        $createdAt = $contactPost->created_at;
+        if (! $createdAt) {
+            return blank($filters['from_date'] ?? null)
+                && blank($filters['to_date'] ?? null)
+                && in_array($filters['quick'] ?? 'any', ['any', ''], true);
+        }
+
+        if (($filters['quick'] ?? 'any') === 'today' && ! $createdAt->isSameDay(now())) {
+            return false;
+        }
+
+        if (($filters['quick'] ?? 'any') === 'this_week' && ! $createdAt->betweenIncluded(now()->startOfWeek(), now()->endOfWeek())) {
+            return false;
+        }
+
+        if (($filters['quick'] ?? 'any') === 'this_month' && ! ($createdAt->month === now()->month && $createdAt->year === now()->year)) {
+            return false;
+        }
+
+        if (filled($filters['from_date'] ?? null) && $createdAt->toDateString() < $filters['from_date']) {
+            return false;
+        }
+
+        if (filled($filters['to_date'] ?? null) && $createdAt->toDateString() > $filters['to_date']) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function normalizeDetailItems(mixed $items, array $valueKeys, string $typeFallback): array
+    {
+        if (blank($items)) {
+            return [];
+        }
+
+        if (is_string($items)) {
+            $decoded = json_decode($items, true);
+            $items = json_last_error() === JSON_ERROR_NONE ? $decoded : [$items];
+        }
+
+        if (! is_array($items)) {
+            return [];
+        }
+
+        if (! array_is_list($items)) {
+            $items = [$items];
+        }
+
+        return collect($items)
+            ->map(function ($item) use ($valueKeys, $typeFallback) {
+                if (is_scalar($item)) {
+                    return ['type' => $typeFallback, 'value' => (string) $item];
+                }
+
+                if (! is_array($item)) {
+                    return null;
+                }
+
+                $type = $item['type'] ?? $item['label'] ?? $item['name'] ?? $typeFallback;
+                $value = null;
+                foreach ($valueKeys as $key) {
+                    if (filled($item[$key] ?? null)) {
+                        $value = $item[$key];
+                        break;
+                    }
+                }
+
+                if ($value === null && count($item) === 1) {
+                    $value = collect($item)->first();
+                }
+
+                if (is_array($value)) {
+                    $value = collect($value)->filter(fn ($part) => filled($part))->implode(', ');
+                }
+
+                if (blank($value)) {
+                    return null;
+                }
+
+                return [
+                    'type' => Str::of((string) $type)->replace(['_', '-'], ' ')->title()->toString(),
+                    'value' => (string) $value,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function filterDetailItems(array $items, string $search): array
+    {
+        if ($search === '') {
+            return $items;
+        }
+
+        $needle = mb_strtolower($search);
+
+        return collect($items)
+            ->filter(fn (array $item) => str_contains(mb_strtolower($item['type'].' '.$item['value']), $needle))
+            ->values()
+            ->all();
+    }
+
+    private function contactCsvRow(ContactPost $contact, array $columns, array $overrides = []): array
+    {
+        $row = [];
+        foreach ($columns as $column) {
+            $value = $overrides[$column] ?? $contact->{$column};
+            if (in_array($column, ['emails', 'phones', 'addresses'], true)) {
+                $value = filled($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : '';
+            }
+            $row[] = $value;
+        }
+
+        return $row;
     }
 
     private function filteredQuery(array $filters)

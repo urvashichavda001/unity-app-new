@@ -50,82 +50,74 @@
 @endpush
 @php
     $displayValue = fn ($value) => filled($value) ? $value : '—';
-    $formatType = fn ($type, $fallback = 'Other') => filled($type)
-        ? \Illuminate\Support\Str::of((string) $type)->replace(['_', '-'], ' ')->title()
-        : $fallback;
-
-    $normalizeItems = function ($items, array $valueKeys, string $typeFallback = 'Other') use ($formatType) {
-        if (blank($items)) {
-            return [];
-        }
-
-        if (is_string($items)) {
-            $decoded = json_decode($items, true);
-            $items = json_last_error() === JSON_ERROR_NONE ? $decoded : [$items];
-        }
-
-        if (! is_array($items)) {
-            return [];
-        }
-
-        if (! array_is_list($items)) {
-            $items = [$items];
-        }
-
-        return collect($items)
-            ->map(function ($item) use ($valueKeys, $typeFallback, $formatType) {
-                if (is_scalar($item)) {
-                    return ['type' => $typeFallback, 'value' => (string) $item];
-                }
-
-                if (! is_array($item)) {
-                    return null;
-                }
-
-                $type = $item['type'] ?? $item['label'] ?? $item['name'] ?? $typeFallback;
-                $value = null;
-                foreach ($valueKeys as $key) {
-                    if (filled($item[$key] ?? null)) {
-                        $value = $item[$key];
-                        break;
-                    }
-                }
-
-                if ($value === null && count($item) === 1) {
-                    $value = collect($item)->first();
-                }
-
-                if (is_array($value)) {
-                    $value = collect($value)->filter(fn ($part) => filled($part))->implode(', ');
-                }
-
-                if (blank($value)) {
-                    return null;
-                }
-
-                return [
-                    'type' => $formatType($type, $typeFallback),
-                    'value' => (string) $value,
-                ];
-            })
-            ->filter()
-            ->values()
-            ->all();
-    };
-
-    $emailDetails = $normalizeItems($contactPost->emails, ['email', 'value', 'address'], 'Email');
-    $phoneDetails = $normalizeItems($contactPost->phones, ['phone', 'phone_number', 'number', 'value', 'mobile'], 'Phone');
-    $addressDetails = $normalizeItems($contactPost->addresses, ['address', 'value', 'full_address', 'line', 'formatted'], 'Address');
+    $detailFilters = $detailFilters ?? [];
+    $selectedDataType = $detailFilters['data_type'] ?? 'all';
+    $filterActive = filled($detailFilters['search'] ?? null)
+        || ! in_array($selectedDataType, ['all', ''], true)
+        || filled($detailFilters['from_date'] ?? null)
+        || filled($detailFilters['to_date'] ?? null)
+        || ! in_array($detailFilters['quick'] ?? 'any', ['any', ''], true);
 @endphp
 
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div>
         <p class="text-muted mb-1">Contacts</p>
         <h1 class="h4 mb-0">Contact Detail</h1>
     </div>
-    <a href="{{ route('admin.contacts.index') }}" class="btn btn-outline-secondary">Back to Contacts</a>
+    <div class="d-flex flex-wrap gap-2 justify-content-end">
+        <a href="{{ route('admin.contacts.index') }}" class="btn btn-outline-secondary">Back to Contacts</a>
+        <a href="{{ route('admin.contacts.import') }}" class="btn btn-primary">Import CSV</a>
+        <a href="{{ route('admin.contacts.show.export', array_merge(['id' => $contactPost->id], request()->query())) }}" class="btn btn-outline-primary">Export CSV</a>
+    </div>
 </div>
 
+<div class="card p-3 mb-3">
+    <form method="GET" action="{{ route('admin.contacts.show', $contactPost->id) }}" class="row g-3 align-items-end">
+        <div class="col-12 col-xl-3">
+            <label for="search" class="form-label">Search</label>
+            <input type="text" id="search" name="search" value="{{ $detailFilters['search'] ?? '' }}" class="form-control" placeholder="Search email / phone / address / notes">
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <label for="data_type" class="form-label">Data Type</label>
+            <select id="data_type" name="data_type" class="form-select">
+                <option value="all" @selected(($detailFilters['data_type'] ?? 'all') === 'all')>All</option>
+                <option value="emails" @selected(($detailFilters['data_type'] ?? 'all') === 'emails')>Email Details</option>
+                <option value="phones" @selected(($detailFilters['data_type'] ?? 'all') === 'phones')>Phone Details</option>
+                <option value="addresses" @selected(($detailFilters['data_type'] ?? 'all') === 'addresses')>Address Details</option>
+                <option value="notes" @selected(($detailFilters['data_type'] ?? 'all') === 'notes')>Notes</option>
+            </select>
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <label for="from_date" class="form-label">Date From</label>
+            <input type="date" id="from_date" name="from_date" value="{{ $detailFilters['from_date'] ?? '' }}" class="form-control">
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <label for="to_date" class="form-label">Date To</label>
+            <input type="date" id="to_date" name="to_date" value="{{ $detailFilters['to_date'] ?? '' }}" class="form-control">
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <label for="quick" class="form-label">Quick</label>
+            <select id="quick" name="quick" class="form-select">
+                <option value="any" @selected(($detailFilters['quick'] ?? 'any') === 'any')>Any</option>
+                <option value="today" @selected(($detailFilters['quick'] ?? 'any') === 'today')>Today</option>
+                <option value="this_week" @selected(($detailFilters['quick'] ?? 'any') === 'this_week')>This Week</option>
+                <option value="this_month" @selected(($detailFilters['quick'] ?? 'any') === 'this_month')>This Month</option>
+            </select>
+        </div>
+        <div class="col-12 col-xl-1 d-flex gap-2">
+            <button type="submit" class="btn btn-primary flex-fill">Filter</button>
+        </div>
+        <div class="col-12 d-flex justify-content-end">
+            <a href="{{ route('admin.contacts.show', $contactPost->id) }}" class="btn btn-outline-secondary">Reset</a>
+        </div>
+    </form>
+</div>
+
+@if ($filterActive && ! ($hasMatchingContactDetails ?? true))
+    <div class="alert alert-info">No matching contact details found.</div>
+@endif
+
+@if ($showBasicSection ?? true)
 <div class="card p-4 mb-3">
     <h2 class="h6 mb-3">Basic Contact Information</h2>
     <div class="row g-3">
@@ -149,12 +141,16 @@
         @endforeach
     </div>
 </div>
+@endif
 
+@if ($showNotesSection ?? true)
 <div class="card p-4 mb-3">
     <h2 class="h6 mb-3">Notes</h2>
     <div class="p-3 rounded border bg-white">{{ $displayValue($contactPost->notes) }}</div>
 </div>
+@endif
 
+@if ($showDateSection ?? true)
 <div class="card p-4 mb-3">
     <h2 class="h6 mb-3">Date Information</h2>
     <div class="row g-3">
@@ -171,6 +167,7 @@
         @endforeach
     </div>
 </div>
+@endif
 
 
 <div class="card p-4 mb-3">
@@ -205,15 +202,17 @@
     @endif
 </div>
 
+@if ($selectedDataType !== 'notes')
 <section class="detail-section">
     <h2 class="h6 mb-0">Additional Contact Details</h2>
 
+    @if (in_array($selectedDataType, ['all', 'emails'], true))
     <div class="detail-group">
         <h4>Email Details</h4>
-        @if ($emailDetails === [])
+        @if (($filteredEmails ?? []) === [])
             <p class="text-muted mb-0">No email details available.</p>
         @else
-            @foreach ($emailDetails as $emailDetail)
+            @foreach (($filteredEmails ?? []) as $emailDetail)
                 <div class="detail-line">
                     <strong>{{ $emailDetail['type'] }}:</strong>
                     <a href="mailto:{{ $emailDetail['value'] }}">{{ $emailDetail['value'] }}</a>
@@ -221,13 +220,15 @@
             @endforeach
         @endif
     </div>
+@endif
 
+@if (in_array($selectedDataType, ['all', 'phones'], true))
     <div class="detail-group">
         <h4>Phone Details</h4>
-        @if ($phoneDetails === [])
+        @if (($filteredPhones ?? []) === [])
             <p class="text-muted mb-0">No phone details available.</p>
         @else
-            @foreach ($phoneDetails as $phoneDetail)
+            @foreach (($filteredPhones ?? []) as $phoneDetail)
                 <div class="detail-line">
                     <strong>{{ $phoneDetail['type'] }}:</strong>
                     <span>{{ $phoneDetail['value'] }}</span>
@@ -235,13 +236,15 @@
             @endforeach
         @endif
     </div>
+@endif
 
+@if (in_array($selectedDataType, ['all', 'addresses'], true))
     <div class="detail-group">
         <h4>Address Details</h4>
-        @if ($addressDetails === [])
+        @if (($filteredAddresses ?? []) === [])
             <p class="text-muted mb-0">No address details available.</p>
         @else
-            @foreach ($addressDetails as $addressDetail)
+            @foreach (($filteredAddresses ?? []) as $addressDetail)
                 <div class="detail-line">
                     <strong>{{ $addressDetail['type'] }}:</strong>
                     <span>{{ $addressDetail['value'] }}</span>
@@ -249,5 +252,7 @@
             @endforeach
         @endif
     </div>
+@endif
 </section>
+@endif
 @endsection
