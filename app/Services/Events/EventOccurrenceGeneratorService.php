@@ -24,23 +24,32 @@ class EventOccurrenceGeneratorService
             foreach ($starts as $occurrenceStart) {
                 $occurrenceEnd = $durationSeconds > 0 ? $occurrenceStart->addSeconds($durationSeconds) : null;
                 $occurrenceDate = $occurrenceStart->toDateString();
-                $exists = $event->occurrences()
+                $existingOccurrence = $event->occurrences()
                     ->withTrashed()
                     ->where('occurrence_date', $occurrenceDate)
-                    ->exists();
+                    ->first();
 
-                if ($exists) {
-                    continue;
-                }
-
-                $sequence++;
                 $payload = [
                     'event_id' => $event->id,
-                    'sequence' => $sequence,
                     'occurrence_date' => $occurrenceDate,
                     'start_at' => $occurrenceStart,
                     'end_at' => $occurrenceEnd,
                     'status' => 'scheduled',
+                ];
+
+                if ($existingOccurrence) {
+                    $existingOccurrence->fill($payload);
+                    if ($existingOccurrence->trashed()) {
+                        $existingOccurrence->restore();
+                    }
+                    $existingOccurrence->save();
+                    $created->push($existingOccurrence);
+                    continue;
+                }
+
+                $sequence++;
+                $payload += [
+                    'sequence' => $sequence,
                 ];
                 if (Schema::hasColumn('event_occurrences', 'registration_limit')) {
                     $payload['registration_limit'] = $event->registration_limit;

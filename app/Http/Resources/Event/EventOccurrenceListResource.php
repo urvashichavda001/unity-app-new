@@ -35,13 +35,16 @@ class EventOccurrenceListResource extends JsonResource
         }
 
         return [
+            'id' => $event->id,
             'occurrence_id' => $this->id,
             'event_id' => $event->id,
             'title' => $event->title,
             'description' => $event->description,
             'event_type' => $event->event_type,
+            'type' => $event->event_type,
             'event_category' => $event->event_category,
-            'mode' => $event->mode,
+            'mode' => ($event->recurrence_type ?? 'none') === 'none' ? 'one_time' : 'recurring',
+            'delivery_mode' => $event->mode,
             'state_name' => $event->state_name,
             'circle_id' => $event->circle_id,
             'circle_ids' => collect($circles)->pluck('id')->values()->all(),
@@ -53,6 +56,8 @@ class EventOccurrenceListResource extends JsonResource
             ],
             'circle' => $event->circle ? ['id' => $event->circle->id, 'name' => $event->circle->name, 'slug' => $event->circle->slug ?? null] : null,
             'start_at' => optional($this->start_at)->toISOString(),
+            'start_date' => optional($this->start_at)->toDateString(),
+            'start_time' => optional($this->start_at)->format('H:i:s'),
             'end_at' => optional($this->end_at)->toISOString(),
             'status' => $this->status ?? $event->status ?? 'scheduled',
             'display_date' => optional($this->start_at)->format('M d, Y'),
