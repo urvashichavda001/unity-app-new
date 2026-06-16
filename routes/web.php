@@ -129,6 +129,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/collaborations/export', [CollaborationPostController::class, 'export'])->name('collaborations.export');
         Route::get('/collaborations/{id}', [CollaborationPostController::class, 'show'])->name('collaborations.show');
         Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
+        Route::get('/contacts/import', [ContactController::class, 'import'])->name('contacts.import');
+        Route::post('/contacts/import', [ContactController::class, 'storeImport'])->name('contacts.import.store');
+        Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
         Route::get('/contacts/{id}', [ContactController::class, 'show'])->name('contacts.show');
         Route::get('/activities/{peer}/become-a-leader', [ActivitiesLeaderInterestController::class, 'show'])
             ->whereUuid('peer')
