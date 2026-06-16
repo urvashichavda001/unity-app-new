@@ -62,6 +62,7 @@ class AppConfigAdminController extends Controller
                 ->values()
                 ->toArray(),
             'membership_labels' => AppMembershipLabel::query()
+                ->when(\Illuminate\Support\Facades\Schema::hasColumn('app_membership_labels', 'app_instance_id'), fn ($query) => $query->where('app_instance_id', $appInstanceId))
                 ->orderBy('membership_key')
                 ->get()
                 ->values()
@@ -218,10 +219,19 @@ class AppConfigAdminController extends Controller
             ->where('widget_key', $widget_key)
             ->firstOrFail();
 
-        $model->update([
-            'is_enabled' => array_key_exists('is_enabled', $data) ? $request->boolean('is_enabled') : $model->is_enabled,
+        $payload = [
             'sort_order' => $data['sort_order'] ?? $model->sort_order,
-        ]);
+        ];
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('app_dashboard_widgets', 'is_enabled')) {
+            $payload['is_enabled'] = array_key_exists('is_enabled', $data) ? $request->boolean('is_enabled') : $model->is_enabled;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('app_dashboard_widgets', 'is_enable')) {
+            $payload['is_enable'] = array_key_exists('is_enabled', $data) ? $request->boolean('is_enabled') : ($model->is_enable ?? $model->is_enabled);
+        }
+
+        $model->update($payload);
 
         return $this->changed($model->fresh(), 'Dashboard widget updated successfully.');
     }
@@ -245,6 +255,8 @@ class AppConfigAdminController extends Controller
         $model = AppSocialLink::query()->updateOrCreate(
             ['app_instance_id' => $appInstanceId, 'platform' => $platform],
             [
+                'platform_key' => $platform,
+                'label' => $data['display_name'] ?? $existing?->display_name ?? str($platform)->replace('_', ' ')->title()->toString(),
                 'display_name' => $data['display_name'] ?? $existing?->display_name ?? str($platform)->replace('_', ' ')->title()->toString(),
                 'url' => array_key_exists('url', $data) ? $data['url'] : $existing?->url,
                 'icon' => array_key_exists('icon', $data) ? $data['icon'] : ($existing?->icon ?? $platform),
@@ -259,7 +271,11 @@ class AppConfigAdminController extends Controller
     public function updateMembershipLabel(Request $request, string $membership_key): JsonResponse
     {
         $data = $request->validate(['display_label' => 'required|string|max:255', 'description' => 'nullable|string']);
-        $model = AppMembershipLabel::query()->where('membership_key', $membership_key)->firstOrFail();
+        $query = AppMembershipLabel::query()->where('membership_key', $membership_key);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('app_membership_labels', 'app_instance_id')) {
+            $query->where('app_instance_id', $this->appInstanceId());
+        }
+        $model = $query->firstOrFail();
         $model->update($data);
 
         return $this->changed($model, 'Membership label updated successfully.');

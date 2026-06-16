@@ -44,6 +44,7 @@ use App\Http\Controllers\Admin\AdminExecutionController;
 use App\Http\Controllers\Admin\EventManagementController;
 use App\Http\Controllers\Admin\EventScanCredentialController;
 use App\Http\Controllers\Admin\ActivityCreativeController;
+use App\Http\Controllers\Admin\AppConfigPageController;
 use App\Http\Controllers\Admin\IndustryDirector\IndustryDirectorDashboardController;
 use App\Http\Controllers\PublicEventRegistrationFormController;
 
@@ -77,6 +78,17 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
             return redirect()->route('admin.dashboard');
         })->name('home');
+        Route::get('/app-config', [AppConfigPageController::class, 'index'])->name('app-config.index');
+        Route::put('/app-config/branding', [AppConfigPageController::class, 'updateBranding'])->name('app-config.branding');
+        Route::put('/app-config/labels', [AppConfigPageController::class, 'bulkLabels'])->name('app-config.labels');
+        Route::put('/app-config/features', [AppConfigPageController::class, 'bulkFeatures'])->name('app-config.features');
+        Route::post('/app-config/navigation', [AppConfigPageController::class, 'saveNavigation'])->name('app-config.navigation.store');
+        Route::put('/app-config/navigation/{id}', [AppConfigPageController::class, 'saveNavigation'])->whereUuid('id')->name('app-config.navigation.update');
+        Route::delete('/app-config/navigation/{id}', [AppConfigPageController::class, 'deleteNavigation'])->whereUuid('id')->name('app-config.navigation.destroy');
+        Route::put('/app-config/dashboard-widgets', [AppConfigPageController::class, 'bulkWidgets'])->name('app-config.widgets');
+        Route::put('/app-config/social-links', [AppConfigPageController::class, 'bulkSocial'])->name('app-config.social');
+        Route::put('/app-config/membership-labels', [AppConfigPageController::class, 'membershipLabels'])->name('app-config.membership-labels');
+        Route::post('/app-config/clear-cache', [AppConfigPageController::class, 'clearCache'])->name('app-config.clear-cache');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/ded-dashboard', [DashboardController::class, 'ded'])->name('ded.dashboard');
         Route::get('/ded-dashboard/leadership/{role}', [DashboardController::class, 'dedLeadershipDetail'])->name('ded.dashboard.leadership');

@@ -280,6 +280,14 @@
             @endforeach
 
 
+            @if ($isGlobalAdmin)
+                <li class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('admin.app-config.*') ? 'active' : '' }}" href="{{ route('admin.app-config.index') }}">
+                        <i class="bi bi-sliders me-2"></i>Greenpreneur App Config
+                    </a>
+                </li>
+            @endif
+
             @if ($bottomNavItems || ! $isDed)
                 <li class="nav-item mt-3 pt-2 border-top small text-muted px-3">More</li>
             @endif
