@@ -216,6 +216,11 @@ class User extends Authenticatable
         return (int) ($value ?? 0);
     }
 
+    public function contactPosts(): HasMany
+    {
+        return $this->hasMany(ContactPost::class, 'user_id');
+    }
+
     protected static function booted(): void
     {
         static::saving(function (self $user): void {

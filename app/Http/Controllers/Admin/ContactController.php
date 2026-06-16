@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ContactPost;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -225,6 +226,64 @@ class ContactController extends Controller
         }, $fileName, ['Content-Type' => 'text/csv']);
     }
 
+    public function userDetails(Request $request, string $userId): View
+    {
+        $filters = $request->only(['search', 'company', 'job_title', 'from_date', 'to_date', 'date_preset']);
+        $contacts = $this->filteredQuery($filters, $userId)
+            ->latest('created_at')
+            ->paginate(20)
+            ->withQueryString();
+
+        return view('admin.contacts.user-details', [
+            'user' => User::query()->find($userId),
+            'userId' => $userId,
+            'contacts' => $contacts,
+            'filters' => $filters,
+            'companies' => $this->filterOptions('company', $userId),
+            'jobTitles' => $this->filterOptions('job_title', $userId),
+        ]);
+    }
+
+    public function exportUserDetails(Request $request, string $userId): StreamedResponse
+    {
+        $filters = $request->only(['search', 'company', 'job_title', 'from_date', 'to_date', 'date_preset']);
+        $fileName = 'user-contacts-'.$userId.'-'.now()->format('Y-m-d-His').'.csv';
+        $columns = [
+            'id',
+            'user_id',
+            'full_name',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'email',
+            'phone',
+            'company',
+            'job_title',
+            'nickname',
+            'notes',
+            'emails',
+            'phones',
+            'addresses',
+            'created_at',
+            'updated_at',
+        ];
+
+        return response()->streamDownload(function () use ($filters, $columns, $userId): void {
+            $output = fopen('php://output', 'wb');
+            fputcsv($output, $columns);
+
+            $this->filteredQuery($filters, $userId)
+                ->latest('created_at')
+                ->chunk(500, function ($contacts) use ($output, $columns): void {
+                    foreach ($contacts as $contact) {
+                        fputcsv($output, $this->contactCsvRow($contact, $columns));
+                    }
+                });
+
+            fclose($output);
+        }, $fileName, ['Content-Type' => 'text/csv']);
+    }
+
     private function showFilters(Request $request): array
     {
         return [
@@ -388,9 +447,10 @@ class ContactController extends Controller
         return $row;
     }
 
-    private function filteredQuery(array $filters)
+    private function filteredQuery(array $filters, ?string $userId = null)
     {
         return ContactPost::query()
+            ->when($userId, fn ($query, string $id) => $query->where('user_id', $id))
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
                     foreach ([
@@ -422,9 +482,10 @@ class ContactController extends Controller
             ->when($filters['to_date'] ?? null, fn ($query, string $toDate) => $query->whereDate('created_at', '<=', $toDate));
     }
 
-    private function filterOptions(string $column)
+    private function filterOptions(string $column, ?string $userId = null)
     {
         return ContactPost::query()
+            ->when($userId, fn ($query, string $id) => $query->where('user_id', $id))
             ->whereNotNull($column)
             ->where($column, '<>', '')
             ->distinct()
