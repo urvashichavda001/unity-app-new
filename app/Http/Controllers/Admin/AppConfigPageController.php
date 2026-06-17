@@ -8,6 +8,7 @@ use App\Services\AppConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AppConfigPageController extends Controller
@@ -34,6 +35,37 @@ class AppConfigPageController extends Controller
             ->pluck('updated_at')->filter()->sortDesc()->first();
 
         return view('admin.app-config.index', compact('app', 'branding', 'labels', 'features', 'navigation', 'widgets', 'socialLinks', 'membershipLabels', 'icons', 'lastUpdated'));
+    }
+
+
+    public function uploadBrandAsset(Request $request)
+    {
+        $data = $request->validate([
+            'field' => ['required', 'string', Rule::in(['logo_url_light', 'logo_url_dark', 'logo_url_splash', 'app_logo_url', 'splash_logo_url'])],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,svg', 'max:5120'],
+        ]);
+
+        $extension = strtolower($request->file('file')->getClientOriginalExtension());
+        if ($extension === 'svg') {
+            $svg = strtolower((string) file_get_contents($request->file('file')->getRealPath()));
+            abort_if(str_contains($svg, '<script') || str_contains($svg, 'javascript:') || str_contains($svg, '<foreignobject'), 422, 'SVG contains unsafe content.');
+        }
+
+        $filename = Str::of($data['field'])->replace('_', '-')->slug('-')
+            . '-' . now()->format('Ymd-His')
+            . '-' . Str::lower(Str::random(8))
+            . '.' . $extension;
+
+        $path = $request->file('file')->storeAs('app-config/greenpreneur/branding', $filename, 'public');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Brand asset uploaded successfully.',
+            'data' => [
+                'field' => $data['field'],
+                'url' => asset('storage/' . $path),
+            ],
+        ]);
     }
 
     public function updateBranding(Request $request)

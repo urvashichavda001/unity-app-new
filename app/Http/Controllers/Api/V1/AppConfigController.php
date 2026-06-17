@@ -122,6 +122,8 @@ class AppConfigController extends Controller
             'logo_url_light' => $light,
             'logo_url_dark' => $branding?->logo_url_dark ?: $light,
             'logo_url_splash' => $splash,
+            'app_logo_url' => $light,
+            'splash_logo_url' => $splash,
             'playstore_url' => $branding?->playstore_url ?: $defaults['playstore_url'],
             'appstore_url' => $branding?->appstore_url ?: $defaults['appstore_url'],
         ];
@@ -314,6 +316,8 @@ class AppConfigController extends Controller
             'logo_url_light' => 'https://peersunity.com/assets/brand/logo_light.png',
             'logo_url_dark' => 'https://peersunity.com/assets/brand/logo_dark.png',
             'logo_url_splash' => 'https://peersunity.com/assets/brand/logo_splash.png',
+            'app_logo_url' => 'https://peersunity.com/assets/brand/logo_light.png',
+            'splash_logo_url' => 'https://peersunity.com/assets/brand/logo_splash.png',
             'playstore_url' => 'https://play.google.com/store/apps/details?id=com.greenpreneur.greenpreneur',
             'appstore_url' => 'https://apps.apple.com/app/id1234567890',
         ];

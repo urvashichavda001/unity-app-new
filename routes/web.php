@@ -81,6 +81,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         })->name('home');
         Route::get('/app-config', [AppConfigPageController::class, 'index'])->name('app-config.index');
         Route::put('/app-config/branding', [AppConfigPageController::class, 'updateBranding'])->name('app-config.branding');
+        Route::post('/app-config/upload-brand-asset', [AppConfigPageController::class, 'uploadBrandAsset'])->name('app-config.upload-brand-asset');
         Route::put('/app-config/labels', [AppConfigPageController::class, 'bulkLabels'])->name('app-config.labels');
         Route::put('/app-config/features', [AppConfigPageController::class, 'bulkFeatures'])->name('app-config.features');
         Route::put('/app-config/icons', [AppConfigPageController::class, 'bulkIcons'])->name('app-config.icons');
