@@ -12,11 +12,6 @@
         <h1 class="h4 mb-1">Contacts</h1>
         <p class="text-muted mb-0">Manage imported and submitted contact details.</p>
     </div>
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{{ route('admin.contacts.export', request()->query()) }}" class="btn btn-outline-primary">
-            <i class="bi bi-download me-1"></i>Export CSV
-        </a>
-    </div>
 </div>
 
 <div class="card p-3 mb-3">
