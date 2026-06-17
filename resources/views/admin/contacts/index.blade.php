@@ -13,9 +13,6 @@
         <p class="text-muted mb-0">Manage imported and submitted contact details.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-        <a href="{{ route('admin.contacts.import') }}" class="btn btn-primary">
-            <i class="bi bi-upload me-1"></i>Import CSV
-        </a>
         <a href="{{ route('admin.contacts.export', request()->query()) }}" class="btn btn-outline-primary">
             <i class="bi bi-download me-1"></i>Export CSV
         </a>
@@ -75,8 +72,7 @@
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
-                    <th class="ps-3" style="width: 42px;"><input type="checkbox" class="form-check-input" aria-label="Select all contacts"></th>
-                    <th>Contact Name</th>
+                    <th class="ps-3">Contact Name</th>
                     <th>Phone</th>
                     <th style="min-width: 180px;">Company</th>
                     <th style="min-width: 180px;">Job Title</th>
@@ -89,8 +85,7 @@
             <tbody>
                 @forelse ($contactPosts as $contactPost)
                     <tr>
-                        <td class="ps-3"><input type="checkbox" class="form-check-input" aria-label="Select contact {{ $contactPost->full_name ?: $contactPost->email ?: $contactPost->id }}"></td>
-                        <td class="fw-semibold">{{ $contactPost->full_name ?: trim(collect([$contactPost->first_name, $contactPost->middle_name, $contactPost->last_name])->filter()->implode(' ')) ?: '—' }}</td>
+                        <td class="ps-3 fw-semibold">{{ $contactPost->full_name ?: trim(collect([$contactPost->first_name, $contactPost->middle_name, $contactPost->last_name])->filter()->implode(' ')) ?: '—' }}</td>
                         <td>{{ $contactPost->phone ?: '—' }}</td>
                         <td class="text-wrap">{{ $contactPost->company ?: '—' }}</td>
                         <td class="text-wrap">{{ $contactPost->job_title ?: '—' }}</td>
@@ -103,7 +98,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">No contacts found.</td>
+                        <td colspan="8" class="text-center text-muted py-4">No contacts found.</td>
                     </tr>
                 @endforelse
             </tbody>
