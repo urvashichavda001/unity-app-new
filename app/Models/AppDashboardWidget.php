@@ -24,11 +24,13 @@ class AppDashboardWidget extends Model
         'widget_name',
         'label_key',
         'is_enabled',
+        'is_enable',
         'sort_order',
     ];
 
     protected $casts = [
         'is_enabled' => 'boolean',
+        'is_enable' => 'boolean',
         'sort_order' => 'integer',
     ];
 }

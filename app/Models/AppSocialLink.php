@@ -20,7 +20,9 @@ class AppSocialLink extends Model
     protected $fillable = [
         'id',
         'app_instance_id',
+        'platform_key',
         'platform',
+        'label',
         'display_name',
         'url',
         'icon',

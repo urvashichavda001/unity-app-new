@@ -19,6 +19,7 @@ class AppMembershipLabel extends Model
 
     protected $fillable = [
         'id',
+        'app_instance_id',
         'membership_key',
         'display_label',
         'description',
