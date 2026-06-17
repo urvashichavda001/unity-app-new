@@ -16,8 +16,11 @@ class AppIconAsset extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'id', 'app_instance_id', 'icon_key', 'icon_name', 'icon_url',
-        'fallback_asset', 'description', 'is_active', 'sort_order',
+        'id', 'app_instance_id', 'icon_key', 'icon_name', 'icon_group',
+        'source_type', 'icon_library', 'default_icon', 'selected_icon',
+        'icon_url', 'selected_icon_url', 'fallback_asset', 'feature_key',
+        'menu_key', 'screen_name', 'usage_location', 'description',
+        'is_active', 'sort_order',
     ];
 
     protected $casts = ['is_active' => 'boolean', 'sort_order' => 'integer'];

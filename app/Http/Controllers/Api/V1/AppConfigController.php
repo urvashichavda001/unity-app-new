@@ -13,6 +13,7 @@ use App\Models\AppMembershipLabel;
 use App\Models\AppNavigationItem;
 use App\Models\AppSocialLink;
 use App\Services\AppConfigService;
+use App\Support\GreenpreneurIconCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -60,6 +61,7 @@ class AppConfigController extends Controller
     {
         Cache::forget(self::CACHE_KEY);
         Cache::forget('greenpreneur_app_config.v2');
+        Cache::forget('app_config:greenpreneur');
     }
 
     public static function buildPublicConfig(AppInstance $appInstance): array
@@ -147,25 +149,69 @@ class AppConfigController extends Controller
             return self::defaultIcons();
         }
 
-        $configured = AppIconAsset::query()
+        $icons = AppIconAsset::query()
             ->where('app_instance_id', $appInstanceId)
             ->where('is_active', true)
-            ->pluck('icon_url', 'icon_key')
+            ->orderBy('icon_group')
+            ->orderBy('sort_order')
+            ->get();
+
+        if ($icons->isEmpty()) {
+            return self::defaultIcons();
+        }
+
+        $grouped = collect(GreenpreneurIconCatalog::GROUPS)
+            ->mapWithKeys(fn ($label, $group) => [$group => []])
             ->all();
 
-        return collect(self::supportedIconKeys())
-            ->mapWithKeys(fn ($key) => [$key => array_key_exists($key, $configured) ? $configured[$key] : null])
+        foreach ($icons as $icon) {
+            $group = $icon->icon_group ?: 'custom_assets';
+            if (! array_key_exists($group, $grouped)) {
+                $grouped[$group] = [];
+            }
+
+            $grouped[$group][] = self::formatIcon($icon);
+        }
+
+        $byKey = $icons->keyBy('icon_key');
+        $flat = collect(GreenpreneurIconCatalog::FLAT_MAP)
+            ->mapWithKeys(fn ($iconKey, $flatKey) => [$flatKey => $byKey->get($iconKey)?->icon_url])
             ->all();
+        $grouped['flat'] = $flat;
+
+        return array_merge($grouped, $flat);
+    }
+
+    private static function formatIcon(AppIconAsset $icon): array
+    {
+        return [
+            'icon_key' => $icon->icon_key,
+            'icon_name' => $icon->icon_name,
+            'icon_group' => $icon->icon_group,
+            'source_type' => $icon->source_type,
+            'icon_library' => $icon->icon_library,
+            'default_icon' => $icon->default_icon,
+            'selected_icon' => $icon->selected_icon,
+            'icon_url' => $icon->icon_url,
+            'selected_icon_url' => $icon->selected_icon_url,
+            'fallback_asset' => $icon->fallback_asset,
+            'feature_key' => $icon->feature_key,
+            'menu_key' => $icon->menu_key,
+            'screen_name' => $icon->screen_name,
+            'usage_location' => $icon->usage_location,
+            'is_active' => (bool) $icon->is_active,
+            'sort_order' => (int) $icon->sort_order,
+        ];
     }
 
     public static function supportedIconKeys(): array
     {
-        return ['home_icon', 'my_network_icon', 'circle_icon', 'highlights_icon', 'events_icon', 'referrals_icon', 'deals_icon', 'p2p_icon', 'testimonials_icon'];
+        return array_keys(GreenpreneurIconCatalog::FLAT_MAP);
     }
 
     private static function defaultIcons(): array
     {
-        return array_fill_keys(self::supportedIconKeys(), null);
+        return GreenpreneurIconCatalog::blankGroupedResponse();
     }
 
     private static function defaultColors(): array

@@ -124,10 +124,51 @@ class AppConfigPageController extends Controller
     }
 
 
+
+    public function uploadIconAsset(Request $request)
+    {
+        $data = $request->validate([
+            'icon_key' => ['required', 'string', 'max:150'],
+            'target_field' => ['required', Rule::in(['icon_url', 'selected_icon_url'])],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048'],
+        ]);
+
+        $extension = strtolower($request->file('file')->getClientOriginalExtension());
+        if ($extension === 'svg') {
+            $svg = strtolower((string) file_get_contents($request->file('file')->getRealPath()));
+            abort_if(str_contains($svg, '<script') || str_contains($svg, 'javascript:') || str_contains($svg, '<foreignobject'), 422, 'SVG contains unsafe content.');
+        }
+
+        $filename = Str::of($data['icon_key'])->replace('_', '-')->slug('-')
+            . '-' . $data['target_field']
+            . '-' . now()->format('Ymd-His')
+            . '-' . Str::lower(Str::random(8))
+            . '.' . $extension;
+        $path = $request->file('file')->storeAs('app-config/greenpreneur/icons', $filename, 'public');
+        $url = asset('storage/' . $path);
+
+        DB::table('app_icon_assets')
+            ->where('app_instance_id', $this->appId())
+            ->where('icon_key', $data['icon_key'])
+            ->update([$data['target_field'] => $url, 'updated_at' => now()]);
+
+        AppConfigController::clearCache();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Icon uploaded successfully.',
+            'data' => [
+                'icon_key' => $data['icon_key'],
+                'target_field' => $data['target_field'],
+                'url' => $url,
+            ],
+        ]);
+    }
+
     public function bulkIcons(Request $request)
     {
-        $data = $request->validate(['icons' => ['required','array'], 'icons.*.icon_name' => ['nullable','string','max:255'], 'icons.*.icon_url' => ['nullable','url'], 'icons.*.fallback_asset' => ['nullable','string','max:255'], 'icons.*.is_active' => ['nullable'], 'icons.*.sort_order' => ['nullable','integer','min:0']]);
-        foreach ($data['icons'] as $key => $row) { DB::table('app_icon_assets')->updateOrInsert(['app_instance_id' => $this->appId(), 'icon_key' => $key], ['icon_name' => $row['icon_name'] ?? null, 'icon_url' => $row['icon_url'] ?? null, 'fallback_asset' => $row['fallback_asset'] ?? null, 'is_active' => $request->boolean("icons.$key.is_active"), 'sort_order' => $row['sort_order'] ?? 0, 'updated_at' => now(), 'created_at' => now()]); }
+        $data = $request->validate(['icons' => ['required','array'], 'icons.*.icon_name' => ['nullable','string','max:255'], 'icons.*.icon_url' => ['nullable','url'], 'icons.*.selected_icon_url' => ['nullable','url'], 'icons.*.fallback_asset' => ['nullable','string','max:255'], 'icons.*.feature_key' => ['nullable','string','max:100'], 'icons.*.menu_key' => ['nullable','string','max:100'], 'icons.*.is_active' => ['nullable'], 'icons.*.sort_order' => ['nullable','integer','min:0']]);
+        foreach ($data['icons'] as $key => $row) { DB::table('app_icon_assets')->updateOrInsert(['app_instance_id' => $this->appId(), 'icon_key' => $key], ['icon_name' => $row['icon_name'] ?? null, 'icon_url' => $row['icon_url'] ?? null, 'selected_icon_url' => $row['selected_icon_url'] ?? null, 'fallback_asset' => $row['fallback_asset'] ?? null, 'feature_key' => $row['feature_key'] ?? null, 'menu_key' => $row['menu_key'] ?? null, 'is_active' => $request->boolean("icons.$key.is_active"), 'sort_order' => $row['sort_order'] ?? 0, 'updated_at' => now(), 'created_at' => now()]); }
         return $this->done('Icons updated successfully.', 'icons');
     }
 
