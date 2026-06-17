@@ -70,6 +70,103 @@ class EventController extends BaseApiController
         ], 'Events fetched successfully.');
     }
 
+
+    public function allWithLiveStatus(Request $request)
+    {
+        try {
+            $timezone = config('app.timezone') ?: 'Asia/Kolkata';
+            $now = now($timezone);
+
+            $occurrences = EventOccurrence::query()
+                ->with(['event.circle'])
+                ->whereNotNull('start_at')
+                ->whereNotNull('end_at')
+                ->where('end_at', '>=', $now)
+                ->where(function ($query): void {
+                    $query->whereNull('status')
+                        ->orWhereNotIn('status', ['cancelled', 'canceled', 'rejected', 'deleted', 'archived', 'inactive']);
+                })
+                ->whereHas('event', function ($query): void {
+                    if (Schema::hasColumn('events', 'is_active')) {
+                        $query->where('is_active', true);
+                    }
+
+                    if (Schema::hasColumn('events', 'status')) {
+                        $query->where(function ($statusQuery): void {
+                            $statusQuery->whereNull('status')
+                                ->orWhereNotIn('status', ['cancelled', 'canceled', 'rejected', 'deleted', 'archived', 'inactive']);
+                        });
+                    }
+                })
+                ->get()
+                ->filter(fn (EventOccurrence $occurrence) => $occurrence->event !== null)
+                ->map(function (EventOccurrence $occurrence) use ($now): array {
+                    $event = $occurrence->event;
+                    $startAt = $occurrence->start_at?->copy()->setTimezone($now->timezone);
+                    $endAt = $occurrence->end_at?->copy()->setTimezone($now->timezone);
+                    $isLiveEvent = $startAt && $endAt && $startAt->lessThanOrEqualTo($now) && $endAt->greaterThanOrEqualTo($now);
+
+                    return [
+                        '_sort_status' => $isLiveEvent ? 0 : 1,
+                        '_sort_start_at' => $startAt?->getTimestamp() ?? PHP_INT_MAX,
+                        'event_id' => $event->id,
+                        'occurrence_id' => $occurrence->id,
+                        'title' => $event->title,
+                        'description' => $event->description,
+                        'event_type' => $event->event_type,
+                        'circle_id' => $event->circle_id,
+                        'circle_name' => $event->circle?->name,
+                        'start_datetime' => $occurrence->start_at?->toISOString(),
+                        'end_datetime' => $occurrence->end_at?->toISOString(),
+                        'image_url' => $this->eventImageUrl($event),
+                        'is_live_event' => $isLiveEvent,
+                        'event_status' => $isLiveEvent ? 'live' : 'upcoming',
+                    ];
+                })
+                ->filter(fn (array $event): bool => $event['is_live_event'] || $event['event_status'] === 'upcoming')
+                ->sortBy([
+                    ['_sort_status', 'asc'],
+                    ['_sort_start_at', 'asc'],
+                ])
+                ->map(fn (array $event): array => collect($event)->except(['_sort_status', '_sort_start_at'])->all())
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Events fetched successfully.',
+                'data' => $occurrences,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('events_all_with_live_status_failed', [
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong while fetching events.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function eventImageUrl(Event $event): ?string
+    {
+        $bannerUrl = $event->banner_url;
+
+        if (! is_string($bannerUrl) || trim($bannerUrl) === '') {
+            return null;
+        }
+
+        $bannerUrl = trim($bannerUrl);
+
+        if (str_starts_with($bannerUrl, 'http://') || str_starts_with($bannerUrl, 'https://') || str_starts_with($bannerUrl, '/')) {
+            return $bannerUrl;
+        }
+
+        return url('/api/v1/files/'.$bannerUrl);
+    }
+
     public function show(Request $request, string $id)
     {
         $event = Event::query()
