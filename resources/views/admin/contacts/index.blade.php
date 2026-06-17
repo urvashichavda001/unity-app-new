@@ -14,50 +14,121 @@
     </div>
 </div>
 
-<div class="card p-3 mb-3">
-    <form method="GET" action="{{ route('admin.contacts.index') }}" class="row g-3 align-items-end">
-        <div class="col-12 col-xl-3">
-            <label for="search" class="form-label">Search</label>
-            <input type="text" id="search" name="search" value="{{ $filters['search'] ?? '' }}" class="form-control" placeholder="Name/Email/Phone/Company">
-        </div>
-        <div class="col-sm-6 col-xl-2">
-            <label for="company" class="form-label">Company</label>
-            <select id="company" name="company" class="form-select">
-                <option value="">All Companies</option>
-                @foreach ($companies as $company)
-                    <option value="{{ $company }}" @selected(($filters['company'] ?? '') === $company)>{{ $company }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div class="col-sm-6 col-xl-2">
-            <label for="job_title" class="form-label">Job Title</label>
-            <select id="job_title" name="job_title" class="form-select">
-                <option value="">All Job Titles</option>
-                @foreach ($jobTitles as $jobTitle)
-                    <option value="{{ $jobTitle }}" @selected(($filters['job_title'] ?? '') === $jobTitle)>{{ $jobTitle }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div class="col-sm-6 col-xl-2">
-            <label for="from_date" class="form-label">Date From</label>
-            <input type="date" id="from_date" name="from_date" value="{{ $filters['from_date'] ?? '' }}" class="form-control">
-        </div>
-        <div class="col-sm-6 col-xl-2">
-            <label for="to_date" class="form-label">Date To</label>
-            <input type="date" id="to_date" name="to_date" value="{{ $filters['to_date'] ?? '' }}" class="form-control">
-        </div>
-        <div class="col-sm-6 col-xl-2">
-            <label for="quick" class="form-label">Quick</label>
-            <select id="quick" name="quick" class="form-select">
-                <option value="any" @selected(($filters['quick'] ?? 'any') === 'any')>Any</option>
-                <option value="today" @selected(($filters['quick'] ?? 'any') === 'today')>Today</option>
-                <option value="this_week" @selected(($filters['quick'] ?? 'any') === 'this_week')>This Week</option>
-                <option value="this_month" @selected(($filters['quick'] ?? 'any') === 'this_month')>This Month</option>
-            </select>
-        </div>
-        <div class="col-12 d-flex justify-content-end gap-2">
-            <button type="submit" class="btn btn-primary">Filter</button>
-            <a href="{{ route('admin.contacts.index') }}" class="btn btn-outline-secondary">Reset</a>
+<style>
+    .contacts-filters-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+
+    .contacts-filters-grid {
+        display: grid;
+        grid-template-columns: minmax(220px, 2fr) minmax(160px, 1.3fr) minmax(160px, 1.3fr) minmax(145px, 1.1fr) minmax(145px, 1.1fr) minmax(130px, 0.9fr) auto;
+        gap: 14px;
+        align-items: end;
+    }
+
+    .contacts-filter-field label {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        color: #111827;
+        margin-bottom: 8px;
+    }
+
+    .contacts-filter-field input,
+    .contacts-filter-field select {
+        width: 100%;
+        height: 38px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        background: #ffffff;
+    }
+
+    .contacts-filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+        white-space: nowrap;
+    }
+
+    .contacts-filter-actions .btn {
+        height: 38px;
+        padding: 8px 14px;
+    }
+
+    @media (max-width: 1200px) {
+        .contacts-filters-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .contacts-filter-actions {
+            justify-content: flex-start;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .contacts-filters-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .contacts-filter-actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
+    }
+</style>
+
+<div class="contacts-filters-card">
+    <form method="GET" action="{{ route('admin.contacts.index') }}">
+        <div class="contacts-filters-grid">
+            <div class="contacts-filter-field">
+                <label for="search">Search</label>
+                <input type="text" id="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Name/Email/Phone/Company">
+            </div>
+            <div class="contacts-filter-field">
+                <label for="company">Company</label>
+                <select id="company" name="company">
+                    <option value="">All Companies</option>
+                    @foreach ($companies as $company)
+                        <option value="{{ $company }}" @selected(($filters['company'] ?? '') === $company)>{{ $company }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="contacts-filter-field">
+                <label for="job_title">Job Title</label>
+                <select id="job_title" name="job_title">
+                    <option value="">All Job Titles</option>
+                    @foreach ($jobTitles as $jobTitle)
+                        <option value="{{ $jobTitle }}" @selected(($filters['job_title'] ?? '') === $jobTitle)>{{ $jobTitle }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="contacts-filter-field">
+                <label for="from_date">Date From</label>
+                <input type="date" id="from_date" name="from_date" value="{{ $filters['from_date'] ?? '' }}">
+            </div>
+            <div class="contacts-filter-field">
+                <label for="to_date">Date To</label>
+                <input type="date" id="to_date" name="to_date" value="{{ $filters['to_date'] ?? '' }}">
+            </div>
+            <div class="contacts-filter-field">
+                <label for="quick">Quick</label>
+                <select id="quick" name="quick">
+                    <option value="any" @selected(($filters['quick'] ?? 'any') === 'any')>Any</option>
+                    <option value="today" @selected(($filters['quick'] ?? 'any') === 'today')>Today</option>
+                    <option value="this_week" @selected(($filters['quick'] ?? 'any') === 'this_week')>This Week</option>
+                    <option value="this_month" @selected(($filters['quick'] ?? 'any') === 'this_month')>This Month</option>
+                </select>
+            </div>
+            <div class="contacts-filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a href="{{ route('admin.contacts.index') }}" class="btn btn-outline-secondary">Reset</a>
+            </div>
         </div>
     </form>
 </div>
