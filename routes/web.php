@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\CirclePeersController;
 use App\Http\Controllers\Admin\CoinsController;
 use App\Http\Controllers\Admin\LifeImpactController;
 use App\Http\Controllers\Admin\CollaborationPostController;
+use App\Http\Controllers\Admin\ContactController;
 use App\Http\Controllers\Admin\CoinClaimsController;
 use App\Http\Controllers\Admin\CircleJoinRequestsController;
 use App\Http\Controllers\Admin\EventGalleryController;
@@ -139,6 +140,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/collaborations', [CollaborationPostController::class, 'index'])->name('collaborations.index');
         Route::get('/collaborations/export', [CollaborationPostController::class, 'export'])->name('collaborations.export');
         Route::get('/collaborations/{id}', [CollaborationPostController::class, 'show'])->name('collaborations.show');
+        Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
+        Route::get('/contacts/import', [ContactController::class, 'import'])->name('contacts.import');
+        Route::post('/contacts/import', [ContactController::class, 'importStore'])->name('contacts.import.store');
+        Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
+        Route::get('/contacts/user/{user_id}/export', [ContactController::class, 'exportUserDetails'])->name('contacts.user-details.export');
+        Route::post('/contacts/user/{user_id}/export-selected', [ContactController::class, 'exportSelected'])->name('contacts.user-details.export-selected');
+        Route::get('/contacts/user/{user_id}', [ContactController::class, 'userDetails'])->name('contacts.user-details');
+        Route::get('/contacts/{id}', [ContactController::class, 'show'])->name('contacts.show');
         Route::get('/activities/{peer}/become-a-leader', [ActivitiesLeaderInterestController::class, 'show'])
             ->whereUuid('peer')
             ->name('activities.become-a-leader.show');
