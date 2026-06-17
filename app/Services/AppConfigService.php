@@ -79,6 +79,7 @@ class AppConfigService
             'app_dashboard_widgets',
             'app_social_links',
             'app_membership_labels',
+            'app_icon_assets',
         ] as $table) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'app_instance_id')) {
                 continue;

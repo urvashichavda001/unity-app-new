@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppConfigSetting;
 use App\Models\AppDashboardWidget;
 use App\Models\AppFeature;
+use App\Models\AppIconAsset;
 use App\Models\AppLabel;
 use App\Models\AppMembershipLabel;
 use App\Models\AppNavigationItem;
@@ -14,6 +15,8 @@ use App\Models\AppSocialLink;
 use App\Services\AppConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class AppConfigAdminController extends Controller
 {
@@ -36,6 +39,7 @@ class AppConfigAdminController extends Controller
                 ->get()
                 ->values()
                 ->toArray(),
+            'icons' => Schema::hasTable('app_icon_assets') ? AppIconAsset::query()->where('app_instance_id', $appInstanceId)->orderBy('sort_order')->get()->values()->toArray() : [],
             'features' => AppFeature::query()
                 ->where('app_instance_id', $appInstanceId)
                 ->orderBy('sort_order')
@@ -79,6 +83,93 @@ class AppConfigAdminController extends Controller
         );
 
         return $this->changed($model, 'Branding updated successfully.');
+    }
+
+
+
+    public function icons(): JsonResponse
+    {
+        $icons = AppIconAsset::query()
+            ->where('app_instance_id', $this->appInstanceId())
+            ->orderBy('icon_group')
+            ->orderBy('sort_order')
+            ->get()
+            ->groupBy('icon_group')
+            ->toArray();
+
+        return $this->ok($icons, 'Icon assets fetched successfully.');
+    }
+
+    public function updateColors(Request $request): JsonResponse
+    {
+        $data = $request->validate($this->colorRules());
+        $model = AppConfigSetting::query()->updateOrCreate(
+            ['app_instance_id' => $this->appInstanceId(), 'app_key' => 'greenpreneur'],
+            $data + ['is_active' => true]
+        );
+
+        return $this->changed($model, 'Colors updated successfully.');
+    }
+
+    public function updateIcon(Request $request, string $icon_key): JsonResponse
+    {
+        $data = $request->validate($this->iconRules());
+        $model = AppIconAsset::query()->updateOrCreate(
+            ['app_instance_id' => $this->appInstanceId(), 'icon_key' => $icon_key],
+            $data + ['icon_key' => $icon_key]
+        );
+
+        return $this->changed($model, 'Icon updated successfully.');
+    }
+
+    public function bulkUpdateIcons(Request $request): JsonResponse
+    {
+        $data = $request->validate(['icons' => ['required', 'array'], 'icons.*' => ['required', 'array']]);
+        foreach ($data['icons'] as $key => $row) {
+            $validated = validator($row, $this->iconRules())->validate();
+            AppIconAsset::query()->updateOrCreate(
+                ['app_instance_id' => $this->appInstanceId(), 'icon_key' => $key],
+                $validated + ['icon_key' => $key]
+            );
+        }
+
+        return $this->changed(null, 'Icons updated successfully.');
+    }
+
+    public function uploadIcon(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'icon_key' => ['required', 'string', 'max:150'],
+            'target_field' => ['required', 'string', 'in:icon_url,selected_icon_url'],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048'],
+        ]);
+
+        $extension = strtolower($request->file('file')->getClientOriginalExtension());
+        if ($extension === 'svg') {
+            $svg = strtolower((string) file_get_contents($request->file('file')->getRealPath()));
+            abort_if(str_contains($svg, '<script') || str_contains($svg, 'javascript:') || str_contains($svg, '<foreignobject'), 422, 'SVG contains unsafe content.');
+        }
+
+        $filename = Str::of($data['icon_key'])->replace('_', '-')->slug('-')
+            . '-' . $data['target_field']
+            . '-' . now()->format('Ymd-His')
+            . '-' . Str::lower(Str::random(8))
+            . '.' . $extension;
+        $path = $request->file('file')->storeAs('app-config/greenpreneur/icons', $filename, 'public');
+        $url = asset('storage/' . $path);
+
+        AppIconAsset::query()
+            ->where('app_instance_id', $this->appInstanceId())
+            ->where('icon_key', $data['icon_key'])
+            ->update([$data['target_field'] => $url]);
+
+        AppConfigController::clearCache();
+
+        return $this->ok([
+            'icon_key' => $data['icon_key'],
+            'target_field' => $data['target_field'],
+            'url' => $url,
+        ], 'Icon uploaded successfully.');
     }
 
     public function updateLabel(Request $request, string $label_key): JsonResponse
@@ -329,23 +420,49 @@ class AppConfigAdminController extends Controller
 
     private function brandingRules(): array
     {
-        $hex = ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'];
-
         return [
-            'app_name' => 'sometimes|required|string|max:255',
+            'app_name' => 'nullable|string|max:255',
+            'logo_url_light' => 'nullable|url',
+            'logo_url_dark' => 'nullable|url',
+            'logo_url_splash' => 'nullable|url',
             'app_logo_url' => 'nullable|url',
             'splash_logo_url' => 'nullable|url',
-            'primary_color' => $hex,
-            'secondary_color' => $hex,
-            'accent_color' => $hex,
-            'splash_bg_color' => $hex,
-            'button_color' => $hex,
-            'text_color' => $hex,
             'playstore_url' => 'nullable|url',
             'appstore_url' => 'nullable|url',
             'website_url' => 'nullable|url',
             'support_email' => 'nullable|email|max:255',
             'support_phone' => 'nullable|string|max:50',
+        ] + $this->colorRules();
+    }
+
+    private function colorRules(): array
+    {
+        $hex = ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/'];
+
+        return collect([
+            'primary_color', 'primary_dark_color', 'primary_light_color', 'primary_ultra_light_color',
+            'secondary_color', 'secondary_light_color', 'background_color', 'background_light_color',
+            'background_secondary_color', 'background_dark_color', 'card_background_color', 'card_border_color',
+            'text_primary_color', 'text_secondary_color',
+        ])->mapWithKeys(fn ($field) => [$field => $hex])->all();
+    }
+
+    private function iconRules(): array
+    {
+        return [
+            'icon_name' => ['nullable', 'string', 'max:255'],
+            'icon_group' => ['nullable', 'string', 'max:100'],
+            'source_type' => ['nullable', 'string', 'in:iconsax,material,custom_asset,remote_url'],
+            'icon_library' => ['nullable', 'string', 'max:100'],
+            'default_icon' => ['nullable', 'string', 'max:255'],
+            'selected_icon' => ['nullable', 'string', 'max:255'],
+            'icon_url' => ['nullable', 'url'],
+            'selected_icon_url' => ['nullable', 'url'],
+            'fallback_asset' => ['nullable', 'string', 'max:255'],
+            'feature_key' => ['nullable', 'string', 'max:100'],
+            'menu_key' => ['nullable', 'string', 'max:100'],
+            'is_active' => ['sometimes', 'required', 'boolean'],
+            'sort_order' => ['sometimes', 'required', 'integer', 'min:0'],
         ];
     }
 

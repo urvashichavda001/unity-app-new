@@ -7,6 +7,7 @@ $tabs = [
     'branding'=>['label'=>'Branding','icon'=>'bi-palette'],
     'labels'=>['label'=>'Labels','icon'=>'bi-tags'],
     'features'=>['label'=>'Features','icon'=>'bi-toggle2-on'],
+    'icons'=>['label'=>'Icons','icon'=>'bi-image'],
     'navigation'=>['label'=>'Navigation','icon'=>'bi-menu-button-wide'],
     'widgets'=>['label'=>'Dashboard Widgets','icon'=>'bi-grid-3x3-gap'],
     'social'=>['label'=>'Social Links','icon'=>'bi-share'],
@@ -14,9 +15,10 @@ $tabs = [
     'api-docs'=>['label'=>'API Docs','icon'=>'bi-file-earmark-code'],
 ];
 $branding = (array) ($branding ?? []);
-$colorFields = ['primary_color','secondary_color','accent_color','splash_bg_color','button_color','text_color'];
+$colorFields = ['primary_color','primary_dark_color','primary_light_color','primary_ultra_light_color','secondary_color','secondary_light_color','background_color','background_light_color','background_secondary_color','background_dark_color','card_background_color','card_border_color','text_primary_color','text_secondary_color','accent_color','splash_bg_color','button_color','text_color'];
+$brandUploadFields = ['logo_url_light','logo_url_dark','logo_url_splash','app_logo_url','splash_logo_url'];
 $brandGroups = [
-    'Basic App Info'=>['icon'=>'bi-info-circle','help'=>'Core identity and launch assets shown in the mobile app.','fields'=>['app_name','app_logo_url','splash_logo_url']],
+    'Basic App Info'=>['icon'=>'bi-info-circle','help'=>'Core identity and launch assets shown in the mobile app.','fields'=>['app_name','logo_url_light','logo_url_dark','logo_url_splash','app_logo_url','splash_logo_url']],
     'Brand Colors'=>['icon'=>'bi-droplet-half','help'=>'Theme colors consumed by Flutter for buttons, cards, text, and splash screens.','fields'=>$colorFields],
     'App Links & Support'=>['icon'=>'bi-link-45deg','help'=>'Store links, website, and support channels displayed to users.','fields'=>['playstore_url','appstore_url','website_url','support_email','support_phone']],
 ];
@@ -30,9 +32,12 @@ $menuTypes = ['bottom_nav'=>'Bottom Navigation','plus_menu'=>'Plus Menu','impact
 $menuHelp = ['bottom_nav'=>'Mobile bottom tabs','plus_menu'=>'Center action menu','impact_menu'=>'Impact shortcuts','drawer'=>'Side drawer options'];
 $methodClass = ['GET'=>'primary','POST'=>'success','PUT'=>'warning text-dark','DELETE'=>'danger'];
 $docs = [
-['GET','/app/config','No','Public Flutter app config','{}','{"success":true,"data":{"app_info":{},"labels":{}}}'],
+['GET','/app/config','No','Public Flutter app config','{}','{"success":true,"data":{"app_info":{},"colors":{},"icons":{},"features":{},"labels":{}}}'],
 ['GET','/admin/app-config','Yes','Fetch full admin config','{}','{"success":true,"data":{"branding":{},"labels":[]}}'],
 ['PUT','/admin/app-config/branding','Yes','Update branding','{"app_name":"Greenpreneur"}','{"success":true}'],
+['PUT','/admin/app-config/colors','Yes','Update colors','{"primary_color":"#2E7D32"}','{"success":true}'],
+['PUT','/admin/app-config/icons/{icon_key}','Yes','Update one icon','{"icon_url":null}','{"success":true}'],
+['PUT','/admin/app-config/icons','Yes','Bulk update icons','{"icons":{"home_icon":null}}','{"success":true}'],
 ['PUT','/admin/app-config/labels/{label_key}','Yes','Update one label','{"label_value":"Green Member"}','{"success":true}'],
 ['PUT','/admin/app-config/labels','Yes','Bulk update labels','{"labels":{"peer":"Green Member"}}','{"success":true}'],
 ['PUT','/admin/app-config/features/{feature_key}','Yes','Update one feature','{"is_enabled":true}','{"success":true}'],
@@ -49,10 +54,58 @@ $disabledFeatures = $features->where('is_enabled',false)->count();
 $enabledWidgets = $widgets->filter(fn($w)=>($w->is_enabled ?? $w->is_enable ?? false))->count();
 $enabledSocial = $socialLinks->where('is_enabled',true)->filter(fn($s)=>filled($s->url))->count();
 $publicApi = 'https://peersunity.com/api/v1/app/config';
+
+if (! function_exists('getReadableTextColor')) {
+    function getReadableTextColor($hexColor) {
+        if (! $hexColor) {
+            return '#0F172A';
+        }
+
+        $hex = ltrim(trim((string) $hexColor), '#');
+        if (strlen($hex) === 8) {
+            $hex = substr($hex, 2);
+        }
+
+        if (strlen($hex) !== 6 || ! ctype_xdigit($hex)) {
+            return '#0F172A';
+        }
+
+        $r = hexdec(substr($hex, 0, 2));
+        $g = hexdec(substr($hex, 2, 2));
+        $b = hexdec(substr($hex, 4, 2));
+        $brightness = (($r * 299) + ($g * 587) + ($b * 114)) / 1000;
+
+        return $brightness > 180 ? '#0F172A' : '#FFFFFF';
+    }
+}
+
+if (! function_exists('isLightColor')) {
+    function isLightColor($hexColor) {
+        if (! $hexColor) {
+            return true;
+        }
+
+        $hex = ltrim(trim((string) $hexColor), '#');
+        if (strlen($hex) === 8) {
+            $hex = substr($hex, 2);
+        }
+
+        if (strlen($hex) !== 6 || ! ctype_xdigit($hex)) {
+            return true;
+        }
+
+        $r = hexdec(substr($hex, 0, 2));
+        $g = hexdec(substr($hex, 2, 2));
+        $b = hexdec(substr($hex, 4, 2));
+        $brightness = (($r * 299) + ($g * 587) + ($b * 114)) / 1000;
+
+        return $brightness > 180;
+    }
+}
 @endphp
 @push('styles')
 <style>
-.app-config-page{--ac-green:#16834a;--ac-soft:#f4faf7;--ac-border:#dfe8e3;--ac-ink:#173327}.app-config-page .hero{background:linear-gradient(135deg,#0f5132,#1f9d61);border-radius:24px;color:#fff;padding:24px;box-shadow:0 18px 45px rgba(15,81,50,.18)}.app-config-page .hero .btn{border-radius:999px}.ac-tabs{background:#fff;border:1px solid var(--ac-border);border-radius:18px;padding:8px;box-shadow:0 10px 28px rgba(23,51,39,.06)}.ac-tabs .nav-link{border-radius:14px;color:#476254;font-weight:600;padding:.72rem .9rem}.ac-tabs .nav-link.active{background:var(--ac-green);box-shadow:0 8px 18px rgba(22,131,74,.22)}.ac-card{border:1px solid var(--ac-border);border-radius:18px;box-shadow:0 10px 25px rgba(23,51,39,.05)}.ac-card .card-header{background:#fff;border-bottom:1px solid var(--ac-border);border-radius:18px 18px 0 0}.stat-card{transition:.18s ease;overflow:hidden}.stat-card:hover{transform:translateY(-2px);box-shadow:0 16px 35px rgba(23,51,39,.09)}.stat-icon,.avatar-icon{width:42px;height:42px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;background:var(--ac-soft);color:var(--ac-green)}.quick-card{display:block;text-decoration:none;color:inherit;border:1px solid var(--ac-border);border-radius:16px;padding:16px;background:#fff}.quick-card:hover{border-color:var(--ac-green);background:var(--ac-soft)}.form-control,.form-select{border-color:#d7e3dc;border-radius:12px}.form-control:focus,.form-select:focus{border-color:#56b982;box-shadow:0 0 0 .2rem rgba(22,131,74,.12)}.btn{border-radius:12px;font-weight:600}.table thead th{position:sticky;top:0;background:#f8fbf9;z-index:1;color:#385244;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}.table td,.table th{vertical-align:middle}.mono-badge{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f3f6f4;border:1px solid #dfe8e3;border-radius:999px;padding:.25rem .55rem;font-size:.78rem}.switch{width:2.65rem;height:1.35rem}.changed{background:#fff8e6!important;box-shadow:inset 4px 0 #ffc107}.code-block{background:#0d1f17;color:#d9fbe7;border-radius:14px;padding:14px;white-space:pre-wrap;font-size:.78rem}.brand-preview{background:linear-gradient(180deg,#fff,#f5fbf7);border:1px solid var(--ac-border);border-radius:20px;padding:18px;position:sticky;top:16px}.color-chip{width:42px;border-radius:12px;border:1px solid #d7e3dc}.empty-state{border:1px dashed #bfd3c7;border-radius:16px;padding:24px;text-align:center;color:#6b7f73;background:#fbfdfc}.toolbar{background:#fff;border:1px solid var(--ac-border);border-radius:18px;padding:14px}.accordion-button{border-radius:16px!important;font-weight:700}.accordion-item{border:1px solid var(--ac-border);border-radius:18px!important;overflow:hidden}.muted-row{opacity:.62}.toast-lite{position:fixed;right:20px;bottom:20px;background:#173327;color:#fff;border-radius:14px;padding:12px 16px;box-shadow:0 12px 30px rgba(0,0,0,.18);z-index:1080}.membership-preview li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #edf3ef}@media(max-width:768px){.app-config-page .hero{padding:18px}.ac-tabs{overflow-x:auto;flex-wrap:nowrap!important}.ac-tabs .nav-link{white-space:nowrap}}
+.app-config-page{--ac-green:#16834a;--ac-soft:#f4faf7;--ac-border:#dfe8e3;--ac-ink:#173327}.app-config-page .hero{background:linear-gradient(135deg,#0f5132,#1f9d61);border-radius:24px;color:#fff;padding:24px;box-shadow:0 18px 45px rgba(15,81,50,.18)}.app-config-page .hero .btn{border-radius:999px}.ac-tabs{background:#fff;border:1px solid var(--ac-border);border-radius:18px;padding:8px;box-shadow:0 10px 28px rgba(23,51,39,.06)}.ac-tabs .nav-link{border-radius:14px;color:#476254;font-weight:600;padding:.72rem .9rem}.ac-tabs .nav-link.active{background:var(--ac-green);box-shadow:0 8px 18px rgba(22,131,74,.22)}.ac-card{border:1px solid var(--ac-border);border-radius:18px;box-shadow:0 10px 25px rgba(23,51,39,.05)}.ac-card .card-header{background:#fff;border-bottom:1px solid var(--ac-border);border-radius:18px 18px 0 0}.stat-card{transition:.18s ease;overflow:hidden}.stat-card:hover{transform:translateY(-2px);box-shadow:0 16px 35px rgba(23,51,39,.09)}.stat-icon,.avatar-icon{width:42px;height:42px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;background:var(--ac-soft);color:var(--ac-green)}.quick-card{display:block;text-decoration:none;color:inherit;border:1px solid var(--ac-border);border-radius:16px;padding:16px;background:#fff}.quick-card:hover{border-color:var(--ac-green);background:var(--ac-soft)}.form-control,.form-select{border-color:#d7e3dc;border-radius:12px}.form-control:focus,.form-select:focus{border-color:#56b982;box-shadow:0 0 0 .2rem rgba(22,131,74,.12)}.btn{border-radius:12px;font-weight:600}.table thead th{position:sticky;top:0;background:#f8fbf9;z-index:1;color:#385244;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}.table td,.table th{vertical-align:middle}.mono-badge{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f3f6f4;border:1px solid #dfe8e3;border-radius:999px;padding:.25rem .55rem;font-size:.78rem}.switch{width:2.65rem;height:1.35rem}.changed{background:#fff8e6!important;box-shadow:inset 4px 0 #ffc107}.code-block{background:#0d1f17;color:#d9fbe7;border-radius:14px;padding:14px;white-space:pre-wrap;font-size:.78rem}.brand-preview{background:linear-gradient(180deg,#fff,#f5fbf7);border:1px solid var(--ac-border);border-radius:20px;padding:18px;position:sticky;top:16px}.color-chip{width:42px;border-radius:12px;border:1px solid #d7e3dc}.empty-state{border:1px dashed #bfd3c7;border-radius:16px;padding:24px;text-align:center;color:#6b7f73;background:#fbfdfc}.toolbar{background:#fff;border:1px solid var(--ac-border);border-radius:18px;padding:14px}.accordion-button{border-radius:16px!important;font-weight:700}.accordion-item{border:1px solid var(--ac-border);border-radius:18px!important;overflow:hidden}.muted-row{opacity:.62}.toast-lite{position:fixed;right:20px;bottom:20px;background:#173327;color:#fff;border-radius:14px;padding:12px 16px;box-shadow:0 12px 30px rgba(0,0,0,.18);z-index:1080}.membership-preview li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #edf3ef}.brand-asset-preview{max-height:60px;max-width:180px;object-fit:contain;border:1px solid var(--ac-border);border-radius:10px;padding:4px;background:#fff;margin-top:8px}.brand-color-chip{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;line-height:1;margin:4px;min-height:26px;box-shadow:0 1px 2px rgba(15,23,42,.08)}.brand-upload-group .btn{border-top-left-radius:0;border-bottom-left-radius:0}@media(max-width:768px){.app-config-page .hero{padding:18px}.ac-tabs{overflow-x:auto;flex-wrap:nowrap!important}.ac-tabs .nav-link{white-space:nowrap}}
 </style>
 @endpush
 @section('content')
@@ -75,10 +128,16 @@ $publicApi = 'https://peersunity.com/api/v1/app/config';
 @endif
 
 @if($active==='branding')
-<form method="POST" action="{{ route('admin.app-config.branding') }}">@csrf @method('PUT')<div class="row g-4"><div class="col-xl-8">@foreach($brandGroups as $title=>$group)<div class="card ac-card mb-4"><div class="card-header"><h2 class="h5 mb-1"><i class="bi {{ $group['icon'] }} text-success me-2"></i>{{ $title }}</h2><p class="text-muted small mb-0">{{ $group['help'] }}</p></div><div class="card-body row g-3">@foreach($group['fields'] as $field)<div class="col-md-6"><label class="form-label fw-semibold" title="{{ $field }}">{{ ucwords(str_replace('_',' ', $field)) }}</label><div class="input-group">@if(in_array($field,$colorFields,true))<input type="color" class="form-control form-control-color color-chip js-color" value="{{ old($field, $branding[$field] ?? '#198754') }}" data-target="{{ $field }}">@endif<input id="{{ $field }}" name="{{ $field }}" value="{{ old($field, $branding[$field] ?? ($field==='app_name'?'Greenpreneur':'')) }}" class="form-control js-brand-input" placeholder="{{ $field }}"></div><div class="form-text">{{ $fieldHelp[$field] ?? 'Used by the app configuration API.' }}</div></div>@endforeach</div></div>@endforeach<div class="sticky-bottom bg-white border rounded-4 p-3 d-flex gap-2"><button class="btn btn-success"><i class="bi bi-save me-1"></i>Save Branding</button><button type="button" class="btn btn-outline-secondary" id="resetPreview">Reset color preview</button></div></div><div class="col-xl-4"><div class="brand-preview"><h2 class="h5">Live Brand Preview</h2><p class="text-muted small">Visual sanity check before saving.</p><img data-logo-preview src="{{ $branding['app_logo_url'] ?? '' }}" class="rounded-4 border mb-3" style="width:82px;height:82px;object-fit:contain" onerror="this.style.display='none'"><div class="p-3 rounded-4 mb-3" data-preview-card style="background:{{ $branding['splash_bg_color'] ?? '#f4faf7' }}"><div class="fw-bold" data-preview-name style="color:{{ $branding['text_color'] ?? '#173327' }}">{{ $branding['app_name'] ?? 'Greenpreneur' }}</div><div class="small text-muted">Sample mobile configuration card</div><button type="button" class="btn btn-sm mt-3 text-white" data-preview-button style="background:{{ $branding['button_color'] ?? '#198754' }}">Sample Button</button></div><div class="d-flex gap-2 flex-wrap">@foreach($colorFields as $field)<span class="badge rounded-pill" data-preview-chip="{{ $field }}" style="background:{{ $branding[$field] ?? '#198754' }}">{{ str_replace('_color','',$field) }}</span>@endforeach</div></div></div></div></form>
+<form method="POST" action="{{ route('admin.app-config.branding') }}">@csrf @method('PUT')<div class="row g-4"><div class="col-xl-8">@foreach($brandGroups as $title=>$group)<div class="card ac-card mb-4"><div class="card-header"><h2 class="h5 mb-1"><i class="bi {{ $group['icon'] }} text-success me-2"></i>{{ $title }}</h2><p class="text-muted small mb-0">{{ $group['help'] }}</p></div><div class="card-body row g-3">@foreach($group['fields'] as $field)<div class="col-md-6"><label class="form-label fw-semibold" title="{{ $field }}">{{ ucwords(str_replace('_',' ', $field)) }}</label><div class="input-group @if(in_array($field,$brandUploadFields,true)) brand-upload-group @endif">@if(in_array($field,$colorFields,true))<input type="color" class="form-control form-control-color color-chip js-color" value="{{ old($field, $branding[$field] ?? '#198754') }}" data-target="{{ $field }}">@endif<input id="{{ $field }}" name="{{ $field }}" value="{{ old($field, $branding[$field] ?? ($field==='app_name'?'Greenpreneur':'')) }}" class="form-control js-brand-input" placeholder="{{ $field }}" @if(in_array($field,$brandUploadFields,true)) type="url" @endif>@if(in_array($field,$brandUploadFields,true))<button type="button" class="btn btn-outline-success js-brand-asset-upload" data-field="{{ $field }}"><i class="bi bi-cloud-upload me-1"></i>Upload</button><input type="file" class="d-none js-brand-asset-file" data-field="{{ $field }}" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml">@endif</div>@if(in_array($field,$brandUploadFields,true))<img src="{{ old($field, $branding[$field] ?? '') }}" class="brand-asset-preview" data-preview-for="{{ $field }}" style="display:{{ filled(old($field, $branding[$field] ?? '')) ? 'block' : 'none' }}" onerror="this.style.display='none'">@endif<div class="form-text">{{ $fieldHelp[$field] ?? 'Used by the app configuration API.' }}</div></div>@endforeach</div></div>@endforeach<div class="sticky-bottom bg-white border rounded-4 p-3 d-flex gap-2"><button class="btn btn-success"><i class="bi bi-save me-1"></i>Save Branding</button><button type="button" class="btn btn-outline-secondary" id="resetPreview">Reset color preview</button></div></div><div class="col-xl-4"><div class="brand-preview"><h2 class="h5">Live Brand Preview</h2><p class="text-muted small">Visual sanity check before saving.</p><img data-logo-preview src="{{ $branding['app_logo_url'] ?? '' }}" class="rounded-4 border mb-3" style="width:82px;height:82px;object-fit:contain" onerror="this.style.display='none'"><div class="p-3 rounded-4 mb-3" data-preview-card style="background:{{ $branding['splash_bg_color'] ?? '#f4faf7' }}"><div class="fw-bold" data-preview-name style="color:{{ $branding['text_color'] ?? '#173327' }}">{{ $branding['app_name'] ?? 'Greenpreneur' }}</div><div class="small text-muted">Sample mobile configuration card</div><button type="button" class="btn btn-sm mt-3 text-white" data-preview-button style="background:{{ $branding['button_color'] ?? '#198754' }}">Sample Button</button></div><div class="d-flex gap-2 flex-wrap">@foreach($colorFields as $field)@php($chipColor = $branding[$field] ?? '#198754')<span class="brand-color-chip" data-preview-chip="{{ $field }}" style="background-color:{{ $chipColor }};color:{{ getReadableTextColor($chipColor) }};border:{{ isLightColor($chipColor) ? '1px solid #D1D5DB' : '1px solid transparent' }}">{{ str_replace('_color','',$field) }}</span>@endforeach</div></div></div></div></form>
 @endif
 @if($active==='labels')
 <form method="POST" action="{{ route('admin.app-config.labels') }}" class="card ac-card">@csrf @method('PUT')<div class="card-header"><div class="d-flex flex-wrap justify-content-between gap-2"><div><h2 class="h5 mb-1">Labels</h2><p class="text-muted small mb-0">Edit text shown in the app without changing code. <span class="badge bg-light text-dark border">{{ $labels->count() }} total</span></p></div><button class="btn btn-success"><i class="bi bi-save me-1"></i>Save All Changed Labels</button></div></div><div class="card-body"><div class="toolbar row g-2 mb-3"><div class="col-md-5"><input class="form-control js-search" data-target="#labelsTable" placeholder="Search labels by key, value, group, or description"></div><div class="col-md-4"><select class="form-select js-filter" data-target="#labelsTable" data-col="group"><option value="">All groups</option>@foreach($labels->pluck('group_name')->filter()->unique()->sort() as $group)<option value="{{ $group }}">{{ $group }}</option>@endforeach</select></div><div class="col-md-3"><select class="form-select js-filter" data-target="#labelsTable" data-col="active"><option value="">All statuses</option><option value="1">Active</option><option value="0">Inactive</option></select></div></div><div class="table-responsive" style="max-height:68vh"><table id="labelsTable" class="table align-middle"><thead><tr><th>Label Key</th><th>Label Value</th><th>Group Name</th><th>Description</th><th>Active</th><th>Action</th></tr></thead><tbody>@forelse($labels as $l)<tr data-group="{{ $l->group_name }}" data-active="{{ $l->is_active ? '1':'0' }}"><td><span class="mono-badge">{{ $l->label_key }}</span></td><td><input class="form-control form-control-sm js-dirty" name="labels[{{ $l->label_key }}][label_value]" value="{{ $l->label_value }}"></td><td><input class="form-control form-control-sm js-dirty" name="labels[{{ $l->label_key }}][group_name]" value="{{ $l->group_name }}"></td><td><input class="form-control form-control-sm js-dirty" name="labels[{{ $l->label_key }}][description]" value="{{ $l->description }}"></td><td><div class="form-check form-switch"><input type="checkbox" class="form-check-input switch js-dirty" name="labels[{{ $l->label_key }}][is_active]" value="1" @checked($l->is_active)></div></td><td><button class="btn btn-sm btn-outline-success">Save</button></td></tr>@empty<tr><td colspan="6"><div class="empty-state">No labels found.</div></td></tr>@endforelse</tbody></table></div></div><div class="card-footer bg-white"><button class="btn btn-success">Bulk Save Labels</button><button type="reset" class="btn btn-outline-secondary ms-2">Discard changes</button><span class="small text-muted ms-2 unsaved-count"></span></div></form>
+@endif
+
+
+@if($active==='icons')
+@php($iconGroups=['bottom_navigation'=>'Bottom Navigation','highlights_grid'=>'Highlights Grid','plus_menu'=>'Plus Menu','impact_dashboard'=>'Impact Dashboard','drawer_menu'=>'Drawer Menu','custom_assets'=>'Custom Assets'])
+<form method="POST" action="{{ route('admin.app-config.icons') }}">@csrf @method('PUT')<div class="toolbar d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h2 class="h5 mb-1">Mobile Icon Catalog</h2><p class="text-muted small mb-0">Manage Iconsax, Material, custom asset, and remote URL icon mappings used by Flutter.</p></div><button class="btn btn-success"><i class="bi bi-save me-1"></i>Bulk Save Icons</button></div>@foreach($iconGroups as $groupKey=>$groupLabel)@php($groupIcons=$icons->where('icon_group',$groupKey)->sortBy('sort_order'))<div class="card ac-card mb-4"><div class="card-header d-flex flex-wrap justify-content-between gap-2"><div><h3 class="h5 mb-1">{{ $groupLabel }}</h3><p class="text-muted small mb-0"><span class="badge bg-light text-dark border">{{ $groupIcons->count() }} icons</span></p></div><button class="btn btn-sm btn-outline-success">Save {{ $groupLabel }}</button></div><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Sort</th><th>Icon Key</th><th>Icon Name</th><th>Source Type</th><th>Library</th><th>Default Icon</th><th>Selected Icon</th><th style="min-width:260px">Remote Icon URL</th><th style="min-width:260px">Selected Remote URL</th><th>Fallback Asset</th><th>Feature Key</th><th>Menu Key</th><th>Preview</th><th>Active</th><th>Action</th></tr></thead><tbody>@forelse($groupIcons as $icon)<tr><td><input type="number" min="0" class="form-control form-control-sm js-dirty" name="icons[{{ $icon->icon_key }}][sort_order]" value="{{ $icon->sort_order }}" style="width:80px"></td><td><span class="mono-badge">{{ $icon->icon_key }}</span></td><td><input class="form-control form-control-sm js-dirty" name="icons[{{ $icon->icon_key }}][icon_name]" value="{{ $icon->icon_name }}"></td><td><span class="badge bg-light text-dark border">{{ $icon->source_type }}</span></td><td><input class="form-control form-control-sm" value="{{ $icon->icon_library }}" readonly></td><td><input class="form-control form-control-sm" value="{{ $icon->default_icon }}" readonly></td><td><input class="form-control form-control-sm" value="{{ $icon->selected_icon }}" readonly></td><td><div class="input-group input-group-sm"><input class="form-control js-dirty js-icon-url" data-icon-key="{{ $icon->icon_key }}" data-target-field="icon_url" name="icons[{{ $icon->icon_key }}][icon_url]" value="{{ $icon->icon_url }}" placeholder="Remote icon URL"><button type="button" class="btn btn-outline-success js-icon-upload" data-icon-key="{{ $icon->icon_key }}" data-target-field="icon_url"><i class="bi bi-cloud-upload"></i></button><input type="file" class="d-none js-icon-upload-file" data-icon-key="{{ $icon->icon_key }}" data-target-field="icon_url" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"></div></td><td><div class="input-group input-group-sm"><input class="form-control js-dirty js-icon-url" data-icon-key="{{ $icon->icon_key }}" data-target-field="selected_icon_url" name="icons[{{ $icon->icon_key }}][selected_icon_url]" value="{{ $icon->selected_icon_url }}" placeholder="Selected remote URL"><button type="button" class="btn btn-outline-success js-icon-upload" data-icon-key="{{ $icon->icon_key }}" data-target-field="selected_icon_url"><i class="bi bi-cloud-upload"></i></button><input type="file" class="d-none js-icon-upload-file" data-icon-key="{{ $icon->icon_key }}" data-target-field="selected_icon_url" accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"></div></td><td><input class="form-control form-control-sm js-dirty" name="icons[{{ $icon->icon_key }}][fallback_asset]" value="{{ $icon->fallback_asset }}"></td><td><input class="form-control form-control-sm js-dirty" name="icons[{{ $icon->icon_key }}][feature_key]" value="{{ $icon->feature_key }}"></td><td><input class="form-control form-control-sm js-dirty" name="icons[{{ $icon->icon_key }}][menu_key]" value="{{ $icon->menu_key }}"></td><td>@if($icon->icon_url)<img src="{{ $icon->icon_url }}" data-icon-preview="{{ $icon->icon_key }}" style="width:32px;height:32px;object-fit:contain" onerror="this.style.display='none'">@else<span class="text-muted small" data-icon-preview-empty="{{ $icon->icon_key }}">fallback</span><img src="" data-icon-preview="{{ $icon->icon_key }}" style="width:32px;height:32px;object-fit:contain;display:none" onerror="this.style.display='none'">@endif</td><td><div class="form-check form-switch"><input type="checkbox" class="form-check-input switch js-dirty" name="icons[{{ $icon->icon_key }}][is_active]" value="1" @checked($icon->is_active)></div></td><td><button class="btn btn-sm btn-outline-success">Save</button></td></tr>@empty<tr><td colspan="15"><div class="empty-state">No icons configured for {{ $groupLabel }}. Run migrations to seed the Greenpreneur icon catalog.</div></td></tr>@endforelse</tbody></table></div></div>@endforeach<div class="sticky-bottom bg-white border rounded-4 p-3"><button class="btn btn-success"><i class="bi bi-save me-1"></i>Bulk Save Icons</button></div></form>
 @endif
 
 @if($active==='features')
@@ -105,7 +164,7 @@ $publicApi = 'https://peersunity.com/api/v1/app/config';
 @if($active==='api-docs')
 <div class="card ac-card mb-4"><div class="card-body"><div class="row g-3"><div class="col-md-4"><div class="text-muted small">Base URL</div><code>https://peersunity.com/api/v1</code></div><div class="col-md-4"><div class="text-muted small">Public API</div><span class="badge bg-primary me-1">GET</span><code>/app/config</code></div><div class="col-md-4"><div class="text-muted small">Admin headers</div><button class="btn btn-sm btn-outline-secondary copy-btn" data-copy="Authorization: Bearer ADMIN_TOKEN&#10;Accept: application/json&#10;Content-Type: application/json">Copy Headers</button></div></div></div></div>
 @foreach(['Public API'=>array_slice($docs,0,1),'Admin APIs'=>array_slice($docs,1)] as $group=>$items)<h2 class="h5 mt-4">{{ $group }}</h2><div class="row g-3">@foreach($items as $d)<div class="col-xl-6"><div class="card ac-card h-100"><div class="card-body"><div class="d-flex justify-content-between gap-2 mb-2"><div><span class="badge bg-{{ $methodClass[$d[0]] ?? 'secondary' }} me-2">{{ $d[0] }}</span><code>{{ $d[1] }}</code></div><span class="badge {{ $d[2]==='Yes'?'bg-dark':'bg-light text-dark border' }}">Auth: {{ $d[2] }}</span></div><p class="text-muted small">{{ $d[3] }}</p><div class="row g-2"><div class="col-md-6"><div class="small fw-semibold mb-1">Request example</div><pre class="code-block">{{ $d[4] }}</pre></div><div class="col-md-6"><div class="small fw-semibold mb-1">Response example</div><pre class="code-block">{{ $d[5] }}</pre></div></div><button class="btn btn-sm btn-outline-secondary copy-btn mt-2" data-copy="{{ $d[1] }}">Copy endpoint</button></div></div></div>@endforeach</div>@endforeach
-<div class="alert alert-success rounded-4 mt-4"><h3 class="h6"><i class="bi bi-phone me-1"></i>Flutter Integration Notes</h3><ul class="mb-0"><li>Call <code>/app/config</code> on splash.</li><li>Cache the response and refresh after app updates or admin changes.</li><li>Use labels dynamically for all Unity/Greenpreneur naming.</li><li>Use features and widget flags for visibility.</li><li>Do not hardcode Unity labels in Flutter screens.</li></ul></div>
+<div class="alert alert-success rounded-4 mt-4"><h3 class="h6"><i class="bi bi-phone me-1"></i>Flutter Integration Notes</h3><ul class="mb-0"><li>Call <code>/app/config</code> on splash.</li><li>Cache the response and refresh after app updates or admin changes.</li><li>Use labels dynamically for all Unity/Greenpreneur naming.</li><li>Use features and widget flags for visibility.</li><li>Read <code>data.icons</code>; prefer <code>icon_url</code>/<code>selected_icon_url</code>, then custom fallback assets, Iconsax defaults, or Material defaults.</li><li>If an icon feature key is disabled, hide the related menu or action.</li><li>Do not hardcode Unity labels in Flutter screens.</li></ul></div>
 @endif
 </div>
 @endsection
@@ -118,8 +177,77 @@ document.querySelectorAll('.js-filter').forEach(f=>f.addEventListener('change',(
 document.querySelectorAll('.js-search-card').forEach(i=>i.addEventListener('input',()=>document.querySelectorAll(i.dataset.target).forEach(c=>c.style.display=c.innerText.toLowerCase().includes(i.value.toLowerCase())?'':'none')));
 document.querySelectorAll('.js-card-status').forEach(s=>s.addEventListener('change',()=>document.querySelectorAll('.feature-card').forEach(c=>c.style.display=!s.value||c.dataset.active===s.value?'':'none')));
 document.querySelectorAll('.js-dirty').forEach(el=>el.addEventListener('change',()=>{const row=el.closest('tr,.card');if(row) row.classList.add('changed');document.querySelectorAll('.unsaved-count').forEach(x=>x.textContent='Unsaved changes detected')}));
-document.querySelectorAll('.js-color').forEach(c=>c.addEventListener('input',()=>{const target=document.getElementById(c.dataset.target);if(target) target.value=c.value;const chip=document.querySelector('[data-preview-chip="'+c.dataset.target+'"]');if(chip) chip.style.background=c.value;if(c.dataset.target==='button_color'){const btn=document.querySelector('[data-preview-button]');if(btn) btn.style.background=c.value}if(c.dataset.target==='text_color'){const name=document.querySelector('[data-preview-name]');if(name) name.style.color=c.value}if(c.dataset.target==='splash_bg_color'){const card=document.querySelector('[data-preview-card]');if(card) card.style.background=c.value}}));
+const normalizeHexForPreview=(hex)=>{if(!hex)return null;let value=String(hex).trim().replace(/^#/,'');if(value.length===8)value=value.substring(2);return /^[0-9a-fA-F]{6}$/.test(value)?value:null};
+const previewBrightness=(hex)=>{const value=normalizeHexForPreview(hex);if(!value)return 255;const r=parseInt(value.substring(0,2),16),g=parseInt(value.substring(2,4),16),b=parseInt(value.substring(4,6),16);return ((r*299)+(g*587)+(b*114))/1000};
+const getReadableTextColor=(hex)=>previewBrightness(hex)>180?'#0F172A':'#FFFFFF';
+const isLightColor=(hex)=>previewBrightness(hex)>180;
+document.querySelectorAll('.js-color').forEach(c=>c.addEventListener('input',()=>{const target=document.getElementById(c.dataset.target);if(target) target.value=c.value;const chip=document.querySelector('[data-preview-chip="'+c.dataset.target+'"]');if(chip){chip.style.backgroundColor=c.value;chip.style.color=getReadableTextColor(c.value);chip.style.border=isLightColor(c.value)?'1px solid #D1D5DB':'1px solid transparent'}if(c.dataset.target==='button_color'){const btn=document.querySelector('[data-preview-button]');if(btn) btn.style.background=c.value}if(c.dataset.target==='text_color'){const name=document.querySelector('[data-preview-name]');if(name) name.style.color=c.value}if(c.dataset.target==='splash_bg_color'){const card=document.querySelector('[data-preview-card]');if(card) card.style.background=c.value}}));
 document.querySelectorAll('.js-brand-input').forEach(i=>i.addEventListener('input',()=>{if(i.id==='app_name'){const n=document.querySelector('[data-preview-name]');if(n) n.textContent=i.value||'Greenpreneur'}if(i.id==='app_logo_url'){const img=document.querySelector('[data-logo-preview]');if(img){img.src=i.value;img.style.display=i.value?'block':'none'}}}));
+
+const brandUploadUrl='{{ route('admin.app-config.upload-brand-asset') }}';
+const csrfToken=document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+document.querySelectorAll('.js-brand-asset-upload').forEach(button=>button.addEventListener('click',()=>{
+    document.querySelector('.js-brand-asset-file[data-field="'+button.dataset.field+'"]')?.click();
+}));
+document.querySelectorAll('.js-brand-asset-file').forEach(fileInput=>fileInput.addEventListener('change',async()=>{
+    const file=fileInput.files?.[0];
+    if(!file) return;
+    const field=fileInput.dataset.field;
+    const button=document.querySelector('.js-brand-asset-upload[data-field="'+field+'"]');
+    const oldHtml=button?.innerHTML;
+    const formData=new FormData();
+    formData.append('field',field);
+    formData.append('file',file);
+    if(button){button.disabled=true;button.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Uploading';}
+    try{
+        const response=await fetch(brandUploadUrl,{method:'POST',headers:{'X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},body:formData});
+        const payload=await response.json().catch(()=>({success:false,message:'Upload failed.'}));
+        if(!response.ok || !payload.success) throw new Error(payload.message || 'Upload failed.');
+        const input=document.getElementById(field);
+        if(input){input.value=payload.data.url;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));}
+        const preview=document.querySelector('[data-preview-for="'+field+'"]');
+        if(preview){preview.src=payload.data.url;preview.style.display='block';}
+        toast(payload.message || 'Brand asset uploaded successfully.');
+    }catch(error){
+        toast(error.message || 'Upload failed.');
+    }finally{
+        fileInput.value='';
+        if(button){button.disabled=false;button.innerHTML=oldHtml;}
+    }
+}));
+
+
+const iconUploadUrl='{{ route('admin.app-config.icons.upload') }}';
+document.querySelectorAll('.js-icon-upload').forEach(button=>button.addEventListener('click',()=>{
+    document.querySelector('.js-icon-upload-file[data-icon-key="'+button.dataset.iconKey+'"][data-target-field="'+button.dataset.targetField+'"]')?.click();
+}));
+document.querySelectorAll('.js-icon-upload-file').forEach(fileInput=>fileInput.addEventListener('change',async()=>{
+    const file=fileInput.files?.[0];
+    if(!file) return;
+    const button=document.querySelector('.js-icon-upload[data-icon-key="'+fileInput.dataset.iconKey+'"][data-target-field="'+fileInput.dataset.targetField+'"]');
+    const oldHtml=button?.innerHTML;
+    const formData=new FormData();
+    formData.append('icon_key',fileInput.dataset.iconKey);
+    formData.append('target_field',fileInput.dataset.targetField);
+    formData.append('file',file);
+    if(button){button.disabled=true;button.innerHTML='<span class="spinner-border spinner-border-sm"></span>';}
+    try{
+        const response=await fetch(iconUploadUrl,{method:'POST',headers:{'X-CSRF-TOKEN':csrfToken,'Accept':'application/json'},body:formData});
+        const payload=await response.json().catch(()=>({success:false,message:'Upload failed.'}));
+        if(!response.ok || !payload.success) throw new Error(payload.message || 'Upload failed.');
+        const input=document.querySelector('.js-icon-url[data-icon-key="'+payload.data.icon_key+'"][data-target-field="'+payload.data.target_field+'"]');
+        if(input){input.value=payload.data.url;input.dispatchEvent(new Event('change',{bubbles:true}));}
+        if(payload.data.target_field==='icon_url'){
+            const preview=document.querySelector('[data-icon-preview="'+payload.data.icon_key+'"]');
+            const empty=document.querySelector('[data-icon-preview-empty="'+payload.data.icon_key+'"]');
+            if(empty) empty.style.display='none';
+            if(preview){preview.src=payload.data.url;preview.style.display='inline-block';}
+        }
+        toast(payload.message || 'Icon uploaded successfully.');
+    }catch(error){toast(error.message || 'Upload failed.');}
+    finally{fileInput.value='';if(button){button.disabled=false;button.innerHTML=oldHtml;}}
+}));
+
 document.getElementById('resetPreview')?.addEventListener('click',()=>document.querySelectorAll('.js-color').forEach(c=>c.dispatchEvent(new Event('input'))));
 </script>
 @endpush

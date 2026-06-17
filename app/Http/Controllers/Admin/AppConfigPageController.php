@@ -8,6 +8,7 @@ use App\Services\AppConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AppConfigPageController extends Controller
@@ -29,18 +30,50 @@ class AppConfigPageController extends Controller
             $membershipQuery->where('app_instance_id', $id);
         }
         $membershipLabels = $membershipQuery->orderBy('membership_key')->get();
-        $lastUpdated = collect([$branding, ...$labels, ...$features, ...$navigation, ...$widgets, ...$socialLinks, ...$membershipLabels])
+        $icons = Schema::hasTable('app_icon_assets') ? DB::table('app_icon_assets')->where('app_instance_id', $id)->orderBy('sort_order')->orderBy('icon_key')->get() : collect();
+        $lastUpdated = collect([$branding, ...$labels, ...$features, ...$navigation, ...$widgets, ...$socialLinks, ...$membershipLabels, ...$icons])
             ->pluck('updated_at')->filter()->sortDesc()->first();
 
-        return view('admin.app-config.index', compact('app', 'branding', 'labels', 'features', 'navigation', 'widgets', 'socialLinks', 'membershipLabels', 'lastUpdated'));
+        return view('admin.app-config.index', compact('app', 'branding', 'labels', 'features', 'navigation', 'widgets', 'socialLinks', 'membershipLabels', 'icons', 'lastUpdated'));
+    }
+
+
+    public function uploadBrandAsset(Request $request)
+    {
+        $data = $request->validate([
+            'field' => ['required', 'string', Rule::in(['logo_url_light', 'logo_url_dark', 'logo_url_splash', 'app_logo_url', 'splash_logo_url'])],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,svg', 'max:5120'],
+        ]);
+
+        $extension = strtolower($request->file('file')->getClientOriginalExtension());
+        if ($extension === 'svg') {
+            $svg = strtolower((string) file_get_contents($request->file('file')->getRealPath()));
+            abort_if(str_contains($svg, '<script') || str_contains($svg, 'javascript:') || str_contains($svg, '<foreignobject'), 422, 'SVG contains unsafe content.');
+        }
+
+        $filename = Str::of($data['field'])->replace('_', '-')->slug('-')
+            . '-' . now()->format('Ymd-His')
+            . '-' . Str::lower(Str::random(8))
+            . '.' . $extension;
+
+        $path = $request->file('file')->storeAs('app-config/greenpreneur/branding', $filename, 'public');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Brand asset uploaded successfully.',
+            'data' => [
+                'field' => $data['field'],
+                'url' => asset('storage/' . $path),
+            ],
+        ]);
     }
 
     public function updateBranding(Request $request)
     {
-        $hex = ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'];
+        $hex = ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/'];
         $data = $request->validate([
-            'app_name' => ['required', 'string', 'max:255'], 'app_logo_url' => ['nullable', 'url'], 'splash_logo_url' => ['nullable', 'url'],
-            'primary_color' => $hex, 'secondary_color' => $hex, 'accent_color' => $hex, 'splash_bg_color' => $hex, 'button_color' => $hex, 'text_color' => $hex,
+            'app_name' => ['nullable', 'string', 'max:255'], 'app_logo_url' => ['nullable', 'url'], 'splash_logo_url' => ['nullable', 'url'], 'logo_url_light' => ['nullable', 'url'], 'logo_url_dark' => ['nullable', 'url'], 'logo_url_splash' => ['nullable', 'url'],
+            'primary_color' => $hex, 'primary_dark_color' => $hex, 'primary_light_color' => $hex, 'primary_ultra_light_color' => $hex, 'secondary_color' => $hex, 'secondary_light_color' => $hex, 'background_color' => $hex, 'background_light_color' => $hex, 'background_secondary_color' => $hex, 'background_dark_color' => $hex, 'card_background_color' => $hex, 'card_border_color' => $hex, 'text_primary_color' => $hex, 'text_secondary_color' => $hex, 'secondary_color' => $hex, 'accent_color' => $hex, 'splash_bg_color' => $hex, 'button_color' => $hex, 'text_color' => $hex,
             'playstore_url' => ['nullable', 'url'], 'appstore_url' => ['nullable', 'url'], 'website_url' => ['nullable', 'url'], 'support_email' => ['nullable', 'email'], 'support_phone' => ['nullable', 'string', 'max:50'],
         ]);
         DB::table('app_config_settings')->updateOrInsert(['app_instance_id' => $this->appId(), 'app_key' => 'greenpreneur'], $data + ['is_active' => true, 'updated_at' => now(), 'created_at' => now()]);
@@ -88,6 +121,55 @@ class AppConfigPageController extends Controller
         $data = $request->validate(['social_links' => ['required','array'], 'social_links.*.display_name' => ['required','string','max:255'], 'social_links.*.url' => ['nullable','url'], 'social_links.*.icon' => ['nullable','string','max:100'], 'social_links.*.is_enabled' => ['nullable'], 'social_links.*.sort_order' => ['nullable','integer','min:0']]);
         foreach ($data['social_links'] as $platform => $row) { DB::table('app_social_links')->updateOrInsert(['app_instance_id' => $this->appId(), 'platform' => $platform], ['platform_key' => $platform, 'label' => $row['display_name'], 'display_name' => $row['display_name'], 'url' => $row['url'] ?? null, 'icon' => $row['icon'] ?? null, 'is_enabled' => $request->boolean("social_links.$platform.is_enabled"), 'sort_order' => $row['sort_order'] ?? 0, 'updated_at' => now(), 'created_at' => now()]); }
         return $this->done('Social links updated successfully.', 'social');
+    }
+
+
+
+    public function uploadIconAsset(Request $request)
+    {
+        $data = $request->validate([
+            'icon_key' => ['required', 'string', 'max:150'],
+            'target_field' => ['required', Rule::in(['icon_url', 'selected_icon_url'])],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048'],
+        ]);
+
+        $extension = strtolower($request->file('file')->getClientOriginalExtension());
+        if ($extension === 'svg') {
+            $svg = strtolower((string) file_get_contents($request->file('file')->getRealPath()));
+            abort_if(str_contains($svg, '<script') || str_contains($svg, 'javascript:') || str_contains($svg, '<foreignobject'), 422, 'SVG contains unsafe content.');
+        }
+
+        $filename = Str::of($data['icon_key'])->replace('_', '-')->slug('-')
+            . '-' . $data['target_field']
+            . '-' . now()->format('Ymd-His')
+            . '-' . Str::lower(Str::random(8))
+            . '.' . $extension;
+        $path = $request->file('file')->storeAs('app-config/greenpreneur/icons', $filename, 'public');
+        $url = asset('storage/' . $path);
+
+        DB::table('app_icon_assets')
+            ->where('app_instance_id', $this->appId())
+            ->where('icon_key', $data['icon_key'])
+            ->update([$data['target_field'] => $url, 'updated_at' => now()]);
+
+        AppConfigController::clearCache();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Icon uploaded successfully.',
+            'data' => [
+                'icon_key' => $data['icon_key'],
+                'target_field' => $data['target_field'],
+                'url' => $url,
+            ],
+        ]);
+    }
+
+    public function bulkIcons(Request $request)
+    {
+        $data = $request->validate(['icons' => ['required','array'], 'icons.*.icon_name' => ['nullable','string','max:255'], 'icons.*.icon_url' => ['nullable','url'], 'icons.*.selected_icon_url' => ['nullable','url'], 'icons.*.fallback_asset' => ['nullable','string','max:255'], 'icons.*.feature_key' => ['nullable','string','max:100'], 'icons.*.menu_key' => ['nullable','string','max:100'], 'icons.*.is_active' => ['nullable'], 'icons.*.sort_order' => ['nullable','integer','min:0']]);
+        foreach ($data['icons'] as $key => $row) { DB::table('app_icon_assets')->updateOrInsert(['app_instance_id' => $this->appId(), 'icon_key' => $key], ['icon_name' => $row['icon_name'] ?? null, 'icon_url' => $row['icon_url'] ?? null, 'selected_icon_url' => $row['selected_icon_url'] ?? null, 'fallback_asset' => $row['fallback_asset'] ?? null, 'feature_key' => $row['feature_key'] ?? null, 'menu_key' => $row['menu_key'] ?? null, 'is_active' => $request->boolean("icons.$key.is_active"), 'sort_order' => $row['sort_order'] ?? 0, 'updated_at' => now(), 'created_at' => now()]); }
+        return $this->done('Icons updated successfully.', 'icons');
     }
 
     public function membershipLabels(Request $request)
