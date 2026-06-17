@@ -10,7 +10,6 @@
     </div>
     <div class="d-flex flex-wrap gap-2 justify-content-end">
         <a href="{{ route('admin.contacts.index') }}" class="btn btn-outline-secondary">Back to Contacts</a>
-        <a href="{{ route('admin.contacts.import', ['user_id' => $userId]) }}" class="btn btn-primary">Import CSV</a>
         <a href="{{ route('admin.contacts.user-details.export', array_merge(['user_id' => $userId], request()->query())) }}" class="btn btn-outline-primary">Export CSV</a>
         <button type="submit" form="selected-export-form" id="export-selected-btn" class="btn btn-outline-success" disabled>Export Selected CSV</button>
         <span id="selected-count" class="align-self-center text-muted small">Selected: 0</span>
