@@ -34,6 +34,7 @@ use App\Services\Events\EventRegistrationQrService;
 use App\Services\Events\EventRazorpayPaymentFinalizer;
 use App\Services\Events\EventRazorpayPaymentService;
 use App\Services\Events\EventZohoInvoiceSyncService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -74,14 +75,13 @@ class EventController extends BaseApiController
     public function allWithLiveStatus(Request $request)
     {
         try {
-            $timezone = config('app.timezone') ?: 'Asia/Kolkata';
+            $timezone = config('app.timezone', 'Asia/Kolkata') ?: 'Asia/Kolkata';
             $now = now($timezone);
 
             $occurrences = EventOccurrence::query()
                 ->with(['event.circle'])
                 ->whereNotNull('start_at')
                 ->whereNotNull('end_at')
-                ->where('end_at', '>=', $now)
                 ->where(function ($query): void {
                     $query->whereNull('status')
                         ->orWhereNotIn('status', ['cancelled', 'canceled', 'rejected', 'deleted', 'archived', 'inactive']);
@@ -100,15 +100,38 @@ class EventController extends BaseApiController
                 })
                 ->get()
                 ->filter(fn (EventOccurrence $occurrence) => $occurrence->event !== null)
-                ->map(function (EventOccurrence $occurrence) use ($now): array {
+                ->map(function (EventOccurrence $occurrence) use ($now, $timezone): ?array {
                     $event = $occurrence->event;
-                    $startAt = $occurrence->start_at?->copy()->setTimezone($now->timezone);
-                    $endAt = $occurrence->end_at?->copy()->setTimezone($now->timezone);
-                    $isLiveEvent = $startAt && $endAt && $startAt->lessThanOrEqualTo($now) && $endAt->greaterThanOrEqualTo($now);
+                    $startAt = $this->localEventDateTime($occurrence->start_at, $timezone);
+                    $endAt = $this->localEventDateTime($occurrence->end_at, $timezone);
+
+                    if (! $startAt || ! $endAt || $endAt->lt($now)) {
+                        return null;
+                    }
+
+                    $isLiveEvent = $startAt->lte($now) && $endAt->gte($now);
+                    $isUpcoming = $startAt->gt($now);
+
+                    if (! $isLiveEvent && ! $isUpcoming) {
+                        return null;
+                    }
+
+                    $eventStatus = $isLiveEvent ? 'live' : 'upcoming';
+
+                    Log::debug('events_all_with_live_status_calculated', [
+                        'event_id' => $event->id,
+                        'occurrence_id' => $occurrence->id,
+                        'timezone' => $timezone,
+                        'current_time' => $now->format('Y-m-d H:i:s'),
+                        'start_time' => $startAt->format('Y-m-d H:i:s'),
+                        'end_time' => $endAt->format('Y-m-d H:i:s'),
+                        'is_live_event' => $isLiveEvent,
+                        'event_status' => $eventStatus,
+                    ]);
 
                     return [
                         '_sort_status' => $isLiveEvent ? 0 : 1,
-                        '_sort_start_at' => $startAt?->getTimestamp() ?? PHP_INT_MAX,
+                        '_sort_start_at' => $startAt->getTimestamp(),
                         'event_id' => $event->id,
                         'occurrence_id' => $occurrence->id,
                         'title' => $event->title,
@@ -116,14 +139,15 @@ class EventController extends BaseApiController
                         'event_type' => $event->event_type,
                         'circle_id' => $event->circle_id,
                         'circle_name' => $event->circle?->name,
-                        'start_datetime' => $occurrence->start_at?->toISOString(),
-                        'end_datetime' => $occurrence->end_at?->toISOString(),
+                        'start_datetime' => $startAt->format('Y-m-d H:i:s'),
+                        'end_datetime' => $endAt->format('Y-m-d H:i:s'),
+                        'timezone' => $timezone,
                         'image_url' => $this->eventImageUrl($event),
                         'is_live_event' => $isLiveEvent,
-                        'event_status' => $isLiveEvent ? 'live' : 'upcoming',
+                        'event_status' => $eventStatus,
                     ];
                 })
-                ->filter(fn (array $event): bool => $event['is_live_event'] || $event['event_status'] === 'upcoming')
+                ->filter()
                 ->sortBy([
                     ['_sort_status', 'asc'],
                     ['_sort_start_at', 'asc'],
@@ -148,6 +172,19 @@ class EventController extends BaseApiController
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function localEventDateTime(mixed $dateTime, string $timezone): ?Carbon
+    {
+        if (! $dateTime) {
+            return null;
+        }
+
+        if ($dateTime instanceof \DateTimeInterface) {
+            return Carbon::parse($dateTime->format('Y-m-d H:i:s'), $timezone);
+        }
+
+        return Carbon::parse((string) $dateTime, $timezone);
     }
 
     private function eventImageUrl(Event $event): ?string
