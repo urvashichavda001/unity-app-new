@@ -44,82 +44,115 @@
 </div>
 
 <style>
-    .contacts-filters-card {
+    .contacts-filter-card {
         background: #ffffff;
         border: 1px solid #e5e7eb;
         border-radius: 12px;
         padding: 16px;
         margin-bottom: 16px;
+        width: 100%;
+        max-width: 100%;
+        overflow: visible;
     }
 
-    .contacts-filters-grid {
-        display: grid;
-        grid-template-columns: minmax(220px, 2fr) minmax(160px, 1.3fr) minmax(160px, 1.3fr) minmax(145px, 1.1fr) minmax(145px, 1.1fr) minmax(130px, 0.9fr) auto;
+    .contacts-filter-row {
+        display: flex;
+        flex-wrap: wrap;
         gap: 14px;
-        align-items: end;
+        align-items: flex-end;
+        width: 100%;
     }
 
-    .contacts-filter-field label {
-        display: block;
+    .filter-item {
+        display: flex;
+        flex-direction: column;
+        min-width: 150px;
+        flex: 1 1 150px;
+    }
+
+    .search-item {
+        min-width: 230px;
+        flex: 1.8 1 230px;
+    }
+
+    .date-item {
+        min-width: 145px;
+        flex: 1 1 145px;
+    }
+
+    .quick-item {
+        min-width: 120px;
+        max-width: 140px;
+        flex: 0 0 130px;
+    }
+
+    .filter-item label {
         font-size: 14px;
         font-weight: 500;
         color: #111827;
         margin-bottom: 8px;
     }
 
-    .contacts-filter-field input,
-    .contacts-filter-field select {
+    .filter-item input,
+    .filter-item select {
         width: 100%;
         height: 38px;
         border: 1px solid #d1d5db;
         border-radius: 6px;
         padding: 8px 12px;
         background: #ffffff;
+        font-size: 14px;
     }
 
-    .contacts-filter-actions {
+    .filter-buttons {
         display: flex;
         gap: 8px;
-        align-items: center;
-        justify-content: flex-end;
+        align-items: flex-end;
+        flex: 0 0 auto;
+        margin-left: auto;
+    }
+
+    .filter-buttons .btn {
+        height: 38px;
+        padding: 8px 14px;
         white-space: nowrap;
     }
 
-    .contacts-filter-actions .btn {
-        height: 38px;
-        padding: 8px 14px;
-    }
-
     @media (max-width: 1200px) {
-        .contacts-filters-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-
-        .contacts-filter-actions {
-            justify-content: flex-start;
+        .filter-buttons {
+            margin-left: 0;
         }
     }
 
     @media (max-width: 768px) {
-        .contacts-filters-grid {
-            grid-template-columns: 1fr;
+        .contacts-filter-row {
+            gap: 12px;
         }
 
-        .contacts-filter-actions {
+        .filter-item,
+        .search-item,
+        .date-item,
+        .quick-item {
+            min-width: 100%;
+            max-width: 100%;
+            flex: 1 1 100%;
+        }
+
+        .filter-buttons {
             width: 100%;
             justify-content: flex-start;
         }
     }
 </style>
 
-<div class="contacts-filters-card">
+<div class="contacts-filter-card">
     <form method="GET" action="{{ route('admin.contacts.user-details', $userId) }}">
-        <div class="contacts-filters-grid">
-            <div class="contacts-filter-field">
+        <div class="contacts-filter-row">
+            <div class="filter-item search-item">
                 <label for="search">Search</label>
                 <input type="text" id="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search Name / Email / Phone / Company">
             </div>
-            <div class="contacts-filter-field">
+            <div class="filter-item">
                 <label for="company">Company</label>
                 <select id="company" name="company">
                     <option value="">All Companies</option>
@@ -128,7 +161,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="contacts-filter-field">
+            <div class="filter-item">
                 <label for="job_title">Job Title</label>
                 <select id="job_title" name="job_title">
                     <option value="">All Job Titles</option>
@@ -137,15 +170,15 @@
                     @endforeach
                 </select>
             </div>
-            <div class="contacts-filter-field">
+            <div class="filter-item date-item">
                 <label for="from_date">Date From</label>
                 <input type="date" id="from_date" name="from_date" value="{{ $filters['from_date'] ?? '' }}">
             </div>
-            <div class="contacts-filter-field">
+            <div class="filter-item date-item">
                 <label for="to_date">Date To</label>
                 <input type="date" id="to_date" name="to_date" value="{{ $filters['to_date'] ?? '' }}">
             </div>
-            <div class="contacts-filter-field">
+            <div class="filter-item quick-item">
                 <label for="quick">Quick</label>
                 <select id="quick" name="quick">
                     <option value="any" @selected(($filters['quick'] ?? 'any') === 'any')>Any</option>
@@ -154,7 +187,7 @@
                     <option value="this_month" @selected(($filters['quick'] ?? 'any') === 'this_month')>This Month</option>
                 </select>
             </div>
-            <div class="contacts-filter-actions">
+            <div class="filter-buttons">
                 <button type="submit" class="btn btn-primary">Filter</button>
                 <a href="{{ route('admin.contacts.user-details', $userId) }}" class="btn btn-outline-secondary">Reset</a>
             </div>
