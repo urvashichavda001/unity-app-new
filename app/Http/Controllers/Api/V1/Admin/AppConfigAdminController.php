@@ -76,7 +76,7 @@ class AppConfigAdminController extends Controller
 
     public function updateBranding(Request $request): JsonResponse
     {
-        $data = $request->validate($this->brandingRules());
+        $data = $this->applyColorFallbacks($request->validate($this->brandingRules()));
         $model = AppConfigSetting::query()->updateOrCreate(
             ['app_instance_id' => $this->appInstanceId(), 'app_key' => 'greenpreneur'],
             $data + ['is_active' => true]
@@ -102,7 +102,7 @@ class AppConfigAdminController extends Controller
 
     public function updateColors(Request $request): JsonResponse
     {
-        $data = $request->validate($this->colorRules());
+        $data = $this->applyColorFallbacks($request->validate($this->colorRules()));
         $model = AppConfigSetting::query()->updateOrCreate(
             ['app_instance_id' => $this->appInstanceId(), 'app_key' => 'greenpreneur'],
             $data + ['is_active' => true]
@@ -445,6 +445,26 @@ class AppConfigAdminController extends Controller
             'background_secondary_color', 'background_dark_color', 'card_background_color', 'card_border_color',
             'text_primary_color', 'text_secondary_color',
         ])->mapWithKeys(fn ($field) => [$field => $hex])->all();
+    }
+
+    private function applyColorFallbacks(array $data): array
+    {
+        if (array_key_exists('primary_ultra_light_color', $data)) {
+            $data['primary_light_color'] = $data['primary_ultra_light_color'];
+        }
+        if (array_key_exists('text_secondary_color', $data)) {
+            $data['secondary_light_color'] = $data['text_secondary_color'];
+        }
+        if (array_key_exists('background_color', $data)) {
+            $data['background_light_color'] = $data['background_color'];
+            $data['background_secondary_color'] = $data['background_color'];
+            $data['background_dark_color'] = $data['background_color'];
+        }
+        if (array_key_exists('card_background_color', $data)) {
+            $data['card_border_color'] = '#E5E7EB';
+        }
+
+        return $data;
     }
 
     private function iconRules(): array
