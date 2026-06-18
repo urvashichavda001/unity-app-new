@@ -34,6 +34,7 @@ use App\Services\Events\EventRegistrationQrService;
 use App\Services\Events\EventRazorpayPaymentFinalizer;
 use App\Services\Events\EventRazorpayPaymentService;
 use App\Services\Events\EventZohoInvoiceSyncService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -68,6 +69,139 @@ class EventController extends BaseApiController
                 'total' => $paginator->total(),
             ],
         ], 'Events fetched successfully.');
+    }
+
+
+    public function allWithLiveStatus(Request $request)
+    {
+        try {
+            $timezone = config('app.timezone', 'Asia/Kolkata') ?: 'Asia/Kolkata';
+            $now = now($timezone);
+
+            $occurrences = EventOccurrence::query()
+                ->with(['event.circle'])
+                ->whereNotNull('start_at')
+                ->whereNotNull('end_at')
+                ->where(function ($query): void {
+                    $query->whereNull('status')
+                        ->orWhereNotIn('status', ['cancelled', 'canceled', 'rejected', 'deleted', 'archived', 'inactive']);
+                })
+                ->whereHas('event', function ($query): void {
+                    if (Schema::hasColumn('events', 'is_active')) {
+                        $query->where('is_active', true);
+                    }
+
+                    if (Schema::hasColumn('events', 'status')) {
+                        $query->where(function ($statusQuery): void {
+                            $statusQuery->whereNull('status')
+                                ->orWhereNotIn('status', ['cancelled', 'canceled', 'rejected', 'deleted', 'archived', 'inactive']);
+                        });
+                    }
+                })
+                ->get()
+                ->filter(fn (EventOccurrence $occurrence) => $occurrence->event !== null)
+                ->map(function (EventOccurrence $occurrence) use ($now, $timezone): ?array {
+                    $event = $occurrence->event;
+                    $startAt = $this->localEventDateTime($occurrence->start_at, $timezone);
+                    $endAt = $this->localEventDateTime($occurrence->end_at, $timezone);
+
+                    if (! $startAt || ! $endAt || $endAt->lt($now)) {
+                        return null;
+                    }
+
+                    $isLiveEvent = $startAt->lte($now) && $endAt->gte($now);
+                    $isUpcoming = $startAt->gt($now);
+
+                    if (! $isLiveEvent && ! $isUpcoming) {
+                        return null;
+                    }
+
+                    $eventStatus = $isLiveEvent ? 'live' : 'upcoming';
+
+                    Log::debug('events_all_with_live_status_calculated', [
+                        'event_id' => $event->id,
+                        'occurrence_id' => $occurrence->id,
+                        'timezone' => $timezone,
+                        'current_time' => $now->format('Y-m-d H:i:s'),
+                        'start_time' => $startAt->format('Y-m-d H:i:s'),
+                        'end_time' => $endAt->format('Y-m-d H:i:s'),
+                        'is_live_event' => $isLiveEvent,
+                        'event_status' => $eventStatus,
+                    ]);
+
+                    return [
+                        '_sort_status' => $isLiveEvent ? 0 : 1,
+                        '_sort_start_at' => $startAt->getTimestamp(),
+                        'event_id' => $event->id,
+                        'occurrence_id' => $occurrence->id,
+                        'title' => $event->title,
+                        'description' => $event->description,
+                        'event_type' => $event->event_type,
+                        'circle_id' => $event->circle_id,
+                        'circle_name' => $event->circle?->name,
+                        'start_datetime' => $startAt->format('Y-m-d H:i:s'),
+                        'end_datetime' => $endAt->format('Y-m-d H:i:s'),
+                        'timezone' => $timezone,
+                        'image_url' => $this->eventImageUrl($event),
+                        'is_live_event' => $isLiveEvent,
+                        'event_status' => $eventStatus,
+                    ];
+                })
+                ->filter()
+                ->sortBy([
+                    ['_sort_status', 'asc'],
+                    ['_sort_start_at', 'asc'],
+                ])
+                ->map(fn (array $event): array => collect($event)->except(['_sort_status', '_sort_start_at'])->all())
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Events fetched successfully.',
+                'data' => $occurrences,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('events_all_with_live_status_failed', [
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong while fetching events.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function localEventDateTime(mixed $dateTime, string $timezone): ?Carbon
+    {
+        if (! $dateTime) {
+            return null;
+        }
+
+        if ($dateTime instanceof \DateTimeInterface) {
+            return Carbon::parse($dateTime->format('Y-m-d H:i:s'), $timezone);
+        }
+
+        return Carbon::parse((string) $dateTime, $timezone);
+    }
+
+    private function eventImageUrl(Event $event): ?string
+    {
+        $bannerUrl = $event->banner_url;
+
+        if (! is_string($bannerUrl) || trim($bannerUrl) === '') {
+            return null;
+        }
+
+        $bannerUrl = trim($bannerUrl);
+
+        if (str_starts_with($bannerUrl, 'http://') || str_starts_with($bannerUrl, 'https://') || str_starts_with($bannerUrl, '/')) {
+            return $bannerUrl;
+        }
+
+        return url('/api/v1/files/'.$bannerUrl);
     }
 
     public function show(Request $request, string $id)
