@@ -88,6 +88,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('/app-config/icons/upload', [AppConfigPageController::class, 'uploadIconAsset'])->name('app-config.icons.upload');
         Route::post('/app-config/navigation', [AppConfigPageController::class, 'saveNavigation'])->name('app-config.navigation.store');
         Route::put('/app-config/navigation/{id}', [AppConfigPageController::class, 'saveNavigation'])->whereUuid('id')->name('app-config.navigation.update');
+        Route::put('/app-config/navigation/group/{menu_type}', [AppConfigPageController::class, 'bulkUpdateNavigationGroup'])->name('app-config.navigation.group-update');
         Route::delete('/app-config/navigation/{id}', [AppConfigPageController::class, 'deleteNavigation'])->whereUuid('id')->name('app-config.navigation.destroy');
         Route::put('/app-config/dashboard-widgets', [AppConfigPageController::class, 'bulkWidgets'])->name('app-config.widgets');
         Route::put('/app-config/social-links', [AppConfigPageController::class, 'bulkSocial'])->name('app-config.social');
