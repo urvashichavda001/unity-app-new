@@ -107,6 +107,73 @@ class AppConfigPageController extends Controller
         return $this->done('Navigation item saved successfully.', 'navigation');
     }
 
+
+    public function bulkUpdateNavigationGroup(Request $request, string $menuType)
+    {
+        abort_unless(in_array($menuType, ['bottom_nav', 'plus_menu', 'impact_menu', 'drawer'], true), 404);
+
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.id' => ['nullable', 'uuid'],
+            'items.*.item_key' => ['required', 'string', 'max:150'],
+            'items.*.label_key' => ['nullable', 'string', 'max:150'],
+            'items.*.display_label' => ['required', 'string', 'max:255'],
+            'items.*.icon' => ['nullable', 'string', 'max:150'],
+            'items.*.route_name' => ['nullable', 'string', 'max:150'],
+            'items.*.feature_key' => ['nullable', 'string', 'max:150'],
+            'items.*.is_enabled' => ['boolean'],
+            'items.*.sort_order' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $appId = $this->appId();
+        $updatedCount = 0;
+
+        DB::transaction(function () use ($data, $menuType, $appId, &$updatedCount) {
+            foreach ($data['items'] as $item) {
+                $sortOrder = $item['sort_order'] ?? 0;
+                $payload = [
+                    'app_instance_id' => $appId,
+                    'menu_type' => $menuType,
+                    'item_key' => $item['item_key'],
+                    'label_key' => $item['label_key'] ?? null,
+                    'display_label' => $item['display_label'],
+                    'icon' => $item['icon'] ?? null,
+                    'route_name' => $item['route_name'] ?? null,
+                    'feature_key' => $item['feature_key'] ?? null,
+                    'is_enabled' => (bool) ($item['is_enabled'] ?? false),
+                    'sort_order' => $sortOrder,
+                    'position' => $sortOrder,
+                    'nav_key' => $item['item_key'],
+                    'nav_label' => $item['display_label'],
+                    'v_key' => $item['item_key'],
+                    'v_label' => $item['display_label'],
+                    'updated_at' => now(),
+                ];
+
+                $query = DB::table('app_navigation_items')->where('app_instance_id', $appId);
+                if (!empty($item['id'])) {
+                    $query->where('id', $item['id']);
+                } else {
+                    $query->where('menu_type', $menuType)->where('item_key', $item['item_key']);
+                }
+
+                $query->update($payload);
+                $updatedCount++;
+            }
+        });
+
+        AppConfigController::clearCache();
+
+        return response()->json([
+            'success' => true,
+            'message' => $this->navigationGroupLabel($menuType) . ' saved successfully.',
+            'data' => [
+                'menu_type' => $menuType,
+                'updated_count' => $updatedCount,
+            ],
+        ]);
+    }
+
     public function deleteNavigation(string $id) { DB::table('app_navigation_items')->where('app_instance_id', $this->appId())->where('id', $id)->delete(); return $this->done('Navigation item deleted successfully.', 'navigation'); }
 
     public function bulkWidgets(Request $request)
@@ -187,5 +254,6 @@ class AppConfigPageController extends Controller
 
     public function clearCache() { return $this->done('App configuration cache cleared successfully.', request('tab', 'overview')); }
     private function appId(): string { return $this->appConfigService->getGreenpreneurAppInstance()->id; }
+    private function navigationGroupLabel(string $menuType): string { return ['bottom_nav' => 'Bottom Navigation', 'plus_menu' => 'Plus Menu', 'impact_menu' => 'Impact Menu', 'drawer' => 'Drawer Menu'][$menuType] ?? 'Navigation group'; }
     private function done(string $message, string $tab) { AppConfigController::clearCache(); return redirect()->route('admin.app-config.index', ['tab' => $tab])->with('success', $message); }
 }
