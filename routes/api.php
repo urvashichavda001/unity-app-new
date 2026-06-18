@@ -768,6 +768,7 @@ Route::prefix('v1')->group(function () {
 
         // Notifications
         Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
         Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
 
         // Push tokens

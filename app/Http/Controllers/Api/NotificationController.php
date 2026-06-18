@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\BaseApiController;
 use App\Http\Resources\NotificationResource;
 use App\Models\Notification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class NotificationController extends BaseApiController
 {
@@ -40,6 +42,35 @@ class NotificationController extends BaseApiController
         ];
 
         return $this->success($data);
+    }
+
+    public function readAll(Request $request)
+    {
+        try {
+            $authUser = $request->user();
+
+            $updatedCount = Notification::where('user_id', $authUser->id)
+                ->whereNull('read_at')
+                ->update([
+                    'is_read' => true,
+                    'read_at' => now(),
+                ]);
+
+            $message = $updatedCount > 0
+                ? 'All notifications marked as read.'
+                : 'No unread notifications found.';
+
+            return $this->success([
+                'updated_count' => $updatedCount,
+            ], $message);
+        } catch (Throwable $e) {
+            Log::error('Failed to mark all notifications as read.', [
+                'user_id' => optional($request->user())->id,
+                'exception' => $e,
+            ]);
+
+            return $this->error('Failed to mark notifications as read.', 500);
+        }
     }
 
     public function markRead(Request $request, string $id)
