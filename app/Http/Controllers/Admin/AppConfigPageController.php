@@ -15,12 +15,29 @@ class AppConfigPageController extends Controller
 {
     public function __construct(private readonly AppConfigService $appConfigService) {}
 
-    public function index()
+    public function index(Request $request)
     {
         $app = $this->appConfigService->getGreenpreneurAppInstance();
         $id = $app->id;
         $branding = DB::table('app_config_settings')->where('app_instance_id', $id)->latest('updated_at')->first();
-        $labels = DB::table('app_labels')->where('app_instance_id', $id)->orderBy('label_key')->get();
+        $labelGroups = DB::table('app_labels')->where('app_instance_id', $id)->whereNotNull('group_name')->distinct()->orderBy('group_name')->pluck('group_name');
+        $labelsQuery = DB::table('app_labels')->where('app_instance_id', $id)->orderBy('label_key');
+        if ($request->filled('label_search')) {
+            $search = Str::lower($request->string('label_search')->toString());
+            $labelsQuery->where(function ($query) use ($search) {
+                foreach (['label_key', 'label_value', 'group_name', 'description'] as $column) {
+                    $query->orWhereRaw("LOWER(COALESCE({$column}, '')) LIKE ?", ["%{$search}%"]);
+                }
+            });
+        }
+        if ($request->filled('label_group') && $request->label_group !== 'all') {
+            $labelsQuery->where('group_name', $request->label_group);
+        }
+        if ($request->filled('label_status') && $request->label_status !== 'all') {
+            $labelsQuery->where('is_active', $request->label_status === 'active');
+        }
+        $labels = $labelsQuery->paginate(20)->withQueryString();
+        $labelsUpdatedAt = DB::table('app_labels')->where('app_instance_id', $id)->max('updated_at');
         $features = DB::table('app_features')->where('app_instance_id', $id)->orderBy('sort_order')->orderBy('feature_key')->get();
         $navigation = DB::table('app_navigation_items')->where('app_instance_id', $id)->orderBy('menu_type')->orderBy('sort_order')->get();
         $widgets = DB::table('app_dashboard_widgets')->where('app_instance_id', $id)->orderBy('sort_order')->get();
@@ -31,10 +48,10 @@ class AppConfigPageController extends Controller
         }
         $membershipLabels = $membershipQuery->orderBy('membership_key')->get();
         $icons = Schema::hasTable('app_icon_assets') ? DB::table('app_icon_assets')->where('app_instance_id', $id)->orderBy('sort_order')->orderBy('icon_key')->get() : collect();
-        $lastUpdated = collect([$branding, ...$labels, ...$features, ...$navigation, ...$widgets, ...$socialLinks, ...$membershipLabels, ...$icons])
+        $lastUpdated = collect([$branding, (object) ['updated_at' => $labelsUpdatedAt], ...$features, ...$navigation, ...$widgets, ...$socialLinks, ...$membershipLabels, ...$icons])
             ->pluck('updated_at')->filter()->sortDesc()->first();
 
-        return view('admin.app-config.index', compact('app', 'branding', 'labels', 'features', 'navigation', 'widgets', 'socialLinks', 'membershipLabels', 'icons', 'lastUpdated'));
+        return view('admin.app-config.index', compact('app', 'branding', 'labels', 'labelGroups', 'features', 'navigation', 'widgets', 'socialLinks', 'membershipLabels', 'icons', 'lastUpdated'));
     }
 
 
