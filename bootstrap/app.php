@@ -53,7 +53,10 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($e instanceof AuthenticationException) {
                 return response()->json([
                     'success' => false,
+                    'status' => false,
                     'message' => 'Unauthenticated.',
+                    'data' => null,
+                    'meta' => null,
                 ], 401);
             }
 
