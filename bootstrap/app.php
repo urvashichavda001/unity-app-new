@@ -9,6 +9,7 @@ use App\Http\Middleware\EnsureDedApiAccess;
 use App\Http\Middleware\EnsureIndustryDirector;
 use App\Http\Middleware\EnsureScanAppUser;
 use App\Http\Middleware\EnsureUnityUser;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -47,6 +48,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (Throwable $e, Request $request) {
             if (! ($request->is('api/*') || $request->expectsJson())) {
                 return null;
+            }
+
+            if ($e instanceof AuthenticationException) {
+                return response()->json([
+                    'success' => false,
+                    'status' => false,
+                    'message' => 'Unauthenticated.',
+                    'data' => null,
+                    'meta' => null,
+                ], 401);
             }
 
             if ($e instanceof QrGenerationException) {

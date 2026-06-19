@@ -7,9 +7,36 @@ use App\Http\Requests\Api\V1\Ads\IndexAdRequest;
 use App\Http\Resources\V1\AdResource;
 use App\Models\Ad;
 use App\Services\AdFeedService;
+use Illuminate\Http\Request;
 
 class AdController extends BaseApiController
 {
+    public function myAds(Request $request)
+    {
+        $ads = Ad::query()
+            ->where('created_by', $request->user()->id)
+            ->latest()
+            ->get()
+            ->map(fn (Ad $ad): array => [
+                'id' => $ad->id,
+                'user_id' => $ad->created_by,
+                'title' => $ad->title,
+                'description' => $ad->description,
+                'image_url' => $ad->image_url,
+                'status' => $ad->is_active ? 'active' : 'inactive',
+                'created_at' => $ad->created_at,
+                'updated_at' => $ad->updated_at,
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'status' => true,
+            'message' => $ads->isEmpty() ? 'No ads found.' : 'Ads fetched successfully.',
+            'data' => $ads->values(),
+            'meta' => null,
+        ]);
+    }
+
     public function index(IndexAdRequest $request)
     {
         $filters = $request->validated();

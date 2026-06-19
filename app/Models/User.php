@@ -52,6 +52,7 @@ class User extends Authenticatable
         'city_id',
         'city',
         'status',
+        'contacts_allowed',
         'skills',
         'interests',
         'social_links',
@@ -204,6 +205,7 @@ class User extends Authenticatable
         'is_sponsored_member' => 'boolean',
         'life_impacted_count' => 'integer',
         'is_online' => 'boolean',
+        'contacts_allowed' => 'boolean',
     ];
 
     public function getAuthPassword()

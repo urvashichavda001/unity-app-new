@@ -70,12 +70,15 @@ class AppConfigPageController extends Controller
 
     public function updateBranding(Request $request)
     {
-        $hex = ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/'];
+        $hex = ['required', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/'];
+        $nullableHex = ['nullable', 'regex:/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/'];
         $data = $request->validate([
             'app_name' => ['nullable', 'string', 'max:255'], 'app_logo_url' => ['nullable', 'url'], 'splash_logo_url' => ['nullable', 'url'], 'logo_url_light' => ['nullable', 'url'], 'logo_url_dark' => ['nullable', 'url'], 'logo_url_splash' => ['nullable', 'url'],
-            'primary_color' => $hex, 'primary_dark_color' => $hex, 'primary_light_color' => $hex, 'primary_ultra_light_color' => $hex, 'secondary_color' => $hex, 'secondary_light_color' => $hex, 'background_color' => $hex, 'background_light_color' => $hex, 'background_secondary_color' => $hex, 'background_dark_color' => $hex, 'card_background_color' => $hex, 'card_border_color' => $hex, 'text_primary_color' => $hex, 'text_secondary_color' => $hex, 'secondary_color' => $hex, 'accent_color' => $hex, 'splash_bg_color' => $hex, 'button_color' => $hex, 'text_color' => $hex,
+            'primary_color' => $hex, 'primary_dark_color' => $hex, 'primary_ultra_light_color' => $hex, 'secondary_color' => $hex, 'text_primary_color' => $hex, 'text_secondary_color' => $hex, 'background_color' => $hex, 'card_background_color' => $hex,
+            'accent_color' => $nullableHex, 'splash_bg_color' => $nullableHex, 'button_color' => $nullableHex, 'text_color' => $nullableHex,
             'playstore_url' => ['nullable', 'url'], 'appstore_url' => ['nullable', 'url'], 'website_url' => ['nullable', 'url'], 'support_email' => ['nullable', 'email'], 'support_phone' => ['nullable', 'string', 'max:50'],
         ]);
+        $data = $this->applyColorFallbacks($data);
         DB::table('app_config_settings')->updateOrInsert(['app_instance_id' => $this->appId(), 'app_key' => 'greenpreneur'], $data + ['is_active' => true, 'updated_at' => now(), 'created_at' => now()]);
         return $this->done('Branding updated successfully.', 'branding');
     }
@@ -255,5 +258,23 @@ class AppConfigPageController extends Controller
     public function clearCache() { return $this->done('App configuration cache cleared successfully.', request('tab', 'overview')); }
     private function appId(): string { return $this->appConfigService->getGreenpreneurAppInstance()->id; }
     private function navigationGroupLabel(string $menuType): string { return ['bottom_nav' => 'Bottom Navigation', 'plus_menu' => 'Plus Menu', 'impact_menu' => 'Impact Menu', 'drawer' => 'Drawer Menu'][$menuType] ?? 'Navigation group'; }
+    private function applyColorFallbacks(array $data): array
+    {
+        if (array_key_exists('primary_ultra_light_color', $data)) {
+            $data['primary_light_color'] = $data['primary_ultra_light_color'];
+        }
+        if (array_key_exists('text_secondary_color', $data)) {
+            $data['secondary_light_color'] = $data['text_secondary_color'];
+        }
+        if (array_key_exists('background_color', $data)) {
+            $data['background_light_color'] = $data['background_color'];
+            $data['background_secondary_color'] = $data['background_color'];
+            $data['background_dark_color'] = $data['background_color'];
+        }
+        $data['card_border_color'] = '#E5E7EB';
+
+        return $data;
+    }
+
     private function done(string $message, string $tab) { AppConfigController::clearCache(); return redirect()->route('admin.app-config.index', ['tab' => $tab])->with('success', $message); }
 }
