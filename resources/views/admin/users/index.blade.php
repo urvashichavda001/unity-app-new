@@ -19,10 +19,6 @@
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
 
-@php
-    $defaultMembershipStartsAt = now()->format('Y-m-d');
-    $defaultMembershipEndsAt = now()->addYear()->format('Y-m-d');
-@endphp
 
 <div class="card p-3">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
@@ -60,11 +56,11 @@
             <div class="d-flex flex-column flex-md-row align-items-md-end gap-2 gap-md-3 flex-grow-1 justify-content-xl-end">
                 <div>
                     <label for="approvalMembershipStartsAt" class="form-label small text-muted mb-1">Membership Starts At</label>
-                    <input id="approvalMembershipStartsAt" type="date" name="approval_membership_starts_at" class="form-control form-control-sm" value="{{ old('approval_membership_starts_at', $defaultMembershipStartsAt) }}">
+                    <input id="approvalMembershipStartsAt" type="date" name="approval_membership_starts_at" class="form-control form-control-sm" value="{{ old('approval_membership_starts_at', '') }}">
                 </div>
                 <div>
                     <label for="approvalMembershipEndsAt" class="form-label small text-muted mb-1">Membership Ends At</label>
-                    <input id="approvalMembershipEndsAt" type="date" name="approval_membership_ends_at" class="form-control form-control-sm" value="{{ old('approval_membership_ends_at', $defaultMembershipEndsAt) }}">
+                    <input id="approvalMembershipEndsAt" type="date" name="approval_membership_ends_at" class="form-control form-control-sm" value="{{ old('approval_membership_ends_at', '') }}">
                 </div>
                 <button type="button" class="btn btn-success btn-sm" id="openApproveMembershipModal">
                     <i class="bi bi-check-circle me-1"></i>Approve Selected
@@ -573,7 +569,6 @@
         const selectedCountEl = document.getElementById('selectedPeersCount');
         const membershipStartDate = document.getElementById('approvalMembershipStartsAt');
         const membershipEndDate = document.getElementById('approvalMembershipEndsAt');
-        let membershipEndDateTouched = false;
         const modalMembershipStartsAt = document.getElementById('modalMembershipStartsAt');
         const modalMembershipEndsAt = document.getElementById('modalMembershipEndsAt');
         const modalMembershipStartsAtText = document.getElementById('modalMembershipStartsAtText');
@@ -623,29 +618,6 @@
             const query = params.toString();
             window.location = query ? `${window.location.pathname}?${query}` : window.location.pathname;
         };
-        function getTodayDateValue() {
-            const today = new Date();
-            return today.toISOString().slice(0, 10);
-        }
-
-        function getNextYearDateValue() {
-            const nextYear = new Date();
-            nextYear.setFullYear(nextYear.getFullYear() + 1);
-            return nextYear.toISOString().slice(0, 10);
-        }
-
-        function resetMembershipApprovalDates() {
-            if (membershipStartDate) {
-                membershipStartDate.value = getTodayDateValue();
-            }
-
-            if (membershipEndDate) {
-                membershipEndDate.value = getNextYearDateValue();
-            }
-
-            membershipEndDateTouched = false;
-        }
-
         const isoDate = (date) => date.toISOString().slice(0, 10);
         const addOneYear = (value) => {
             const date = value ? new Date(`${value}T00:00:00`) : new Date();
@@ -658,22 +630,15 @@
                 .format(new Date(`${value}T00:00:00`));
         };
 
-        if (!membershipStartDate?.value || !membershipEndDate?.value) {
-            resetMembershipApprovalDates();
-        }
-
         resetFiltersBtn?.addEventListener('click', () => {
-            resetMembershipApprovalDates();
-        });
-
-        membershipEndDate?.addEventListener('input', () => {
-            membershipEndDateTouched = true;
-        });
-
-        membershipStartDate?.addEventListener('change', () => {
-            if (membershipStartDate.value && membershipEndDate && !membershipEndDateTouched) {
-                membershipEndDate.value = addOneYear(membershipStartDate.value);
+            if (membershipStartDate) {
+                membershipStartDate.value = '';
             }
+
+            if (membershipEndDate) {
+                membershipEndDate.value = '';
+            }
+
         });
 
         selectAll?.addEventListener('change', () => {

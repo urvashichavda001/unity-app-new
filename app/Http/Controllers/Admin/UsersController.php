@@ -1452,14 +1452,16 @@ class UsersController extends Controller
         $validated = $request->validate([
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['required', 'exists:users,id'],
-            'membership_starts_at' => ['required', 'date'],
-            'membership_ends_at' => ['required', 'date', 'after_or_equal:membership_starts_at'],
-        ], [
-            'membership_ends_at.after_or_equal' => 'Membership Ends At must be same or after Membership Starts At.',
+            'membership_starts_at' => ['nullable', 'date'],
+            'membership_ends_at' => ['nullable', 'date'],
         ]);
 
-        $startDate = Carbon::parse($validated['membership_starts_at'] ?? now())->startOfDay();
-        $endDate = Carbon::parse($validated['membership_ends_at'] ?? $startDate->copy()->addYear())->endOfDay();
+        $startDate = filled($validated['membership_starts_at'] ?? null)
+            ? Carbon::parse($validated['membership_starts_at'])->startOfDay()
+            : now()->startOfDay();
+        $endDate = filled($validated['membership_ends_at'] ?? null)
+            ? Carbon::parse($validated['membership_ends_at'])->endOfDay()
+            : $startDate->copy()->addYear()->endOfDay();
 
         if ($endDate->lt($startDate)) {
             return back()->withErrors([
