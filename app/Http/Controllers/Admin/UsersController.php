@@ -16,9 +16,11 @@ use App\Models\IndustryDirectorAssignment;
 use App\Models\JoinedCircleCategory;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\UserPushToken;
 use App\Services\Admin\DedLocationService;
 use App\Services\IndustryDirector\IndustryScopeService;
 use App\Services\Membership\MembershipWelcomeEmailService;
+use App\Services\Firebase\FcmService as FirebaseFcmService;
 use App\Services\Notifications\NotificationService;
 use App\Services\Users\PublicProfileSlugService;
 use App\Support\AdminAccess;
@@ -2197,24 +2199,23 @@ class UsersController extends Controller
         $message = "Congratulations! Your membership has been upgraded to Only Unity Peer and is valid until {$endDateLabel}.";
 
         foreach ($users as $user) {
-            if (! $user->pushTokens()->where('is_active', true)->exists()) {
-                Log::info('admin.users.membership_approval_push_token_missing', ['user_id' => $user->id]);
-            }
+            $notificationData = [
+                'membership' => 'only_unity_peer',
+                'membership_starts_at' => $startDate->toDateString(),
+                'membership_ends_at' => $endDate->toDateString(),
+                'screen' => 'membership',
+                'type' => 'membership_approved',
+            ];
 
             try {
-                app(NotificationService::class)->sendToUser(
+                app(NotificationService::class)->createInAppNotification(
                     $user,
                     'membership_approved',
                     $title,
                     $message,
+                    $notificationData,
                     [
-                        'membership' => 'only_unity_peer',
-                        'membership_starts_at' => $startDate->toDateString(),
-                        'membership_ends_at' => $endDate->toDateString(),
-                        'screen' => 'membership',
-                    ],
-                    [
-                        'channel' => 'push',
+                        'channel' => 'in_app',
                         'priority' => 'high',
                         'dedupe_key' => 'membership_approved:' . $user->id . ':' . now()->timestamp,
                     ]
@@ -2225,6 +2226,8 @@ class UsersController extends Controller
                     'error' => $throwable->getMessage(),
                 ]);
             }
+
+            $this->sendMembershipApprovalPush($user, $title, $message, $notificationData);
 
             if (blank($user->email)) {
                 Log::info('admin.users.membership_approval_email_missing', ['user_id' => $user->id]);
@@ -2247,6 +2250,77 @@ class UsersController extends Controller
                     'error' => $throwable->getMessage(),
                 ]);
             }
+        }
+    }
+
+
+    private function sendMembershipApprovalPush(User $user, string $title, string $message, array $notificationData): void
+    {
+        try {
+            if (! Schema::hasTable('user_push_tokens')) {
+                Log::warning('admin.users.membership_approval_push_table_missing', ['user_id' => $user->id]);
+                return;
+            }
+
+            $tokenColumn = null;
+            if (Schema::hasColumn('user_push_tokens', 'fcm_token')) {
+                $tokenColumn = 'fcm_token';
+            } elseif (Schema::hasColumn('user_push_tokens', 'token')) {
+                $tokenColumn = 'token';
+            }
+
+            if ($tokenColumn === null) {
+                Log::warning('admin.users.membership_approval_push_token_column_missing', ['user_id' => $user->id]);
+                return;
+            }
+
+            $pushTokenQuery = UserPushToken::query()->where('user_id', $user->id);
+
+            if (Schema::hasColumn('user_push_tokens', 'is_active')) {
+                $pushTokenQuery->where('is_active', true);
+            }
+
+            $pushTokens = $pushTokenQuery
+                ->whereNotNull($tokenColumn)
+                ->where($tokenColumn, '!=', '')
+                ->get();
+
+            if ($pushTokens->isEmpty()) {
+                Log::info('admin.users.membership_approval_push_token_missing', ['user_id' => $user->id]);
+                return;
+            }
+
+            $fcmService = app(FirebaseFcmService::class);
+            foreach ($pushTokens as $pushToken) {
+                $token = (string) $pushToken->{$tokenColumn};
+                try {
+                    $fcmService->sendToDevice(
+                        $token,
+                        $title,
+                        $message,
+                        $notificationData,
+                        null,
+                        1,
+                        [
+                            'user_id' => $user->id,
+                            'device_id' => $pushToken->device_id ?? null,
+                            'platform' => $pushToken->platform ?? null,
+                            'notification_type' => 'membership_approved',
+                        ]
+                    );
+                } catch (Throwable $throwable) {
+                    Log::warning('admin.users.membership_approval_push_failed', [
+                        'user_id' => $user->id,
+                        'push_token_id' => $pushToken->id ?? null,
+                        'error' => $throwable->getMessage(),
+                    ]);
+                }
+            }
+        } catch (Throwable $throwable) {
+            Log::warning('admin.users.membership_approval_push_lookup_failed', [
+                'user_id' => $user->id,
+                'error' => $throwable->getMessage(),
+            ]);
         }
     }
 
