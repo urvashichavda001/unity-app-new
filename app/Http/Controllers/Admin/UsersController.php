@@ -23,7 +23,6 @@ use App\Services\Admin\DedLocationService;
 use App\Services\IndustryDirector\IndustryScopeService;
 use App\Services\Membership\MembershipWelcomeEmailService;
 use App\Services\Firebase\FcmService as FirebaseFcmService;
-use App\Services\Notifications\NotificationService;
 use App\Services\Users\PublicProfileSlugService;
 use App\Support\AdminAccess;
 use App\Support\AdminCircleScope;
@@ -2182,6 +2181,13 @@ class UsersController extends Controller
             }
 
             $user->forceFill($attributes)->save();
+
+            Log::info('Membership approved', [
+                'user_id' => $user->id,
+                'membership_starts_at' => $startDate->toDateString(),
+                'membership_ends_at' => $endDate->toDateString(),
+            ]);
+
             $approvedCount++;
         }
 
@@ -2209,35 +2215,7 @@ class UsersController extends Controller
                 'type' => 'membership_approved',
             ];
 
-            try {
-                $recentDuplicate = AppNotification::query()
-                    ->where('user_id', $user->id)
-                    ->where('type', 'membership_approved')
-                    ->where('data->membership_starts_at', $startDate->toDateString())
-                    ->where('data->membership_ends_at', $endDate->toDateString())
-                    ->where('created_at', '>=', now()->subMinutes(5))
-                    ->exists();
-
-                if (! $recentDuplicate) {
-                    app(NotificationService::class)->createInAppNotification(
-                        $user,
-                        'membership_approved',
-                        $title,
-                        $message,
-                        $notificationData,
-                        [
-                            'channel' => 'in_app',
-                            'priority' => 'high',
-                            'dedupe_key' => 'membership_approved:' . $user->id . ':' . $startDate->toDateString() . ':' . $endDate->toDateString() . ':' . now()->format('YmdHi'),
-                        ]
-                    );
-                }
-            } catch (Throwable $throwable) {
-                Log::warning('admin.users.membership_approval_notification_failed', [
-                    'user_id' => $user->id,
-                    'error' => $throwable->getMessage(),
-                ]);
-            }
+            $this->createMembershipApprovedNotification($user, $startDate, $endDate, $title, $message, $notificationData);
 
             $this->sendMembershipApprovalPush($user, $title, $pushMessage, $notificationData);
 
@@ -2259,6 +2237,72 @@ class UsersController extends Controller
                     'error' => $throwable->getMessage(),
                 ]);
             }
+        }
+    }
+
+
+    private function createMembershipApprovedNotification(
+        User $user,
+        Carbon $startDate,
+        Carbon $endDate,
+        string $title,
+        string $message,
+        array $notificationData
+    ): void {
+        $recentDuplicate = false;
+
+        try {
+            $recentDuplicate = AppNotification::query()
+                ->where('user_id', $user->id)
+                ->where('type', 'membership_approved')
+                ->where('data->membership_starts_at', $startDate->toDateString())
+                ->where('data->membership_ends_at', $endDate->toDateString())
+                ->where('created_at', '>=', now()->subMinutes(5))
+                ->exists();
+        } catch (Throwable $throwable) {
+            Log::warning('admin.users.membership_approval_notification_duplicate_check_failed', [
+                'user_id' => $user->id,
+                'error' => $throwable->getMessage(),
+            ]);
+        }
+
+        if ($recentDuplicate) {
+            Log::info('Membership approval app notification skipped as duplicate', [
+                'user_id' => $user->id,
+                'membership_starts_at' => $startDate->toDateString(),
+                'membership_ends_at' => $endDate->toDateString(),
+            ]);
+
+            return;
+        }
+
+        try {
+            $notification = AppNotification::create([
+                'user_id' => $user->id,
+                'type' => 'membership_approved',
+                'category' => 'membership',
+                'title' => $title,
+                'body' => $message,
+                'channel' => 'in_app',
+                'priority' => 'high',
+                'screen' => 'membership',
+                'data' => $notificationData,
+                'dedupe_key' => 'membership_approved:' . $user->id . ':' . $startDate->toDateString() . ':' . $endDate->toDateString() . ':' . now()->format('YmdHi'),
+                'status' => 'sent',
+                'sent_at' => now(),
+            ]);
+
+            Log::info('Membership approval app notification created', [
+                'user_id' => $user->id,
+                'notification_id' => (string) $notification->id,
+                'membership_starts_at' => $startDate->toDateString(),
+                'membership_ends_at' => $endDate->toDateString(),
+            ]);
+        } catch (Throwable $throwable) {
+            Log::error('Membership approval app notification failed', [
+                'user_id' => $user->id,
+                'error' => $throwable->getMessage(),
+            ]);
         }
     }
 
