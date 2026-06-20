@@ -19,6 +19,23 @@ class MembershipApprovedMail extends Mailable
     ) {
     }
 
+    private function logoUrl(): ?string
+    {
+        foreach ([
+            'assets/images/logo.png',
+            'assets/img/logo.png',
+            'images/logo.png',
+            'img/logo.png',
+            'logo.png',
+        ] as $path) {
+            if (public_path($path) && file_exists(public_path($path))) {
+                return asset($path);
+            }
+        }
+
+        return null;
+    }
+
     public function build()
     {
         return $this->subject('Your PeersGlobal Membership Has Been Approved')
@@ -29,6 +46,7 @@ class MembershipApprovedMail extends Mailable
                 'membershipStartsAt' => $this->membershipStartsAt->format('d M Y'),
                 'membershipEndsAt' => $this->membershipEndsAt->format('d M Y'),
                 'currentYear' => now()->year,
+                'logoUrl' => $this->logoUrl(),
             ]);
     }
 }

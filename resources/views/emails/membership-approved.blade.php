@@ -5,73 +5,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Your PeersGlobal Membership Has Been Approved</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f4f6f8;padding:30px 12px;">
+<body style="margin:0;padding:0;background:#202020;font-family:Arial,Helvetica,sans-serif;color:#e5e7eb;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#202020;padding:30px 12px;">
         <tr>
             <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:620px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 10px 30px rgba(17,24,39,0.08);">
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:620px;background:#0f0f12;border-radius:18px;overflow:hidden;border-collapse:separate;">
                     <tr>
-                        <td style="background:#101828;padding:26px 30px;text-align:center;">
-                            <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:0.2px;">PeersGlobal</h1>
-                            <p style="margin:6px 0 0;color:#d1d5db;font-size:14px;">Community of Collaboration</p>
+                        <td style="background:#2b076d;padding:34px 24px;text-align:center;">
+                            @if(!empty($logoUrl))
+                                <img src="{{ $logoUrl }}" alt="PeersGlobal" style="max-width:280px;height:auto;display:block;margin:0 auto;">
+                            @else
+                                <h1 style="margin:0;color:#ffffff;font-size:30px;font-weight:700;letter-spacing:.3px;">PeersGlobal</h1>
+                                <p style="margin:6px 0 0;color:#e5e7eb;font-size:15px;">Community of Collaboration</p>
+                            @endif
                         </td>
                     </tr>
 
                     <tr>
-                        <td style="padding:34px 30px;">
-                            <h2 style="margin:0 0 16px;color:#111827;font-size:24px;line-height:1.25;">Membership Approved</h2>
-
-                            <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#374151;">
-                                Hello {{ $userName }},
+                        <td style="background:#101010;padding:38px 30px;color:#e5e7eb;">
+                            <p style="margin:0 0 26px;font-size:30px;line-height:1.35;color:#e5e7eb;">
+                                Dear <strong style="color:#ffffff;">{{ $userName ?: 'Peer' }}</strong>,
                             </p>
 
-                            <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#374151;">
+                            <p style="margin:0 0 24px;font-size:24px;line-height:1.55;color:#d8d8d8;">
                                 Congratulations! Your PeersGlobal membership has been approved and upgraded to
-                                <strong>Only Unity Peer</strong>.
+                                <strong style="color:#ffffff;">Only Unity Peer</strong>.
                             </p>
 
-                            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin:24px 0;">
+                            <p style="margin:0 0 18px;font-size:22px;line-height:1.5;color:#d8d8d8;">
+                                Your membership details are:
+                            </p>
+
+                            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#18181b;border:1px solid #333333;border-radius:12px;overflow:hidden;margin:24px 0;">
                                 <tr>
-                                    <td colspan="2" style="background:#f9fafb;padding:14px 18px;font-size:16px;font-weight:700;color:#111827;">
-                                        Membership Details
-                                    </td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#a3a3a3;font-size:15px;width:38%;">Name</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#ffffff;font-size:15px;font-weight:700;">{{ $userName ?: '—' }}</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;width:38%;">Name</td>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;">{{ $userName ?: '—' }}</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#a3a3a3;font-size:15px;">Email</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#ffffff;font-size:15px;font-weight:700;">{{ $user->email ?: '—' }}</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;">Email</td>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;">{{ $user->email ?: '—' }}</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#a3a3a3;font-size:15px;">Phone</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#ffffff;font-size:15px;font-weight:700;">{{ $user->phone ?: '—' }}</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;">Phone</td>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;">{{ $user->phone ?: '—' }}</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#a3a3a3;font-size:15px;">Membership</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#ffffff;font-size:15px;font-weight:700;">Only Unity Peer</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;">Membership</td>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;">Only Unity Peer</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#a3a3a3;font-size:15px;">Membership Starts At</td>
+                                    <td style="padding:14px 18px;border-bottom:1px solid #2f2f2f;color:#ffffff;font-size:15px;font-weight:700;">{{ $membershipStartsAt ?? '—' }}</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;">Membership Starts At</td>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;">{{ $membershipStartsAt ?? '—' }}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px;">Membership Ends At</td>
-                                    <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:600;">{{ $membershipEndsAt ?? '—' }}</td>
+                                    <td style="padding:14px 18px;color:#a3a3a3;font-size:15px;">Membership Ends At</td>
+                                    <td style="padding:14px 18px;color:#ffffff;font-size:15px;font-weight:700;">{{ $membershipEndsAt ?? '—' }}</td>
                                 </tr>
                             </table>
 
-                            <p style="margin:22px 0 0;font-size:15px;line-height:1.6;color:#374151;">
+                            <p style="margin:28px 0 0;font-size:24px;line-height:1.55;color:#d8d8d8;">
                                 Thank you for being a part of PeersGlobal Community of Collaboration.
+                            </p>
+
+                            <p style="margin:34px 0 0;font-size:24px;line-height:1.5;color:#d8d8d8;">
+                                With appreciation,<br>
+                                <strong style="color:#ffffff;">Peers Global Team</strong>
                             </p>
                         </td>
                     </tr>
 
                     <tr>
-                        <td style="background:#f9fafb;padding:18px 30px;text-align:center;border-top:1px solid #e5e7eb;">
-                            <p style="margin:0;color:#6b7280;font-size:13px;">
-                                © {{ $currentYear ?? date('Y') }} PeersGlobal. All rights reserved.
+                        <td style="background:#2b076d;padding:30px 24px;text-align:center;">
+                            <p style="margin:0;color:#ffffff;font-size:22px;line-height:1.4;font-weight:700;">
+                                Peers are partners in business and<br>
+                                friends in life.
                             </p>
                         </td>
                     </tr>
