@@ -52,6 +52,7 @@ class User extends Authenticatable
         'city_id',
         'city',
         'status',
+        'approval_status',
         'contacts_allowed',
         'skills',
         'interests',

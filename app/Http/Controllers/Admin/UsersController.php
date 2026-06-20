@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Services\Admin\DedLocationService;
 use App\Services\IndustryDirector\IndustryScopeService;
 use App\Services\Membership\MembershipWelcomeEmailService;
+use App\Services\Notifications\NotificationService;
 use App\Services\Users\PublicProfileSlugService;
 use App\Support\AdminAccess;
 use App\Support\AdminCircleScope;
@@ -31,6 +32,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -67,12 +69,7 @@ class UsersController extends Controller
                 return [(string) $user->id => $this->buildJoinedCircleCategoryTrees($memberships)];
             });
 
-        $membershipStatuses = User::query()
-            ->whereNotNull('membership_status')
-            ->distinct()
-            ->pluck('membership_status')
-            ->sort()
-            ->values();
+        $membershipStatuses = collect($this->membershipFilterOptions())->keys()->values();
 
         $circlesQuery = Circle::query()->orderBy('name');
         $industryScope = app(IndustryScopeService::class);
@@ -88,6 +85,7 @@ class UsersController extends Controller
         return view('admin.users.index', [
             'users' => $users,
             'membershipStatuses' => $membershipStatuses,
+            'membershipStatusLabels' => $this->membershipFilterOptions(),
             'circles' => $circles,
             'q' => $q,
             'circleId' => $circleId,
@@ -108,6 +106,7 @@ class UsersController extends Controller
             'user' => $user,
             'cities' => $cities,
             'membershipStatuses' => $membershipStatuses,
+            'membershipStatusLabels' => $this->membershipFilterOptions(),
             'circles' => $circles,
             'membershipPlanOptions' => $this->membershipPlanOptions(),
         ]);
@@ -362,6 +361,7 @@ class UsersController extends Controller
             'industryDirectorRoleId' => $industryDirectorRoleId,
             'selectedIndustryId' => $industryDirectorAssignment?->industry_id,
             'membershipStatuses' => $membershipStatuses,
+            'membershipStatusLabels' => $this->membershipFilterOptions(),
             'circles' => $circles,
             'joinedCircleId' => $joinedCircleId,
             'effectiveCircleId' => $effectiveCircleId,
@@ -1301,7 +1301,10 @@ class UsersController extends Controller
             'email',
             'phone',
             'company_name',
+            'approval_status',
             'membership_status',
+            'membership_starts_at',
+            'membership_ends_at',
             'city',
             'coins_balance',
             'status',
@@ -1323,7 +1326,10 @@ class UsersController extends Controller
                     $user->email,
                     $user->phone,
                     $user->company_name,
-                    $user->membership_status,
+                    $user->approval_status ?? null,
+                    $this->membershipLabel($user->membership_status),
+                    optional($user->membership_starts_at)->toDateTimeString(),
+                    optional($user->membership_ends_at)->toDateTimeString(),
                     $user->city?->name ?? $user->city,
                     $user->coins_balance,
                     $status,
@@ -1424,10 +1430,12 @@ class UsersController extends Controller
             return back()->with('warning', 'Selected peer is not eligible for membership approval.');
         }
 
+        $this->sendMembershipApprovalNotifications(User::query()->whereKey($user->getKey())->get(), $startDate, $endDate);
+
         return back()->with('success', 'Peer approved successfully as Only Unity Peer. Membership valid until ' . $endDate->toDateString() . '.');
     }
 
-    public function bulkApproveMembership(Request $request): RedirectResponse
+    public function bulkApproveMembership(Request $request)
     {
         if (! AdminAccess::canEditUsers(Auth::guard('admin')->user())) {
             abort(403);
@@ -1438,13 +1446,16 @@ class UsersController extends Controller
         }
 
         $validated = $request->validate([
-            'user_ids' => ['required', 'array'],
+            'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['required', 'uuid', 'exists:users,id'],
-            'membership_start_date' => ['nullable', 'required_with:membership_end_date', 'date'],
-            'membership_end_date' => ['nullable', 'required_with:membership_start_date', 'date', 'after_or_equal:membership_start_date'],
+            'membership_ends_at' => ['nullable', 'date', 'after_or_equal:today'],
+            'membership_end_date' => ['nullable', 'date', 'after_or_equal:today'],
         ]);
 
-        [$startDate, $endDate] = $this->resolveMembershipApprovalDates($validated);
+        $startDate = now();
+        $endDate = filled($validated['membership_ends_at'] ?? null)
+            ? Carbon::parse($validated['membership_ends_at'])->endOfDay()
+            : (filled($validated['membership_end_date'] ?? null) ? Carbon::parse($validated['membership_end_date'])->endOfDay() : now()->addYear());
         $adminId = Auth::guard('admin')->id();
         $userIds = collect($validated['user_ids'])->map(fn ($id) => (string) $id)->unique()->values();
 
@@ -1457,7 +1468,23 @@ class UsersController extends Controller
             return $this->approveEligibleUsers($users, $startDate, $endDate, $adminId ? (string) $adminId : null);
         });
 
-        return back()->with('success', "Approved {$result['approved_count']} peers as Only Unity Peer. Skipped {$result['skipped_count']} non-eligible peers.");
+        $this->sendMembershipApprovalNotifications(
+            User::query()->whereIn('id', $userIds->all())->get(),
+            $startDate,
+            $endDate
+        );
+
+        $message = 'Selected peers approved and upgraded successfully.';
+
+        if ($request->expectsJson() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'data' => ['updated_count' => $result['approved_count']],
+            ]);
+        }
+
+        return back()->with('success', $message . " Updated {$result['approved_count']} peers.");
     }
 
     private function membershipStatuses(): array
@@ -1762,6 +1789,9 @@ class UsersController extends Controller
         if (Schema::hasColumn('users', 'main_business_category_id')) {
             $userSelectColumns[] = 'main_business_category_id';
         }
+        if (Schema::hasColumn('users', 'approval_status')) {
+            $userSelectColumns[] = 'approval_status';
+        }
 
         $query = User::query()
             ->select($userSelectColumns)
@@ -1819,6 +1849,9 @@ class UsersController extends Controller
         $joinedFrom = (string) $request->input('joined_from', '');
         $joinedTo = (string) $request->input('joined_to', '');
         $approveFilter = (string) $request->input('approve_filter', 'all');
+        $approvalStatus = (string) $request->input('approval_status', 'all');
+        $startDate = (string) $request->input('start_date', '');
+        $endDate = (string) $request->input('end_date', '');
         $perPage = $request->integer('per_page') ?: 20;
 
         if ($search !== '') {
@@ -1927,7 +1960,7 @@ class UsersController extends Controller
         }
 
         if ($membership && $membership !== 'all') {
-            $query->where('membership_status', $membership);
+            $query->whereIn('membership_status', $this->membershipValueVariants($membership));
         }
 
         if ($phone) {
@@ -1940,6 +1973,21 @@ class UsersController extends Controller
             $query->whereNotIn('membership_status', $this->membershipApprovalEligibleStatuses());
         } else {
             $approveFilter = 'all';
+        }
+
+        if (in_array($approvalStatus, ['approved', 'pending', 'rejected'], true) && Schema::hasColumn('users', 'approval_status')) {
+            $query->where('approval_status', $approvalStatus);
+        } else {
+            $approvalStatus = 'all';
+        }
+
+        $startDateColumn = $this->membershipStartFilterColumn();
+        if ($startDateColumn && ($parsedStartDate = $this->parseJoinedFilterDate($startDate)) instanceof Carbon) {
+            $query->whereDate($startDateColumn, '>=', $parsedStartDate->toDateString());
+        }
+
+        if (Schema::hasColumn('users', 'membership_ends_at') && ($parsedEndDate = $this->parseJoinedFilterDate($endDate)) instanceof Carbon) {
+            $query->whereDate('membership_ends_at', '<=', $parsedEndDate->toDateString());
         }
 
         $joinedDateExpression = 'COALESCE(membership_starts_at, created_at)';
@@ -2014,6 +2062,9 @@ class UsersController extends Controller
                 'joined_from' => $joinedFrom,
                 'joined_to' => $joinedTo,
                 'approve_filter' => $approveFilter,
+                'approval_status' => $approvalStatus,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
                 'is_circle_scoped' => $isCircleScoped,
             ]);
         }
@@ -2027,6 +2078,9 @@ class UsersController extends Controller
             'joined_from' => $joinedFrom,
             'joined_to' => $joinedTo,
             'approve_filter' => $approveFilter,
+            'approval_status' => $approvalStatus,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
             'per_page' => $perPage,
             'sort' => $sort,
             'dir' => $direction,
@@ -2035,22 +2089,75 @@ class UsersController extends Controller
         return [$query, $filters, $perPage];
     }
 
+
+    private function membershipFilterOptions(): array
+    {
+        return [
+            'circle_peer' => 'Circle Peer',
+            'multi_circle_peer' => 'Multi Circle Peer',
+            'only_unity_peer' => 'Only Unity Peer',
+            'free_peer' => 'Free Peer',
+            'free_trial_peer' => 'Free Trial Peer',
+        ];
+    }
+
+    private function membershipLabel(?string $value): string
+    {
+        $normalized = $this->normalizeMembershipValue($value);
+
+        return $this->membershipFilterOptions()[$normalized] ?? Str::headline(str_replace('_', ' ', (string) $value));
+    }
+
+    private function normalizeMembershipValue(?string $value): string
+    {
+        return strtolower(trim(str_replace(' ', '_', (string) $value)));
+    }
+
+    private function membershipValueVariants(string $value): array
+    {
+        $normalized = $this->normalizeMembershipValue($value);
+        $label = $this->membershipFilterOptions()[$normalized] ?? Str::headline(str_replace('_', ' ', $normalized));
+
+        return array_values(array_unique([$normalized, $label, str_replace(' ', '_', $label), ucfirst($normalized)]));
+    }
+
+    private function membershipStartFilterColumn(): ?string
+    {
+        foreach (['membership_starts_at', 'membership_start_at', 'joined_at', 'created_at'] as $column) {
+            if (Schema::hasColumn('users', $column)) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
     private function approveEligibleUsers(Collection $users, Carbon $startDate, Carbon $endDate, ?string $adminId): array
     {
         $approvedCount = 0;
         $skippedCount = 0;
-        $eligibleStatuses = $this->membershipApprovalEligibleStatuses();
         $approvedMembershipStatus = $this->approvedMembershipStatus();
 
         foreach ($users as $user) {
-            if (! in_array((string) $user->membership_status, $eligibleStatuses, true)) {
-                $skippedCount++;
-                continue;
-            }
-
             $attributes = [
                 'membership_status' => $approvedMembershipStatus,
             ];
+
+            if (Schema::hasColumn('users', 'membership_starts_at')) {
+                $attributes['membership_starts_at'] = $startDate->copy();
+            }
+
+            if (Schema::hasColumn('users', 'membership_ends_at')) {
+                $attributes['membership_ends_at'] = $endDate->copy();
+            }
+
+            if (Schema::hasColumn('users', 'approval_status')) {
+                $attributes['approval_status'] = 'approved';
+            }
+
+            if (Schema::hasColumn('users', 'status')) {
+                $attributes['status'] = 'active';
+            }
 
             if (Schema::hasColumn('users', 'membership_start_date')) {
                 $attributes['membership_start_date'] = $startDate->copy()->toDateString();
@@ -2080,6 +2187,67 @@ class UsersController extends Controller
             'approved_count' => $approvedCount,
             'skipped_count' => $skippedCount,
         ];
+    }
+
+
+    private function sendMembershipApprovalNotifications(Collection $users, Carbon $startDate, Carbon $endDate): void
+    {
+        $title = 'Membership Approved';
+        $endDateLabel = $endDate->format('d M Y');
+        $message = "Congratulations! Your membership has been upgraded to Only Unity Peer and is valid until {$endDateLabel}.";
+
+        foreach ($users as $user) {
+            if (! $user->pushTokens()->where('is_active', true)->exists()) {
+                Log::info('admin.users.membership_approval_push_token_missing', ['user_id' => $user->id]);
+            }
+
+            try {
+                app(NotificationService::class)->sendToUser(
+                    $user,
+                    'membership_approved',
+                    $title,
+                    $message,
+                    [
+                        'membership' => 'only_unity_peer',
+                        'membership_starts_at' => $startDate->toDateString(),
+                        'membership_ends_at' => $endDate->toDateString(),
+                        'screen' => 'membership',
+                    ],
+                    [
+                        'channel' => 'push',
+                        'priority' => 'high',
+                        'dedupe_key' => 'membership_approved:' . $user->id . ':' . now()->timestamp,
+                    ]
+                );
+            } catch (Throwable $throwable) {
+                Log::warning('admin.users.membership_approval_notification_failed', [
+                    'user_id' => $user->id,
+                    'error' => $throwable->getMessage(),
+                ]);
+            }
+
+            if (blank($user->email)) {
+                Log::info('admin.users.membership_approval_email_missing', ['user_id' => $user->id]);
+                continue;
+            }
+
+            try {
+                Mail::send('emails.membership.approved', [
+                    'user' => $user,
+                    'membershipLabel' => 'Only Unity Peer',
+                    'startDate' => $startDate,
+                    'endDate' => $endDate,
+                ], function ($mail) use ($user): void {
+                    $mail->to($user->email)->subject('Your PeersGlobal Membership Has Been Approved');
+                });
+            } catch (Throwable $throwable) {
+                Log::warning('admin.users.membership_approval_email_failed', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $throwable->getMessage(),
+                ]);
+            }
+        }
     }
 
     private function resolveMembershipApprovalDates(array $validated): array

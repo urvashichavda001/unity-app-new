@@ -41,16 +41,10 @@
         </div>
 
         <div class="text-center flex-grow-1 order-1 order-lg-2">
-            <div class="small text-muted mb-2">Approve selected free peers or free trial peers.</div>
+            <div class="small text-muted mb-2">Approve selected peers and upgrade them to Only Unity Peer.</div>
             <div class="d-flex justify-content-center align-items-center gap-2 flex-wrap">
-                <form id="bulkApproveMembershipForm" method="POST" action="{{ route('admin.users.bulk-approve-membership') }}" class="m-0">
-                    @csrf
-                    <button type="submit" class="btn btn-success btn-sm">
-                        <i class="bi bi-check-circle me-1"></i>Approve Selected
-                    </button>
-                </form>
                 <button type="button" class="btn btn-sm text-white" style="background-color: #6f42c1; border-color: #6f42c1;" id="approveWithDatesBtn" data-bs-toggle="modal" data-bs-target="#approveMembershipDatesModal">
-                    <i class="bi bi-calendar-check me-1"></i>Approve With Dates
+                    <i class="bi bi-check-circle me-1"></i>Approve Selected
                 </button>
             </div>
         </div>
@@ -99,6 +93,9 @@
         <input type="hidden" name="joined_from" value="{{ $filters['joined_from'] ?? '' }}">
         <input type="hidden" name="joined_to" value="{{ $filters['joined_to'] ?? '' }}">
         <input type="hidden" name="approve_filter" value="{{ $filters['approve_filter'] ?? 'all' }}">
+        <input type="hidden" name="approval_status" value="{{ $filters['approval_status'] ?? 'all' }}">
+        <input type="hidden" name="start_date" value="{{ $filters['start_date'] ?? '' }}">
+        <input type="hidden" name="end_date" value="{{ $filters['end_date'] ?? '' }}">
         <input type="hidden" name="sort" value="{{ $filters['sort'] }}">
         <input type="hidden" name="dir" value="{{ $filters['dir'] }}">
     </form>
@@ -119,7 +116,7 @@
                     </th>
                     <th>Phone</th>
                     <th>Membership</th>
-                    <th>Approve</th>
+                    <th>Membership Ends At</th>
                     <th>
                         <a href="{{ route('admin.users.index', array_merge(request()->query(), ['sort' => 'coins_balance', 'dir' => $filters['sort'] === 'coins_balance' && $filters['dir'] === 'asc' ? 'desc' : 'asc'])) }}" class="text-decoration-none text-dark">
                             Coins
@@ -159,22 +156,29 @@
                         <select name="membership_status" form="usersFiltersForm" class="form-select form-select-sm">
                             <option value="all">All</option>
                             @foreach ($membershipStatuses as $status)
-                                <option value="{{ $status }}" @selected($filters['membership_status'] === $status)>{{ ucfirst($status) }}</option>
+                                <option value="{{ $status }}" @selected($filters['membership_status'] === $status)>{{ $membershipStatusLabels[$status] ?? \Illuminate\Support\Str::headline(str_replace('_', ' ', $status)) }}</option>
                             @endforeach
                         </select>
                     </th>
                     <th>
-                        <select name="approve_filter" form="usersFiltersForm" class="form-select form-select-sm">
-                            <option value="all" @selected(($filters['approve_filter'] ?? 'all') === 'all')>All</option>
-                            <option value="eligible" @selected(($filters['approve_filter'] ?? 'all') === 'eligible')>Eligible</option>
-                            <option value="not_eligible" @selected(($filters['approve_filter'] ?? 'all') === 'not_eligible')>Not Eligible</option>
-                        </select>
+                        <div class="d-flex flex-column gap-2" style="min-width: 170px;">
+                            <label class="form-label form-label-sm mb-0 text-muted small">Approval Status</label>
+                            <select name="approval_status" form="usersFiltersForm" class="form-select form-select-sm" aria-label="Approval Status">
+                                <option value="all" @selected(($filters['approval_status'] ?? 'all') === 'all')>All Approval</option>
+                                <option value="approved" @selected(($filters['approval_status'] ?? 'all') === 'approved')>Approved</option>
+                                <option value="pending" @selected(($filters['approval_status'] ?? 'all') === 'pending')>Pending</option>
+                                <option value="rejected" @selected(($filters['approval_status'] ?? 'all') === 'rejected')>Rejected</option>
+                            </select>
+                            <label class="form-label form-label-sm mb-0 text-muted small">End Date</label>
+                            <input type="date" name="end_date" form="usersFiltersForm" class="form-control form-control-sm" value="{{ $filters['end_date'] ?? '' }}" aria-label="End Date">
+                        </div>
                     </th>
                     <th>
                         <input type="text" name="coins_balance" class="form-control form-control-sm" placeholder="—" disabled>
                     </th>
                     <th>
-                        <select class="form-select form-select-sm" disabled><option>Any</option></select>
+                        <label class="form-label form-label-sm mb-0 text-muted small">Start Date</label>
+                        <input type="date" name="start_date" form="usersFiltersForm" class="form-control form-control-sm" value="{{ $filters['start_date'] ?? '' }}" aria-label="Start Date">
                     </th>
                     <th>
                         <select class="form-select form-select-sm" disabled><option>Any</option></select>
@@ -220,18 +224,9 @@
                         </td>
                         <td>{{ $user->phone ?? '—' }}</td>
                         <td>
-                            <span class="badge bg-primary-subtle text-primary text-uppercase">{{ $user->membership_status ?? 'Free' }}</span>
+                            <span class="badge bg-primary-subtle text-primary">{{ $membershipStatusLabels[$user->membership_status] ?? \Illuminate\Support\Str::headline(str_replace('_', ' ', (string) ($user->membership_status ?? 'Free'))) }}</span>
                         </td>
-                        <td>
-                            @if ($canApproveMembership)
-                                <form method="POST" action="{{ route('admin.users.approve-membership', $user->id) }}" onsubmit="return confirm('Approve this peer for 1 year membership?');" class="m-0">
-                                    @csrf
-                                    <button type="submit" class="btn btn-success btn-sm">Approve</button>
-                                </form>
-                            @else
-                                <span class="text-muted">&mdash;</span>
-                            @endif
-                        </td>
+                        <td>{{ $user->membership_ends_at ? $user->membership_ends_at->format('d M Y') : '—' }}</td>
                         <td>{{ number_format($user->coins_balance ?? 0) }}</td>
                         <td>{{ optional($user->last_login_at)->format('Y-m-d H:i') ?? '—' }}</td>
                         <td>
@@ -526,18 +521,15 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="approveMembershipDatesModalLabel">Approve Membership With Dates</h5>
+                    <h5 class="modal-title" id="approveMembershipDatesModalLabel">Approve Selected Peers</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted">Select membership start and end dates. The selected peers will get premium membership for the chosen period.</p>
-                    <div class="mb-3">
-                        <label for="membershipStartDate" class="form-label">Start Date</label>
-                        <input type="date" class="form-control" id="membershipStartDate" name="membership_start_date" required>
-                    </div>
+                    <p class="text-muted mb-2">Selected peers: <strong id="selectedPeersCount">0</strong></p>
                     <div class="mb-0">
-                        <label for="membershipEndDate" class="form-label">End Date</label>
-                        <input type="date" class="form-control" id="membershipEndDate" name="membership_end_date" required>
+                        <label for="membershipEndDate" class="form-label">Membership Ends At</label>
+                        <input type="date" class="form-control" id="membershipEndDate" name="membership_ends_at">
+                        <div class="form-text">Leave empty to auto upgrade for 1 year.</div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -562,6 +554,7 @@
         const joinedCustomRange = document.getElementById('joinedCustomRange');
         const bulkApproveForm = document.getElementById('bulkApproveMembershipForm');
         const bulkApproveDatesForm = document.getElementById('bulkApproveMembershipDatesForm');
+        const approveMembershipDatesModal = document.getElementById('approveMembershipDatesModal');
         const selectedPeerIds = () => Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.value).filter(Boolean);
         const appendSelectedPeerInputs = (form) => {
             if (!form) return false;
@@ -621,6 +614,11 @@
         joinedFilter?.addEventListener('change', toggleJoinedDateRange);
         toggleJoinedDateRange();
 
+        approveMembershipDatesModal?.addEventListener('show.bs.modal', () => {
+            const countEl = document.getElementById('selectedPeersCount');
+            if (countEl) countEl.textContent = selectedPeerIds().length;
+        });
+
         exportBtn?.addEventListener('click', () => {
             if (!exportForm) return;
             exportForm.querySelectorAll('input[name="ids[]"]').forEach(el => el.remove());
@@ -647,11 +645,11 @@
                 return;
             }
 
-            const startDate = document.getElementById('membershipStartDate')?.value;
             const endDate = document.getElementById('membershipEndDate')?.value;
-            if (startDate && endDate && endDate < startDate) {
+            const today = new Date().toISOString().slice(0, 10);
+            if (endDate && endDate < today) {
                 e.preventDefault();
-                alert('End Date must be the same as or after Start Date.');
+                alert('Membership Ends At must be today or later.');
             }
         });
 
