@@ -1453,7 +1453,9 @@ class UsersController extends Controller
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['required', 'exists:users,id'],
             'membership_starts_at' => ['nullable', 'date'],
-            'membership_ends_at' => ['nullable', 'date'],
+            'membership_ends_at' => ['nullable', 'date', 'after_or_equal:membership_starts_at'],
+        ], [
+            'membership_ends_at.after_or_equal' => 'Membership Ends At must be same or after Membership Starts At.',
         ]);
 
         $startDate = filled($validated['membership_starts_at'] ?? null)

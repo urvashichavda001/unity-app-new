@@ -532,11 +532,11 @@
                     <div class="border rounded-3 p-3 bg-light-subtle mb-3">
                         <div class="d-flex justify-content-between gap-3 mb-2">
                             <span class="text-muted">Membership Starts At:</span>
-                            <strong class="text-end" id="modalMembershipStartsAtText">Today</strong>
+                            <strong class="text-end" id="modalMembershipStartsAtText">—</strong>
                         </div>
                         <div class="d-flex justify-content-between gap-3">
                             <span class="text-muted">Membership Ends At:</span>
-                            <strong class="text-end" id="modalMembershipEndsAtText">Today + 1 year</strong>
+                            <strong class="text-end" id="modalMembershipEndsAtText">—</strong>
                         </div>
                     </div>
                     <p class="mb-0">Are you sure you want to approve the selected peers?</p>
@@ -618,17 +618,31 @@
             const query = params.toString();
             window.location = query ? `${window.location.pathname}?${query}` : window.location.pathname;
         };
-        const isoDate = (date) => date.toISOString().slice(0, 10);
-        const addOneYear = (value) => {
-            const date = value ? new Date(`${value}T00:00:00`) : new Date();
+        function formatDateValue(date) {
+            return date.toISOString().slice(0, 10);
+        }
+
+        function getTodayDateValue() {
+            const today = new Date();
+            return formatDateValue(today);
+        }
+
+        function addOneYear(dateValue) {
+            const date = new Date(`${dateValue}T00:00:00`);
             date.setFullYear(date.getFullYear() + 1);
-            return isoDate(date);
-        };
-        const formatDisplayDate = (value) => {
-            if (!value) return '';
-            return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                .format(new Date(`${value}T00:00:00`));
-        };
+            return formatDateValue(date);
+        }
+
+        function formatDisplayDate(dateValue) {
+            if (!dateValue) return '—';
+
+            const date = new Date(`${dateValue}T00:00:00`);
+            return date.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+            }).replace(/ /g, ' ');
+        }
 
         resetFiltersBtn?.addEventListener('click', () => {
             if (membershipStartDate) {
@@ -655,10 +669,18 @@
                 return;
             }
 
-            const startsAt = membershipStartDate?.value || '';
-            const endsAt = membershipEndDate?.value || '';
+            let startsAt = membershipStartDate?.value || '';
+            let endsAt = membershipEndDate?.value || '';
 
-            if (startsAt && endsAt && endsAt < startsAt) {
+            if (!startsAt) {
+                startsAt = getTodayDateValue();
+            }
+
+            if (!endsAt) {
+                endsAt = addOneYear(startsAt);
+            }
+
+            if (endsAt < startsAt) {
                 alert('Membership Ends At must be same or after Membership Starts At.');
                 return;
             }
@@ -670,14 +692,11 @@
             if (modalMembershipStartsAt) modalMembershipStartsAt.value = startsAt;
             if (modalMembershipEndsAt) modalMembershipEndsAt.value = endsAt;
 
-            const resolvedEndForText = endsAt || (startsAt ? addOneYear(startsAt) : '');
             if (modalMembershipStartsAtText) {
-                modalMembershipStartsAtText.textContent = startsAt ? formatDisplayDate(startsAt) : 'Today';
+                modalMembershipStartsAtText.textContent = formatDisplayDate(startsAt);
             }
             if (modalMembershipEndsAtText) {
-                modalMembershipEndsAtText.textContent = resolvedEndForText
-                    ? formatDisplayDate(resolvedEndForText)
-                    : 'Today + 1 year';
+                modalMembershipEndsAtText.textContent = formatDisplayDate(endsAt);
             }
 
             modal?.show();
