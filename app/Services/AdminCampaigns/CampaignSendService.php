@@ -182,7 +182,7 @@ class CampaignSendService
             'source_type' => 'admin_campaign',
             'source_id' => $campaign->id,
             'source_event' => 'campaign_send',
-            'payload' => ['campaign_id' => $campaign->id, 'campaign_title' => $campaign->title],
+            'payload' => ['campaign_id' => $campaign->id, 'campaign_title' => $campaign->title, 'sender_email' => $campaign->sender_email],
         ];
     }
 

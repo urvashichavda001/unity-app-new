@@ -13,6 +13,7 @@
         $selectedBusinessCategoryIds = collect($filters['business_category_ids'] ?? $filters['category_ids'] ?? [])->map(fn ($id) => (string) $id)->all();
         $selectedPamphletId = old('pamphlet_id', $campaign->pamphlet_id ?? '');
         $selectedEmailTemplateId = old('email_template_id', $campaign->email_template_id ?: optional($defaultEmailTemplate)->id);
+        $selectedSenderEmail = old('sender_email', $campaign->sender_email);
     @endphp
 
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -43,6 +44,14 @@
                         </select>
                     </div>
                     <div id="emailFields" class="email-fields {{ $showEmailFields ? '' : 'd-none' }}">
+                        <div class="mb-3">
+                            <label class="form-label" for="campaignSenderEmail">Sender Email</label>
+                            <select name="sender_email" id="campaignSenderEmail" class="form-select" required>
+                                @foreach ($senderEmails as $senderEmail)
+                                    <option value="{{ $senderEmail }}" @selected($selectedSenderEmail === $senderEmail)>{{ $senderEmail }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label" for="campaignSubject">Subject</label>
                             <input type="text" id="campaignSubject" name="subject" class="form-control" value="{{ old('subject', $campaign->subject ?? '') }}" @required($showEmailFields)>
