@@ -60,7 +60,7 @@ class UsersController extends Controller
 
         [$query, $filters, $perPage] = $this->buildUserQuery($request);
 
-        $users = $query->paginate($perPage)->appends($request->except('approval_status'));
+        $users = $query->paginate($perPage)->appends($request->query());
         $canEditUsers = AdminAccess::canEditUsers(Auth::guard('admin')->user());
         $joinedCircleCategoryTreesByUserId = $users->getCollection()
             ->mapWithKeys(function (User $user) {
@@ -1451,7 +1451,7 @@ class UsersController extends Controller
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['required', 'uuid', 'exists:users,id'],
             'membership_starts_at' => ['nullable', 'date'],
-            'membership_ends_at' => ['nullable', 'date'],
+            'membership_ends_at' => ['nullable', 'date', 'after_or_equal:membership_starts_at', 'after_or_equal:today'],
         ]);
 
         $startDate = filled($validated['membership_starts_at'] ?? null)
@@ -1460,13 +1460,6 @@ class UsersController extends Controller
         $endDate = filled($validated['membership_ends_at'] ?? null)
             ? Carbon::parse($validated['membership_ends_at'])->endOfDay()
             : $startDate->copy()->addYear()->endOfDay();
-
-        if ($endDate->lt($startDate)) {
-            throw ValidationException::withMessages([
-                'membership_ends_at' => 'Membership Ends At must be the same as or after Membership Starts At.',
-            ]);
-        }
-
         $adminId = Auth::guard('admin')->id();
         $userIds = collect($validated['user_ids'])->map(fn ($id) => (string) $id)->unique()->values();
 
@@ -1860,6 +1853,7 @@ class UsersController extends Controller
         $joinedFrom = (string) $request->input('joined_from', '');
         $joinedTo = (string) $request->input('joined_to', '');
         $approveFilter = (string) $request->input('approve_filter', 'all');
+        $approvalStatus = (string) $request->input('approval_status', 'all');
         $startDate = (string) $request->input('start_date', '');
         $endDate = (string) $request->input('end_date', '');
         $perPage = $request->integer('per_page') ?: 20;
@@ -1988,6 +1982,12 @@ class UsersController extends Controller
             $approveFilter = 'all';
         }
 
+        if (in_array($approvalStatus, ['approved', 'pending', 'rejected'], true) && Schema::hasColumn('users', 'approval_status')) {
+            $query->where('approval_status', $approvalStatus);
+        } else {
+            $approvalStatus = 'all';
+        }
+
         $startDateColumn = $this->membershipStartFilterColumn();
         if ($startDateColumn && ($parsedStartDate = $this->parseJoinedFilterDate($startDate)) instanceof Carbon) {
             $query->whereDate($startDateColumn, '>=', $parsedStartDate->toDateString());
@@ -2069,6 +2069,7 @@ class UsersController extends Controller
                 'joined_from' => $joinedFrom,
                 'joined_to' => $joinedTo,
                 'approve_filter' => $approveFilter,
+                'approval_status' => $approvalStatus,
                 'start_date' => $startDate,
                 'end_date' => $endDate,
                 'is_circle_scoped' => $isCircleScoped,
@@ -2084,6 +2085,7 @@ class UsersController extends Controller
             'joined_from' => $joinedFrom,
             'joined_to' => $joinedTo,
             'approve_filter' => $approveFilter,
+            'approval_status' => $approvalStatus,
             'start_date' => $startDate,
             'end_date' => $endDate,
             'per_page' => $perPage,
