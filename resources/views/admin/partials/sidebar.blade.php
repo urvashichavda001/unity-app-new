@@ -127,14 +127,14 @@
     ];
     $campaignsActive = request()->routeIs('admin.campaigns.*') || request()->routeIs('admin.campaign-pamphlets.*') || request()->routeIs('admin.execution.communications');
     $notificationsMenu = [
-        ['label' => 'Dashboard', 'route' => 'admin.notifications.dashboard'],
-        ['label' => 'Campaigns', 'route' => 'admin.notifications.campaigns'],
-        ['label' => 'Send Test Notification', 'route' => 'admin.notifications.send-test'],
-        ['label' => 'Notification Logs', 'route' => 'admin.notifications.logs'],
-        ['label' => 'Push Tokens', 'route' => 'admin.notifications.push-tokens'],
-        ['label' => 'User Notifications', 'route' => 'admin.notifications.user-notifications'],
+        ['label' => 'Overview', 'route' => 'admin.notifications.dashboard', 'icon' => 'bi-speedometer2', 'active_routes' => ['admin.notifications.dashboard']],
+        ['label' => 'Campaigns', 'route' => 'admin.notifications.campaigns', 'icon' => 'bi-megaphone', 'active_routes' => ['admin.notifications.campaigns', 'admin.notifications.campaigns.*']],
+        ['label' => 'Send Notification', 'route' => 'admin.notifications.send-test', 'icon' => 'bi-send', 'active_routes' => ['admin.notifications.send-test', 'admin.notifications.send-test.store']],
+        ['label' => 'Delivery Logs', 'route' => 'admin.notifications.logs', 'icon' => 'bi-clock-history', 'active_routes' => ['admin.notifications.logs']],
+        ['label' => 'Push Tokens', 'route' => 'admin.notifications.push-tokens', 'icon' => 'bi-phone', 'active_routes' => ['admin.notifications.push-tokens', 'admin.notifications.push-tokens.*']],
+        ['label' => 'User Inbox', 'route' => 'admin.notifications.user-notifications', 'icon' => 'bi-inbox', 'active_routes' => ['admin.notifications.user-notifications', 'admin.notifications.mark-read', 'admin.notifications.destroy', 'admin.notifications.clear-user']],
     ];
-    $notificationsActive = request()->routeIs('admin.notifications.*');
+    $notificationsActive = request()->routeIs('admin.notifications.*') || request()->is('admin/notifications*');
     $eventsManagementMenu = [
         ['label' => 'Events', 'route' => 'admin.events.index'],
         ['label' => 'Event Joining Requests', 'route' => 'admin.event-joining-requests.index'],
@@ -297,10 +297,15 @@
                         <i class="bi bi-chevron-right menu-arrow"></i>
                     </a>
                     <div class="collapse {{ $notificationsActive ? 'show' : '' }}" id="notificationsSubmenu">
-                        <ul class="nav flex-column ms-3">
+                        <div class="sidebar-section-hint">Engagement Tools</div>
+                        <ul class="nav flex-column notifications-submenu">
                             @foreach ($notificationsMenu as $notificationItem)
+                                @php($notificationItemActive = request()->routeIs(...$notificationItem['active_routes']))
                                 <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs($notificationItem['route']) ? 'active' : '' }}" href="{{ route($notificationItem['route']) }}">{{ $notificationItem['label'] }}</a>
+                                    <a class="nav-link {{ $notificationItemActive ? 'active' : '' }}" href="{{ route($notificationItem['route']) }}">
+                                        <i class="bi {{ $notificationItem['icon'] }} me-2"></i>
+                                        <span>{{ $notificationItem['label'] }}</span>
+                                    </a>
                                 </li>
                             @endforeach
                         </ul>

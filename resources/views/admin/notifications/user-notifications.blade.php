@@ -1,95 +1,11 @@
 @extends('admin.layouts.app')
-@section('title', 'User Notifications')
-
+@section('title', 'User Inbox')
 @section('content')
 @include('admin.notifications._helpers')
 @include('admin.notifications._styles')
 @include('admin.notifications._flash')
-
-<h1 class="h4 mb-3">User Notifications</h1>
-<div class="card shadow-sm mb-3">
-    <div class="card-body">
-        <form class="row g-2">
-            <div class="col-md-2"><input class="form-control" name="user_search" value="{{ request('user_search') }}" placeholder="User"></div>
-            <div class="col-md-2"><input class="form-control" name="type" value="{{ request('type') }}" placeholder="Type"></div>
-            <div class="col-md-2"><input class="form-control" name="category" value="{{ request('category') }}" placeholder="Category"></div>
-            <div class="col-md-1"><input class="form-control" name="status" value="{{ request('status') }}" placeholder="Status"></div>
-            <div class="col-md-1"><input class="form-control" name="priority" value="{{ request('priority') }}" placeholder="Priority"></div>
-            <div class="col-md-1"><select class="form-select" name="read"><option value="">Read?</option><option value="read" @selected(request('read') === 'read')>Read</option><option value="unread" @selected(request('read') === 'unread')>Unread</option></select></div>
-            <div class="col-md-1"><select class="form-select" name="clicked"><option value="">Click?</option><option value="clicked" @selected(request('clicked') === 'clicked')>Clicked</option><option value="not_clicked" @selected(request('clicked') === 'not_clicked')>Not</option></select></div>
-            <div class="col-md-1"><input type="date" class="form-control" name="date_from" value="{{ request('date_from') }}"></div>
-            <div class="col-md-1"><button class="btn btn-outline-primary w-100">Filter</button></div>
-        </form>
-    </div>
-</div>
-
-<div class="card shadow-sm">
-    <div class="table-responsive">
-        <table class="table table-striped table-hover align-middle notification-admin-table mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Date</th><th>User</th><th>Type</th><th>Category</th><th>Title</th><th>Body</th><th>Channel</th><th>Priority</th><th>Status</th><th>Read</th><th>Clicked</th><th class="action-cell">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($notifications as $n)
-                    <tr>
-                        <td>{{ optional($n->created_at)->format('d M Y H:i') }}</td>
-                        <td>{{ notification_admin_user_name($n->user) }}</td>
-                        <td><code>{{ $n->type }}</code></td>
-                        <td>{{ $n->category ?: '-' }}</td>
-                        <td class="text-truncate" style="max-width: 220px;" title="{{ $n->title }}">{{ Str::limit($n->title, 30) }}</td>
-                        <td class="text-truncate" style="max-width: 300px;" title="{{ $n->body }}">{{ Str::limit($n->body, 80) }}</td>
-                        <td>{{ $n->channel }}</td>
-                        <td><span class="badge bg-{{ notification_admin_priority_badge($n->priority) }}">{{ $n->priority }}</span></td>
-                        <td><span class="badge bg-{{ notification_admin_status_badge($n->status) }}">{{ $n->status }}</span></td>
-                        <td>{{ optional($n->read_at)->format('d M H:i') ?: '-' }}</td>
-                        <td>{{ optional($n->clicked_at)->format('d M H:i') ?: '-' }}</td>
-                        <td class="text-nowrap action-cell">
-                            <div class="d-flex align-items-center gap-1 flex-nowrap">
-                                <button type="button" class="btn btn-sm btn-outline-secondary action-btn" data-bs-toggle="modal" data-bs-target="#details-{{ $n->id }}">View</button>
-                                @if(empty($n->read_at))
-                                    <form method="POST" action="{{ route('admin.notifications.mark-read', $n->id) }}" class="d-inline m-0">
-                                        @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-success action-btn" title="Mark Read">Read</button>
-                                    </form>
-                                @endif
-                                <form method="POST" action="{{ route('admin.notifications.destroy', $n->id) }}" class="d-inline m-0" onsubmit="return confirm('Delete this notification?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger action-btn">Delete</button>
-                                </form>
-                            </div>
-                            <div class="modal fade" id="details-{{ $n->id }}" tabindex="-1">
-                                <div class="modal-dialog modal-lg">
-                                    <div class="modal-content">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title">Notification Details</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body">
-                                            <dl class="row">
-                                                <dt class="col-sm-3">Title</dt><dd class="col-sm-9">{{ $n->title }}</dd>
-                                                <dt class="col-sm-3">Body</dt><dd class="col-sm-9">{{ $n->body }}</dd>
-                                                <dt class="col-sm-3">Screen</dt><dd class="col-sm-9">{{ $n->screen ?: '-' }}</dd>
-                                                <dt class="col-sm-3">Reference</dt><dd class="col-sm-9">{{ $n->reference_type ?: '-' }} / {{ $n->reference_id ?: '-' }}</dd>
-                                                <dt class="col-sm-3">Dedupe</dt><dd class="col-sm-9">{{ $n->dedupe_key ?: '-' }}</dd>
-                                                <dt class="col-sm-3">Timestamps</dt><dd class="col-sm-9">Sent: {{ $n->sent_at ?: '-' }} | Read: {{ $n->read_at ?: '-' }} | Clicked: {{ $n->clicked_at ?: '-' }} | Failed: {{ $n->failed_at ?: '-' }}</dd>
-                                                <dt class="col-sm-3">Failure</dt><dd class="col-sm-9">{{ $n->failure_reason ?: '-' }}</dd>
-                                                <dt class="col-sm-3">Data</dt><dd class="col-sm-9"><pre class="bg-light p-3 rounded">{{ notification_admin_json($n->data) }}</pre></dd>
-                                            </dl>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="12" class="text-center text-muted py-4">No notifications found.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
-</div>
-<div class="mt-3">{{ $notifications->links() }}</div>
+<div class="notification-page"><div class="notification-hero mb-4"><h1 class="h3 mb-1">User Inbox</h1><p class="text-muted mb-0">View notifications stored inside the app for users.</p></div>
+<div class="row g-3 mb-4">@foreach([['Total Notifications','total','primary'],['Today Created','today','secondary'],['Unread','unread','warning'],['Read','read','info'],['Clicked','clicked','success'],['Push Attempted','push_attempted','primary'],['Push Failed','push_failed','danger']] as [$label,$key,$color])<div class="col-6 col-xl"><div class="notification-card p-3"><div class="small text-muted">{{ $label }}</div><div class="h3 mb-0 text-{{ $color }}">{{ number_format($summary[$key] ?? 0) }}</div></div></div>@endforeach</div>
+<div class="notification-card p-3 mb-4"><form class="row g-3 align-items-end"><div class="col-12 col-lg"><label class="form-label small fw-semibold">Search</label><input class="form-control" name="search" value="{{ request('search') }}" placeholder="Title, body, user, type, campaign"></div><div class="col-12 col-lg"><label class="form-label small fw-semibold">User</label><input class="form-control" name="user_search" value="{{ request('user_search') }}" placeholder="Name, email, mobile"></div><div class="col-6 col-lg"><label class="form-label small fw-semibold">Campaign</label><select class="form-select" name="campaign_id"><option value="">All</option>@foreach($campaigns ?? collect() as $campaign)<option value="{{ $campaign->id }}" @selected(request('campaign_id') === $campaign->id)>{{ $campaign->name }}</option>@endforeach</select></div><div class="col-6 col-lg"><label class="form-label small fw-semibold">Type</label><input class="form-control" name="type" value="{{ request('type') }}" placeholder="Type"></div><div class="col-6 col-lg"><label class="form-label small fw-semibold">Priority</label><input class="form-control" name="priority" value="{{ request('priority') }}" placeholder="Priority"></div><div class="col-6 col-lg"><label class="form-label small fw-semibold">Read</label><select class="form-select" name="read"><option value="">Any</option><option value="read" @selected(request('read') === 'read')>Read</option><option value="unread" @selected(request('read') === 'unread')>Unread</option></select></div><div class="col-6 col-lg"><label class="form-label small fw-semibold">Clicked</label><select class="form-select" name="clicked"><option value="">Any</option><option value="clicked" @selected(request('clicked') === 'clicked')>Clicked</option><option value="not_clicked" @selected(request('clicked') === 'not_clicked')>Not clicked</option></select></div><div class="col-6 col-lg"><label class="form-label small fw-semibold">Date</label><input type="date" class="form-control" name="date_from" value="{{ request('date_from') }}"></div><div class="col-12 col-lg-auto d-flex gap-2"><a href="{{ route('admin.notifications.user-notifications') }}" class="btn btn-outline-secondary flex-fill">Clear</a><button class="btn btn-primary flex-fill">Filter</button></div></form></div>
+<div class="notification-card overflow-hidden"><div class="table-responsive"><table class="table table-hover align-middle notification-admin-table mb-0"><thead class="table-light"><tr><th>Date</th><th>Recipient</th><th>Notification</th><th>Campaign</th><th>Type</th><th>Priority</th><th>Read</th><th>Clicked</th><th>Tap Destination</th><th class="action-cell">Action</th></tr></thead><tbody>@forelse($notifications as $n)<tr><td>{{ optional($n->created_at)->format('d M Y H:i') }}</td><td>{{ notification_admin_user_name($n->user) }}</td><td><div class="fw-semibold">{{ Str::limit($n->title, 42) }}</div><div class="small text-muted">{{ Str::limit($n->body, 70) }}</div><div class="notification-mono">{{ notification_admin_label($n->type) }}</div></td><td>{{ $n->campaign?->name ?? 'Manual Send' }}</td><td><span class="notification-mono">{{ notification_admin_label($n->type) }}</span></td><td><span class="badge bg-{{ notification_admin_priority_badge($n->priority) }} notification-soft-badge">{{ notification_admin_label($n->priority) }}</span></td><td>{{ optional($n->read_at)->format('d M H:i') ?: 'Unread' }}</td><td>{{ optional($n->clicked_at)->format('d M H:i') ?: 'Not clicked' }}</td><td>{{ $n->screen ?: '—' }}</td><td><div class="d-flex gap-1 flex-wrap"><button class="btn btn-sm btn-outline-primary action-btn" data-bs-toggle="modal" data-bs-target="#details-{{ $n->id }}">View Details</button>@if(empty($n->read_at))<form method="POST" action="{{ route('admin.notifications.mark-read', $n->id) }}" class="d-inline m-0">@csrf<button type="submit" class="btn btn-sm btn-outline-success action-btn">Mark Read</button></form>@endif<form method="POST" action="{{ route('admin.notifications.destroy', $n->id) }}" class="d-inline m-0" onsubmit="return confirm('Delete this notification?');">@csrf @method('DELETE')<button type="submit" class="btn btn-sm btn-outline-danger action-btn">Delete</button></form></div><div class="modal fade" id="details-{{ $n->id }}" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Notification Details</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><dl class="row"><dt class="col-sm-3">Title</dt><dd class="col-sm-9">{{ $n->title }}</dd><dt class="col-sm-3">Body</dt><dd class="col-sm-9">{{ $n->body }}</dd><dt class="col-sm-3">User</dt><dd class="col-sm-9">{{ notification_admin_user_name($n->user) }}</dd><dt class="col-sm-3">Type</dt><dd class="col-sm-9">{{ notification_admin_label($n->type) }}</dd><dt class="col-sm-3">Priority</dt><dd class="col-sm-9">{{ notification_admin_label($n->priority) }}</dd><dt class="col-sm-3">Read at</dt><dd class="col-sm-9">{{ optional($n->read_at)->format('d M Y H:i') ?: '—' }}</dd><dt class="col-sm-3">Clicked at</dt><dd class="col-sm-9">{{ optional($n->clicked_at)->format('d M Y H:i') ?: '—' }}</dd><dt class="col-sm-3">Tap destination</dt><dd class="col-sm-9">{{ $n->screen ?: '—' }}</dd><dt class="col-sm-3">Created at</dt><dd class="col-sm-9">{{ optional($n->created_at)->format('d M Y H:i') ?: '—' }}</dd><dt class="col-sm-3">Data</dt><dd class="col-sm-9"><pre class="bg-light p-3 rounded">{{ notification_admin_json($n->data) }}</pre></dd></dl></div></div></div></div></td></tr>@empty<tr><td colspan="10"><div class="notification-empty">No user inbox notifications found for selected filters.</div></td></tr>@endforelse</tbody></table></div></div><div class="mt-3">{{ $notifications->links() }}</div></div>
 @endsection

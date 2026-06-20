@@ -67,30 +67,101 @@ class NotificationAdminController extends Controller
         if (! Schema::hasTable('notification_campaigns')) {
             return view('admin.notifications.campaigns.index', [
                 'campaigns' => $this->emptyPaginator($request),
-                'filters' => ['categories' => collect(), 'channels' => collect(), 'priorities' => self::PRIORITIES],
+                'filters' => $this->campaignFilterOptions(collect()),
+                'summary' => $this->emptyCampaignSummary(),
+                'categoryTabs' => $this->campaignCategoryTabs(),
             ]);
         }
 
-        $campaigns = NotificationCampaign::query()
-            ->when($request->filled('search'), function (Builder $query) use ($request): void {
-                $search = '%' . $request->string('search')->toString() . '%';
-                $query->where(fn (Builder $q) => $q->where('name', 'ilike', $search)->orWhere('code', 'ilike', $search));
-            })
-            ->when($request->filled('category'), fn (Builder $q) => $q->where('category', $request->category))
-            ->when($request->filled('channel'), fn (Builder $q) => $q->where('channel', $request->channel))
-            ->when($request->filled('priority'), fn (Builder $q) => $q->where('priority', $request->priority))
-            ->when($request->filled('status'), fn (Builder $q) => $q->where('is_active', $request->status === 'active'))
-            ->latest()
-            ->paginate(20)
-            ->withQueryString();
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'category' => ['nullable', 'string', 'max:255'],
+            'channel' => ['nullable', 'string', 'max:50'],
+            'priority' => ['nullable', Rule::in(self::PRIORITIES)],
+            'status' => ['nullable', Rule::in(['active', 'inactive', 'scheduled', 'draft'])],
+            'frequency' => ['nullable', 'string', 'max:100'],
+        ]);
 
-        $filters = [
-            'categories' => NotificationCampaign::query()->distinct()->whereNotNull('category')->orderBy('category')->pluck('category'),
-            'channels' => NotificationCampaign::query()->distinct()->whereNotNull('channel')->orderBy('channel')->pluck('channel'),
+        $query = NotificationCampaign::query()->withMax('runs as last_sent_at', 'finished_at');
+
+        $query
+            ->when(filled($validated['search'] ?? null), function (Builder $query) use ($validated): void {
+                $search = '%' . trim((string) $validated['search']) . '%';
+                $query->where(function (Builder $q) use ($search): void {
+                    $q->where('name', 'ilike', $search)
+                        ->orWhere('code', 'ilike', $search)
+                        ->orWhere('title_template', 'ilike', $search)
+                        ->orWhere('body_template', 'ilike', $search)
+                        ->orWhere('audience_type', 'ilike', $search)
+                        ->orWhere('trigger_type', 'ilike', $search);
+                });
+            })
+            ->when(filled($validated['category'] ?? null), fn (Builder $q) => $q->where('category', $validated['category']))
+            ->when(filled($validated['channel'] ?? null), fn (Builder $q) => $q->where('channel', $validated['channel']))
+            ->when(filled($validated['priority'] ?? null), fn (Builder $q) => $q->where('priority', $validated['priority']))
+            ->when(filled($validated['frequency'] ?? null), fn (Builder $q) => $q->where('frequency', $validated['frequency']))
+            ->when(filled($validated['status'] ?? null), function (Builder $q) use ($validated): void {
+                match ($validated['status']) {
+                    'active' => $q->where('is_active', true),
+                    'inactive', 'draft' => $q->where('is_active', false),
+                    'scheduled' => $q->where('is_active', true)->whereNotNull('frequency')->where('frequency', '!=', 'immediate'),
+                    default => null,
+                };
+            });
+
+        $campaigns = $query->latest()->paginate(20)->withQueryString();
+        $allCampaigns = NotificationCampaign::query()->get();
+
+        return view('admin.notifications.campaigns.index', [
+            'campaigns' => $campaigns,
+            'filters' => $this->campaignFilterOptions($allCampaigns),
+            'summary' => $this->campaignSummary($allCampaigns),
+            'categoryTabs' => $this->campaignCategoryTabs(),
+        ]);
+    }
+
+
+    private function campaignFilterOptions($campaigns): array
+    {
+        return [
+            'categories' => $campaigns->pluck('category')->filter()->unique()->sort()->values(),
+            'channels' => $campaigns->pluck('channel')->filter()->unique()->sort()->values(),
+            'frequencies' => $campaigns->pluck('frequency')->filter()->unique()->sort()->values(),
             'priorities' => self::PRIORITIES,
         ];
+    }
 
-        return view('admin.notifications.campaigns.index', compact('campaigns', 'filters'));
+    private function campaignSummary($campaigns): array
+    {
+        return [
+            'total' => $campaigns->count(),
+            'active' => $campaigns->where('is_active', true)->count(),
+            'scheduled' => $campaigns->filter(fn (NotificationCampaign $campaign): bool => $campaign->is_active && filled($campaign->frequency) && $campaign->frequency !== 'immediate')->count(),
+            'immediate' => $campaigns->filter(fn (NotificationCampaign $campaign): bool => blank($campaign->frequency) || $campaign->frequency === 'immediate')->count(),
+            'push' => $campaigns->filter(fn (NotificationCampaign $campaign): bool => in_array($campaign->channel, ['push', 'push_email', 'both'], true))->count(),
+            'high_urgent' => $campaigns->whereIn('priority', ['high', 'urgent'])->count(),
+        ];
+    }
+
+    private function emptyCampaignSummary(): array
+    {
+        return ['total' => 0, 'active' => 0, 'scheduled' => 0, 'immediate' => 0, 'push' => 0, 'high_urgent' => 0];
+    }
+
+    private function campaignCategoryTabs(): array
+    {
+        return [
+            '' => 'All',
+            'feed_social' => 'Feed & Social',
+            'circle_community' => 'Circle & Community',
+            'events' => 'Events',
+            'p2p_meetings' => 'P2P Meetings',
+            'business_referrals' => 'Business & Referrals',
+            'wallet_coins' => 'Wallet & Coins',
+            'retention' => 'Retention',
+            'membership' => 'Membership',
+            'gamification' => 'Gamification',
+        ];
     }
 
     public function createCampaign(): View
@@ -207,6 +278,7 @@ class NotificationAdminController extends Controller
         $query = User::query()
             ->when($canCountPushTokens, fn (Builder $builder) => $builder->withCount([
                 'pushTokens as active_push_tokens_count' => fn (Builder $tokenQuery) => $tokenQuery->where('is_active', true),
+                'pushTokens as inactive_push_tokens_count' => fn (Builder $tokenQuery) => $tokenQuery->where('is_active', false),
             ]));
 
         if (Schema::hasColumn('users', 'deleted_at')) {
@@ -237,11 +309,20 @@ class NotificationAdminController extends Controller
         $users = $query->forPage($page, $perPage)->get();
 
         return response()->json([
-            'results' => $users->map(fn (User $user): array => [
-                'id' => (string) $user->id,
-                'text' => $this->userSelectText($user),
-                'active_push_tokens_count' => (int) ($user->active_push_tokens_count ?? $this->activePushTokenCount($user)),
-            ])->values(),
+            'results' => $users->map(function (User $user): array {
+                $displayName = trim((string) ($user->display_name ?? '')) ?: trim(((string) ($user->first_name ?? '')) . ' ' . ((string) ($user->last_name ?? '')));
+                $displayName = $displayName !== '' ? $displayName : (string) ($user->name ?? $user->email ?? $user->phone ?? 'Unknown User');
+                $phone = (string) ($user->phone ?? $user->mobile ?? '');
+                return [
+                    'id' => (string) $user->id,
+                    'text' => $displayName,
+                    'name' => $displayName,
+                    'email' => (string) ($user->email ?? ''),
+                    'phone' => $phone,
+                    'active_push_tokens_count' => (int) ($user->active_push_tokens_count ?? $this->activePushTokenCount($user)),
+                    'inactive_push_tokens_count' => (int) ($user->inactive_push_tokens_count ?? 0),
+                ];
+            })->values(),
             'pagination' => ['more' => ($page * $perPage) < $total],
         ]);
     }
@@ -361,41 +442,92 @@ class NotificationAdminController extends Controller
             return view('admin.notifications.logs', [
                 'logs' => $this->emptyPaginator($request),
                 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect(),
+                'summary' => ['total' => 0, 'sent' => 0, 'failed' => 0, 'pending' => 0, 'firebase' => 0, 'in_app' => 0],
             ]);
         }
 
+        $validated = $request->validate([
+            'status' => ['nullable', 'string', 'max:50'],
+            'channel' => ['nullable', 'string', 'max:50'],
+            'provider' => ['nullable', 'string', 'max:100'],
+            'user_search' => ['nullable', 'string', 'max:255'],
+            'campaign_id' => ['nullable', 'string', 'max:255'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+        ]);
+
+        $base = NotificationDeliveryLog::query();
+        $summary = [
+            'total' => (clone $base)->count(),
+            'sent' => (clone $base)->whereIn('status', ['sent', 'delivered', 'completed'])->count(),
+            'failed' => (clone $base)->where('status', 'failed')->count(),
+            'pending' => (clone $base)->whereIn('status', ['pending', 'queued', 'running'])->count(),
+            'firebase' => (clone $base)->where(function (Builder $q): void { $q->where('provider', 'firebase')->orWhere('channel', 'push'); })->count(),
+            'in_app' => Schema::hasTable('app_notifications') ? AppNotification::count() : 0,
+        ];
+
         $logs = NotificationDeliveryLog::with(['notification.user', 'notification.campaign', 'user', 'campaign'])
-            ->when($request->filled('status'), fn (Builder $q) => $q->where('status', $request->status))
-            ->when($request->filled('channel'), fn (Builder $q) => $q->where('channel', $request->channel))
-            ->when($request->filled('provider'), fn (Builder $q) => $q->where('provider', $request->provider))
-            ->when($request->filled('campaign_id'), fn (Builder $q) => $q->whereHas('notification', fn (Builder $n) => $n->where('campaign_id', $request->campaign_id)))
-            ->when($request->filled('user_search'), fn (Builder $q) => $q->whereHas('notification.user', fn (Builder $u) => $this->applyUserSearch($u, $request->string('user_search')->toString())))
-            ->when($request->filled('date_from'), fn (Builder $q) => $q->whereDate('created_at', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn (Builder $q) => $q->whereDate('created_at', '<=', $request->date_to))
+            ->when(filled($validated['status'] ?? null), fn (Builder $q) => $q->where('status', $validated['status']))
+            ->when(filled($validated['channel'] ?? null), fn (Builder $q) => $q->where('channel', $validated['channel']))
+            ->when(filled($validated['provider'] ?? null), fn (Builder $q) => $q->where('provider', $validated['provider']))
+            ->when(filled($validated['campaign_id'] ?? null), fn (Builder $q) => $q->where(function (Builder $query) use ($validated): void { $query->where('campaign_id', $validated['campaign_id'])->orWhereHas('notification', fn (Builder $n) => $n->where('campaign_id', $validated['campaign_id'])); }))
+            ->when(filled($validated['user_search'] ?? null), function (Builder $q) use ($validated): void {
+                $needle = '%' . trim((string) $validated['user_search']) . '%';
+                $q->where(function (Builder $query) use ($validated, $needle): void {
+                    $query->whereHas('notification.user', fn (Builder $u) => $this->applyUserSearch($u, (string) $validated['user_search']))
+                        ->orWhereHas('user', fn (Builder $u) => $this->applyUserSearch($u, (string) $validated['user_search']))
+                        ->orWhereHas('notification', fn (Builder $n) => $n->where('title', 'ilike', $needle)->orWhere('body', 'ilike', $needle)->orWhere('type', 'ilike', $needle))
+                        ->orWhereHas('campaign', fn (Builder $c) => $c->where('name', 'ilike', $needle)->orWhere('code', 'ilike', $needle))
+                        ->orWhere('provider_message_id', 'ilike', $needle);
+                });
+            })
+            ->when(filled($validated['date_from'] ?? null), fn (Builder $q) => $q->whereDate('created_at', '>=', $validated['date_from']))
+            ->when(filled($validated['date_to'] ?? null), fn (Builder $q) => $q->whereDate('created_at', '<=', $validated['date_to']))
             ->latest()
             ->paginate(30)
             ->withQueryString();
 
-        return view('admin.notifications.logs', ['logs' => $logs, 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect()]);
+        return view('admin.notifications.logs', ['logs' => $logs, 'summary' => $summary, 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect()]);
     }
 
     public function pushTokens(Request $request): View
     {
         if (! Schema::hasTable('user_push_tokens')) {
-            return view('admin.notifications.push-tokens', ['tokens' => $this->emptyPaginator($request)]);
+            return view('admin.notifications.push-tokens', ['tokens' => $this->emptyPaginator($request), 'summary' => ['total' => 0, 'active' => 0, 'inactive' => 0, 'android' => 0, 'ios' => 0, 'recent' => 0]]);
         }
 
+        $validated = $request->validate([
+            'platform' => ['nullable', 'string', 'max:50'],
+            'active' => ['nullable', Rule::in(['0', '1'])],
+            'user_search' => ['nullable', 'string', 'max:255'],
+            'app_version' => ['nullable', 'string', 'max:100'],
+            'last_used_from' => ['nullable', 'date'],
+        ]);
         $hasIsActive = Schema::hasColumn('user_push_tokens', 'is_active');
+        $base = UserPushToken::query();
+        $summary = [
+            'total' => (clone $base)->count(),
+            'active' => $hasIsActive ? (clone $base)->where('is_active', true)->count() : 0,
+            'inactive' => $hasIsActive ? (clone $base)->where('is_active', false)->count() : 0,
+            'android' => Schema::hasColumn('user_push_tokens', 'platform') ? (clone $base)->where('platform', 'android')->count() : 0,
+            'ios' => Schema::hasColumn('user_push_tokens', 'platform') ? (clone $base)->where('platform', 'ios')->count() : 0,
+            'recent' => Schema::hasColumn('user_push_tokens', 'last_used_at') ? (clone $base)->where('last_used_at', '>=', now()->subDays(7))->count() : 0,
+        ];
+
         $tokens = UserPushToken::with('user')
-            ->when($request->filled('platform') && Schema::hasColumn('user_push_tokens', 'platform'), fn (Builder $q) => $q->where('platform', $request->platform))
-            ->when($request->filled('active') && $hasIsActive, fn (Builder $q) => $q->where('is_active', $request->active === '1'))
-            ->when($request->filled('app_version') && Schema::hasColumn('user_push_tokens', 'app_version'), fn (Builder $q) => $q->where('app_version', 'ilike', '%' . $request->app_version . '%'))
-            ->when($request->filled('user_search'), fn (Builder $q) => $q->whereHas('user', fn (Builder $u) => $this->applyUserSearch($u, $request->string('user_search')->toString())))
+            ->when(filled($validated['platform'] ?? null) && Schema::hasColumn('user_push_tokens', 'platform'), fn (Builder $q) => $q->where('platform', $validated['platform']))
+            ->when(filled($validated['active'] ?? null) && $hasIsActive, fn (Builder $q) => $q->where('is_active', $validated['active'] === '1'))
+            ->when(filled($validated['app_version'] ?? null) && Schema::hasColumn('user_push_tokens', 'app_version'), fn (Builder $q) => $q->where('app_version', 'ilike', '%' . $validated['app_version'] . '%'))
+            ->when(filled($validated['last_used_from'] ?? null) && Schema::hasColumn('user_push_tokens', 'last_used_at'), fn (Builder $q) => $q->whereDate('last_used_at', '>=', $validated['last_used_from']))
+            ->when(filled($validated['user_search'] ?? null), function (Builder $q) use ($validated): void {
+                $needle = '%' . trim((string) $validated['user_search']) . '%';
+                $q->where(fn (Builder $query) => $query->whereHas('user', fn (Builder $u) => $this->applyUserSearch($u, (string) $validated['user_search']))->orWhere('device_id', 'ilike', $needle)->orWhere('token', 'ilike', $needle)->orWhere('app_version', 'ilike', $needle));
+            })
             ->latest()
             ->paginate(30)
             ->withQueryString();
 
-        return view('admin.notifications.push-tokens', compact('tokens'));
+        return view('admin.notifications.push-tokens', compact('tokens', 'summary'));
     }
 
     public function deactivatePushToken(string $id): RedirectResponse
@@ -410,10 +542,26 @@ class NotificationAdminController extends Controller
     public function userNotifications(Request $request): View
     {
         if (! Schema::hasTable('app_notifications')) {
-            return view('admin.notifications.user-notifications', ['notifications' => $this->emptyPaginator($request)]);
+            return view('admin.notifications.user-notifications', ['notifications' => $this->emptyPaginator($request), 'summary' => ['total' => 0, 'unread' => 0, 'read' => 0, 'clicked' => 0, 'today' => 0, 'push_attempted' => 0, 'push_failed' => 0], 'campaigns' => collect()]);
         }
 
-        $notifications = AppNotification::with('user')
+        $base = AppNotification::query();
+        $summary = [
+            'total' => (clone $base)->count(),
+            'unread' => (clone $base)->whereNull('read_at')->count(),
+            'read' => (clone $base)->whereNotNull('read_at')->count(),
+            'clicked' => (clone $base)->whereNotNull('clicked_at')->count(),
+            'today' => (clone $base)->whereDate('created_at', today())->count(),
+            'push_attempted' => Schema::hasTable('notification_delivery_logs') ? NotificationDeliveryLog::where('channel', 'push')->count() : 0,
+            'push_failed' => Schema::hasTable('notification_delivery_logs') ? NotificationDeliveryLog::where('channel', 'push')->where('status', 'failed')->count() : 0,
+        ];
+
+        $notifications = AppNotification::with(['user', 'campaign', 'deliveryLogs'])
+            ->when($request->filled('search'), function (Builder $q) use ($request): void {
+                $like = '%' . $request->string('search')->toString() . '%';
+                $q->where(fn (Builder $query) => $query->where('title', 'ilike', $like)->orWhere('body', 'ilike', $like)->orWhere('type', 'ilike', $like)->orWhereHas('user', fn (Builder $u) => $this->applyUserSearch($u, $request->string('search')->toString()))->orWhereHas('campaign', fn (Builder $c) => $c->where('name', 'ilike', $like)->orWhere('code', 'ilike', $like)));
+            })
+            ->when($request->filled('campaign_id'), fn (Builder $q) => $q->where('campaign_id', $request->campaign_id))
             ->when($request->filled('type'), fn (Builder $q) => $q->where('type', $request->type))
             ->when($request->filled('category'), fn (Builder $q) => $q->where('category', $request->category))
             ->when($request->filled('status'), fn (Builder $q) => $q->where('status', $request->status))
@@ -427,7 +575,7 @@ class NotificationAdminController extends Controller
             ->paginate(30)
             ->withQueryString();
 
-        return view('admin.notifications.user-notifications', compact('notifications'));
+        return view('admin.notifications.user-notifications', ['notifications' => $notifications, 'summary' => $summary, 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect()]);
     }
 
     public function markNotificationRead(string $id): RedirectResponse
@@ -795,6 +943,11 @@ class NotificationAdminController extends Controller
         $rows = [
             ['requirement_lead', 'New requirement / lead available', 'New requirement / lead available', 'requirement_match', 'daily', 'matching_requirements', 'Potential Business Match Found!', '<person> is looking for: "[Requirement Title]"', 'requirement_details'],
             ['pending_requirement_reminder', 'Pending requirement reminder', 'New requirement / lead available', 'requirement_match', 'hourly', 'matching_requirements', 'Reminder: respond to pending requirements', 'You have [X] pending requirement matches.', 'requirement_details'],
+            ['new_post_activity_circle', 'New Post / Activity In Circle', 'feed_social', 'post_or_circle_activity', 'real_time_or_digest', 'circle_members_and_connections', 'New post by <person>', '[Post Preview Content]...', 'post_details'],
+            ['post_like_received', 'Post Like Received', 'feed_social', 'post_liked', 'immediate', 'post_owner', '<person> liked your post', '<person> liked your post: "[Post Preview Content]"', 'post_details'],
+            ['post_comment_received', 'Post Comment Received', 'feed_social', 'post_commented', 'immediate', 'post_owner', '<person> commented on your post', '"[Comment Preview Content]"', 'post_details'],
+            ['user_mention_notification', 'User Mention Notification', 'feed_social', 'user_mentioned', 'immediate', 'mentioned_user', '<person> mentioned you!', '<person> mentioned you in a post: "[Post Preview Content]"', 'post_details'],
+            ['share_post_alert', 'Share Post Alert', 'feed_social', 'post_shared', 'immediate', 'post_owner', 'Your post was shared!', '<person> shared your post: "[Post Preview Content]"', 'post_details'],
             ['circle_activity', 'New post / activity in circle', 'New post / activity in circle', 'new_post', 'daily', 'same_circle', 'New activity in [Circle Name]', '<person> shared an update in [Circle Name].', 'feed'],
             ['people_to_connect', 'People to connect with', 'People to connect with', 'inactive_connection_nudge', 'daily', 'mutual_connections', 'People you should connect with', 'Meet [X] relevant peers this week.', 'suggested_connections'],
             ['upcoming_event_reminder', 'Upcoming event reminder', 'Upcoming event reminder', 'new_event_announcement', 'every-five-minutes', 'event_attendees', '[Event Title] is coming up', 'Your event starts on <date>.', 'event_details'],
