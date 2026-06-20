@@ -278,6 +278,7 @@ class NotificationAdminController extends Controller
         $query = User::query()
             ->when($canCountPushTokens, fn (Builder $builder) => $builder->withCount([
                 'pushTokens as active_push_tokens_count' => fn (Builder $tokenQuery) => $tokenQuery->where('is_active', true),
+                'pushTokens as inactive_push_tokens_count' => fn (Builder $tokenQuery) => $tokenQuery->where('is_active', false),
             ]));
 
         if (Schema::hasColumn('users', 'deleted_at')) {
@@ -308,11 +309,20 @@ class NotificationAdminController extends Controller
         $users = $query->forPage($page, $perPage)->get();
 
         return response()->json([
-            'results' => $users->map(fn (User $user): array => [
-                'id' => (string) $user->id,
-                'text' => $this->userSelectText($user),
-                'active_push_tokens_count' => (int) ($user->active_push_tokens_count ?? $this->activePushTokenCount($user)),
-            ])->values(),
+            'results' => $users->map(function (User $user): array {
+                $displayName = trim((string) ($user->display_name ?? '')) ?: trim(((string) ($user->first_name ?? '')) . ' ' . ((string) ($user->last_name ?? '')));
+                $displayName = $displayName !== '' ? $displayName : (string) ($user->name ?? $user->email ?? $user->phone ?? 'Unknown User');
+                $phone = (string) ($user->phone ?? $user->mobile ?? '');
+                return [
+                    'id' => (string) $user->id,
+                    'text' => $displayName,
+                    'name' => $displayName,
+                    'email' => (string) ($user->email ?? ''),
+                    'phone' => $phone,
+                    'active_push_tokens_count' => (int) ($user->active_push_tokens_count ?? $this->activePushTokenCount($user)),
+                    'inactive_push_tokens_count' => (int) ($user->inactive_push_tokens_count ?? 0),
+                ];
+            })->values(),
             'pagination' => ['more' => ($page * $perPage) < $total],
         ]);
     }
