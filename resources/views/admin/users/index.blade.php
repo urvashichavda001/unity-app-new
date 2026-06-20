@@ -135,7 +135,7 @@
             </div>
             <div class="col-12 col-md-6 col-xl-2 d-flex gap-2">
                 <button type="submit" class="btn btn-sm btn-primary flex-fill">Apply</button>
-                <a class="btn btn-sm btn-outline-secondary flex-fill" href="{{ route('admin.users.index') }}">Reset</a>
+                <a class="btn btn-sm btn-outline-secondary flex-fill" id="resetFiltersBtn" href="{{ route('admin.users.index') }}">Reset</a>
             </div>
         </div>
     </form>
@@ -566,6 +566,7 @@
         const exportForm = document.getElementById('exportCsvForm');
         const joinedFilter = document.getElementById('joinedFilter');
         const joinedCustomRange = document.getElementById('joinedCustomRange');
+        const resetFiltersBtn = document.getElementById('resetFiltersBtn');
         const approveSelectedPeersBtn = document.getElementById('openApproveMembershipModal');
         const bulkApproveDatesForm = document.getElementById('bulkApproveMembershipDatesForm');
         const approveMembershipDatesModal = document.getElementById('approveMembershipDatesModal');
@@ -622,6 +623,29 @@
             const query = params.toString();
             window.location = query ? `${window.location.pathname}?${query}` : window.location.pathname;
         };
+        function getTodayDateValue() {
+            const today = new Date();
+            return today.toISOString().slice(0, 10);
+        }
+
+        function getNextYearDateValue() {
+            const nextYear = new Date();
+            nextYear.setFullYear(nextYear.getFullYear() + 1);
+            return nextYear.toISOString().slice(0, 10);
+        }
+
+        function resetMembershipApprovalDates() {
+            if (membershipStartDate) {
+                membershipStartDate.value = getTodayDateValue();
+            }
+
+            if (membershipEndDate) {
+                membershipEndDate.value = getNextYearDateValue();
+            }
+
+            membershipEndDateTouched = false;
+        }
+
         const isoDate = (date) => date.toISOString().slice(0, 10);
         const addOneYear = (value) => {
             const date = value ? new Date(`${value}T00:00:00`) : new Date();
@@ -633,6 +657,14 @@
             return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                 .format(new Date(`${value}T00:00:00`));
         };
+
+        if (!membershipStartDate?.value || !membershipEndDate?.value) {
+            resetMembershipApprovalDates();
+        }
+
+        resetFiltersBtn?.addEventListener('click', () => {
+            resetMembershipApprovalDates();
+        });
 
         membershipEndDate?.addEventListener('input', () => {
             membershipEndDateTouched = true;

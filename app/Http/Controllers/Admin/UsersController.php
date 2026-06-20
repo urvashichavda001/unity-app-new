@@ -15,6 +15,7 @@ use App\Models\City;
 use App\Models\Industry;
 use App\Models\IndustryDirectorAssignment;
 use App\Models\JoinedCircleCategory;
+use App\Models\Notifications\AppNotification;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPushToken;
@@ -1452,11 +1453,13 @@ class UsersController extends Controller
             'user_ids' => ['required', 'array', 'min:1'],
             'user_ids.*' => ['required', 'exists:users,id'],
             'membership_starts_at' => ['required', 'date'],
-            'membership_ends_at' => ['required', 'date'],
+            'membership_ends_at' => ['required', 'date', 'after_or_equal:membership_starts_at'],
+        ], [
+            'membership_ends_at.after_or_equal' => 'Membership Ends At must be same or after Membership Starts At.',
         ]);
 
-        $startDate = Carbon::parse($request->input('membership_starts_at') ?? now())->startOfDay();
-        $endDate = Carbon::parse($request->input('membership_ends_at') ?? $startDate->copy()->addYear())->endOfDay();
+        $startDate = Carbon::parse($validated['membership_starts_at'] ?? now())->startOfDay();
+        $endDate = Carbon::parse($validated['membership_ends_at'] ?? $startDate->copy()->addYear())->endOfDay();
 
         if ($endDate->lt($startDate)) {
             return back()->withErrors([
@@ -2203,18 +2206,28 @@ class UsersController extends Controller
             ];
 
             try {
-                app(NotificationService::class)->createInAppNotification(
-                    $user,
-                    'membership_approved',
-                    $title,
-                    $message,
-                    $notificationData,
-                    [
-                        'channel' => 'in_app',
-                        'priority' => 'high',
-                        'dedupe_key' => 'membership_approved:' . $user->id . ':' . now()->timestamp,
-                    ]
-                );
+                $recentDuplicate = AppNotification::query()
+                    ->where('user_id', $user->id)
+                    ->where('type', 'membership_approved')
+                    ->where('data->membership_starts_at', $startDate->toDateString())
+                    ->where('data->membership_ends_at', $endDate->toDateString())
+                    ->where('created_at', '>=', now()->subMinutes(5))
+                    ->exists();
+
+                if (! $recentDuplicate) {
+                    app(NotificationService::class)->createInAppNotification(
+                        $user,
+                        'membership_approved',
+                        $title,
+                        $message,
+                        $notificationData,
+                        [
+                            'channel' => 'in_app',
+                            'priority' => 'high',
+                            'dedupe_key' => 'membership_approved:' . $user->id . ':' . $startDate->toDateString() . ':' . $endDate->toDateString() . ':' . now()->format('YmdHi'),
+                        ]
+                    );
+                }
             } catch (Throwable $throwable) {
                 Log::warning('admin.users.membership_approval_notification_failed', [
                     'user_id' => $user->id,
