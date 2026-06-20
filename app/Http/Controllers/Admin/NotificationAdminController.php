@@ -542,7 +542,7 @@ class NotificationAdminController extends Controller
     public function userNotifications(Request $request): View
     {
         if (! Schema::hasTable('app_notifications')) {
-            return view('admin.notifications.user-notifications', ['notifications' => $this->emptyPaginator($request), 'summary' => ['total' => 0, 'unread' => 0, 'read' => 0, 'clicked' => 0, 'today' => 0]]);
+            return view('admin.notifications.user-notifications', ['notifications' => $this->emptyPaginator($request), 'summary' => ['total' => 0, 'unread' => 0, 'read' => 0, 'clicked' => 0, 'today' => 0, 'push_attempted' => 0, 'push_failed' => 0], 'campaigns' => collect()]);
         }
 
         $base = AppNotification::query();
@@ -552,9 +552,16 @@ class NotificationAdminController extends Controller
             'read' => (clone $base)->whereNotNull('read_at')->count(),
             'clicked' => (clone $base)->whereNotNull('clicked_at')->count(),
             'today' => (clone $base)->whereDate('created_at', today())->count(),
+            'push_attempted' => Schema::hasTable('notification_delivery_logs') ? NotificationDeliveryLog::where('channel', 'push')->count() : 0,
+            'push_failed' => Schema::hasTable('notification_delivery_logs') ? NotificationDeliveryLog::where('channel', 'push')->where('status', 'failed')->count() : 0,
         ];
 
-        $notifications = AppNotification::with('user')
+        $notifications = AppNotification::with(['user', 'campaign', 'deliveryLogs'])
+            ->when($request->filled('search'), function (Builder $q) use ($request): void {
+                $like = '%' . $request->string('search')->toString() . '%';
+                $q->where(fn (Builder $query) => $query->where('title', 'ilike', $like)->orWhere('body', 'ilike', $like)->orWhere('type', 'ilike', $like)->orWhereHas('user', fn (Builder $u) => $this->applyUserSearch($u, $request->string('search')->toString()))->orWhereHas('campaign', fn (Builder $c) => $c->where('name', 'ilike', $like)->orWhere('code', 'ilike', $like)));
+            })
+            ->when($request->filled('campaign_id'), fn (Builder $q) => $q->where('campaign_id', $request->campaign_id))
             ->when($request->filled('type'), fn (Builder $q) => $q->where('type', $request->type))
             ->when($request->filled('category'), fn (Builder $q) => $q->where('category', $request->category))
             ->when($request->filled('status'), fn (Builder $q) => $q->where('status', $request->status))
@@ -568,7 +575,7 @@ class NotificationAdminController extends Controller
             ->paginate(30)
             ->withQueryString();
 
-        return view('admin.notifications.user-notifications', compact('notifications', 'summary'));
+        return view('admin.notifications.user-notifications', ['notifications' => $notifications, 'summary' => $summary, 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect()]);
     }
 
     public function markNotificationRead(string $id): RedirectResponse
@@ -936,6 +943,11 @@ class NotificationAdminController extends Controller
         $rows = [
             ['requirement_lead', 'New requirement / lead available', 'New requirement / lead available', 'requirement_match', 'daily', 'matching_requirements', 'Potential Business Match Found!', '<person> is looking for: "[Requirement Title]"', 'requirement_details'],
             ['pending_requirement_reminder', 'Pending requirement reminder', 'New requirement / lead available', 'requirement_match', 'hourly', 'matching_requirements', 'Reminder: respond to pending requirements', 'You have [X] pending requirement matches.', 'requirement_details'],
+            ['new_post_activity_circle', 'New Post / Activity In Circle', 'feed_social', 'post_or_circle_activity', 'real_time_or_digest', 'circle_members_and_connections', 'New post by <person>', '[Post Preview Content]...', 'post_details'],
+            ['post_like_received', 'Post Like Received', 'feed_social', 'post_liked', 'immediate', 'post_owner', '<person> liked your post', '<person> liked your post: "[Post Preview Content]"', 'post_details'],
+            ['post_comment_received', 'Post Comment Received', 'feed_social', 'post_commented', 'immediate', 'post_owner', '<person> commented on your post', '"[Comment Preview Content]"', 'post_details'],
+            ['user_mention_notification', 'User Mention Notification', 'feed_social', 'user_mentioned', 'immediate', 'mentioned_user', '<person> mentioned you!', '<person> mentioned you in a post: "[Post Preview Content]"', 'post_details'],
+            ['share_post_alert', 'Share Post Alert', 'feed_social', 'post_shared', 'immediate', 'post_owner', 'Your post was shared!', '<person> shared your post: "[Post Preview Content]"', 'post_details'],
             ['circle_activity', 'New post / activity in circle', 'New post / activity in circle', 'new_post', 'daily', 'same_circle', 'New activity in [Circle Name]', '<person> shared an update in [Circle Name].', 'feed'],
             ['people_to_connect', 'People to connect with', 'People to connect with', 'inactive_connection_nudge', 'daily', 'mutual_connections', 'People you should connect with', 'Meet [X] relevant peers this week.', 'suggested_connections'],
             ['upcoming_event_reminder', 'Upcoming event reminder', 'Upcoming event reminder', 'new_event_announcement', 'every-five-minutes', 'event_attendees', '[Event Title] is coming up', 'Your event starts on <date>.', 'event_details'],

@@ -787,12 +787,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications', [NotificationEngineController::class, 'index']);
         Route::post('/notifications/{id}/read', [NotificationEngineController::class, 'read'])->whereUuid('id');
         Route::post('/notifications/read-all', [NotificationEngineController::class, 'readAll']);
+        Route::post('/notifications/{id}/clicked', [NotificationEngineController::class, 'click'])->whereUuid('id');
         Route::post('/notifications/{id}/click', [NotificationEngineController::class, 'click'])->whereUuid('id');
         Route::get('/notifications/preferences', [NotificationEngineController::class, 'preferences']);
         Route::put('/notifications/preferences', [NotificationEngineController::class, 'updatePreferences']);
-        Route::get('/notifications', [NotificationController::class, 'index']);
-        Route::post('/notifications/read-all', [NotificationController::class, 'readAll']);
-        Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
 
         // Push tokens
         Route::post('/push-tokens', [PushTokenController::class, 'store']);
