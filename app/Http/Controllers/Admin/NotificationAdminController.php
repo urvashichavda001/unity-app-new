@@ -67,30 +67,101 @@ class NotificationAdminController extends Controller
         if (! Schema::hasTable('notification_campaigns')) {
             return view('admin.notifications.campaigns.index', [
                 'campaigns' => $this->emptyPaginator($request),
-                'filters' => ['categories' => collect(), 'channels' => collect(), 'priorities' => self::PRIORITIES],
+                'filters' => $this->campaignFilterOptions(collect()),
+                'summary' => $this->emptyCampaignSummary(),
+                'categoryTabs' => $this->campaignCategoryTabs(),
             ]);
         }
 
-        $campaigns = NotificationCampaign::query()
-            ->when($request->filled('search'), function (Builder $query) use ($request): void {
-                $search = '%' . $request->string('search')->toString() . '%';
-                $query->where(fn (Builder $q) => $q->where('name', 'ilike', $search)->orWhere('code', 'ilike', $search));
-            })
-            ->when($request->filled('category'), fn (Builder $q) => $q->where('category', $request->category))
-            ->when($request->filled('channel'), fn (Builder $q) => $q->where('channel', $request->channel))
-            ->when($request->filled('priority'), fn (Builder $q) => $q->where('priority', $request->priority))
-            ->when($request->filled('status'), fn (Builder $q) => $q->where('is_active', $request->status === 'active'))
-            ->latest()
-            ->paginate(20)
-            ->withQueryString();
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'category' => ['nullable', 'string', 'max:255'],
+            'channel' => ['nullable', 'string', 'max:50'],
+            'priority' => ['nullable', Rule::in(self::PRIORITIES)],
+            'status' => ['nullable', Rule::in(['active', 'inactive', 'scheduled', 'draft'])],
+            'frequency' => ['nullable', 'string', 'max:100'],
+        ]);
 
-        $filters = [
-            'categories' => NotificationCampaign::query()->distinct()->whereNotNull('category')->orderBy('category')->pluck('category'),
-            'channels' => NotificationCampaign::query()->distinct()->whereNotNull('channel')->orderBy('channel')->pluck('channel'),
+        $query = NotificationCampaign::query()->withMax('runs as last_sent_at', 'finished_at');
+
+        $query
+            ->when(filled($validated['search'] ?? null), function (Builder $query) use ($validated): void {
+                $search = '%' . trim((string) $validated['search']) . '%';
+                $query->where(function (Builder $q) use ($search): void {
+                    $q->where('name', 'ilike', $search)
+                        ->orWhere('code', 'ilike', $search)
+                        ->orWhere('title_template', 'ilike', $search)
+                        ->orWhere('body_template', 'ilike', $search)
+                        ->orWhere('audience_type', 'ilike', $search)
+                        ->orWhere('trigger_type', 'ilike', $search);
+                });
+            })
+            ->when(filled($validated['category'] ?? null), fn (Builder $q) => $q->where('category', $validated['category']))
+            ->when(filled($validated['channel'] ?? null), fn (Builder $q) => $q->where('channel', $validated['channel']))
+            ->when(filled($validated['priority'] ?? null), fn (Builder $q) => $q->where('priority', $validated['priority']))
+            ->when(filled($validated['frequency'] ?? null), fn (Builder $q) => $q->where('frequency', $validated['frequency']))
+            ->when(filled($validated['status'] ?? null), function (Builder $q) use ($validated): void {
+                match ($validated['status']) {
+                    'active' => $q->where('is_active', true),
+                    'inactive', 'draft' => $q->where('is_active', false),
+                    'scheduled' => $q->where('is_active', true)->whereNotNull('frequency')->where('frequency', '!=', 'immediate'),
+                    default => null,
+                };
+            });
+
+        $campaigns = $query->latest()->paginate(20)->withQueryString();
+        $allCampaigns = NotificationCampaign::query()->get();
+
+        return view('admin.notifications.campaigns.index', [
+            'campaigns' => $campaigns,
+            'filters' => $this->campaignFilterOptions($allCampaigns),
+            'summary' => $this->campaignSummary($allCampaigns),
+            'categoryTabs' => $this->campaignCategoryTabs(),
+        ]);
+    }
+
+
+    private function campaignFilterOptions($campaigns): array
+    {
+        return [
+            'categories' => $campaigns->pluck('category')->filter()->unique()->sort()->values(),
+            'channels' => $campaigns->pluck('channel')->filter()->unique()->sort()->values(),
+            'frequencies' => $campaigns->pluck('frequency')->filter()->unique()->sort()->values(),
             'priorities' => self::PRIORITIES,
         ];
+    }
 
-        return view('admin.notifications.campaigns.index', compact('campaigns', 'filters'));
+    private function campaignSummary($campaigns): array
+    {
+        return [
+            'total' => $campaigns->count(),
+            'active' => $campaigns->where('is_active', true)->count(),
+            'scheduled' => $campaigns->filter(fn (NotificationCampaign $campaign): bool => $campaign->is_active && filled($campaign->frequency) && $campaign->frequency !== 'immediate')->count(),
+            'immediate' => $campaigns->filter(fn (NotificationCampaign $campaign): bool => blank($campaign->frequency) || $campaign->frequency === 'immediate')->count(),
+            'push' => $campaigns->filter(fn (NotificationCampaign $campaign): bool => in_array($campaign->channel, ['push', 'push_email', 'both'], true))->count(),
+            'high_urgent' => $campaigns->whereIn('priority', ['high', 'urgent'])->count(),
+        ];
+    }
+
+    private function emptyCampaignSummary(): array
+    {
+        return ['total' => 0, 'active' => 0, 'scheduled' => 0, 'immediate' => 0, 'push' => 0, 'high_urgent' => 0];
+    }
+
+    private function campaignCategoryTabs(): array
+    {
+        return [
+            '' => 'All',
+            'feed_social' => 'Feed & Social',
+            'circle_community' => 'Circle & Community',
+            'events' => 'Events',
+            'p2p_meetings' => 'P2P Meetings',
+            'business_referrals' => 'Business & Referrals',
+            'wallet_coins' => 'Wallet & Coins',
+            'retention' => 'Retention',
+            'membership' => 'Membership',
+            'gamification' => 'Gamification',
+        ];
     }
 
     public function createCampaign(): View
