@@ -1433,7 +1433,7 @@ class UsersController extends Controller
             return back()->with('warning', 'Selected peer is not eligible for membership approval.');
         }
 
-        $this->sendMembershipApprovalNotifications(User::query()->whereKey($user->getKey())->get(), $startDate, $endDate, false);
+        $this->sendMembershipApprovalNotifications(User::query()->whereKey($user->getKey())->get(), $startDate, $endDate);
 
         return back()->with('success', 'Peer approved successfully as Only Unity Peer. Membership valid until ' . $endDate->toDateString() . '.');
     }
@@ -1450,17 +1450,13 @@ class UsersController extends Controller
 
         $validated = $request->validate([
             'user_ids' => ['required', 'array', 'min:1'],
-            'user_ids.*' => ['required', 'uuid', 'exists:users,id'],
-            'membership_starts_at' => ['nullable', 'date'],
-            'membership_ends_at' => ['nullable', 'date'],
+            'user_ids.*' => ['required', 'exists:users,id'],
+            'membership_starts_at' => ['required', 'date'],
+            'membership_ends_at' => ['required', 'date'],
         ]);
 
-        $startDate = filled($validated['membership_starts_at'] ?? null)
-            ? Carbon::parse($validated['membership_starts_at'])->startOfDay()
-            : now();
-        $endDate = filled($validated['membership_ends_at'] ?? null)
-            ? Carbon::parse($validated['membership_ends_at'])->endOfDay()
-            : $startDate->copy()->addYear()->endOfDay();
+        $startDate = Carbon::parse($request->input('membership_starts_at') ?? now())->startOfDay();
+        $endDate = Carbon::parse($request->input('membership_ends_at') ?? $startDate->copy()->addYear())->endOfDay();
 
         if ($endDate->lt($startDate)) {
             return back()->withErrors([
@@ -1486,7 +1482,7 @@ class UsersController extends Controller
             $endDate
         );
 
-        $message = 'Selected peers approved and upgraded successfully.';
+        $message = $result['approved_count'] . ' selected peers approved and upgraded successfully.';
 
         if ($request->expectsJson() || $request->wantsJson()) {
             return response()->json([
@@ -1496,7 +1492,7 @@ class UsersController extends Controller
             ]);
         }
 
-        return back()->with('success', $message . " Updated {$result['approved_count']} peers.");
+        return back()->with('success', $message);
     }
 
     private function membershipStatuses(): array
@@ -2192,12 +2188,14 @@ class UsersController extends Controller
     private function sendMembershipApprovalNotifications(Collection $users, Carbon $startDate, Carbon $endDate, bool $sendEmail = true): void
     {
         $title = 'Membership Approved';
+        $startDateLabel = $startDate->format('d M Y');
         $endDateLabel = $endDate->format('d M Y');
-        $message = "Congratulations! Your membership has been upgraded to Only Unity Peer and is valid until {$endDateLabel}.";
+        $message = "Congratulations! Your PeersGlobal membership has been upgraded to Only Unity Peer and is valid from {$startDateLabel} to {$endDateLabel}.";
+        $pushMessage = "Your PeersGlobal membership is now Only Unity Peer, valid until {$endDateLabel}.";
 
         foreach ($users as $user) {
             $notificationData = [
-                'membership' => 'only_unity_peer',
+                'membership_status' => 'only_unity_peer',
                 'membership_starts_at' => $startDate->toDateString(),
                 'membership_ends_at' => $endDate->toDateString(),
                 'screen' => 'membership',
@@ -2224,7 +2222,7 @@ class UsersController extends Controller
                 ]);
             }
 
-            $this->sendMembershipApprovalPush($user, $title, $message, $notificationData);
+            $this->sendMembershipApprovalPush($user, $title, $pushMessage, $notificationData);
 
             if (! $sendEmail) {
                 continue;

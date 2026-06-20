@@ -19,6 +19,11 @@
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
 
+@php
+    $defaultMembershipStartsAt = now()->format('Y-m-d');
+    $defaultMembershipEndsAt = now()->addYear()->format('Y-m-d');
+@endphp
+
 <div class="card p-3">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
         <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -55,18 +60,17 @@
             <div class="d-flex flex-column flex-md-row align-items-md-end gap-2 gap-md-3 flex-grow-1 justify-content-xl-end">
                 <div>
                     <label for="approvalMembershipStartsAt" class="form-label small text-muted mb-1">Membership Starts At</label>
-                    <input id="approvalMembershipStartsAt" type="date" name="membership_starts_at" class="form-control form-control-sm">
+                    <input id="approvalMembershipStartsAt" type="date" name="approval_membership_starts_at" class="form-control form-control-sm" value="{{ old('approval_membership_starts_at', $defaultMembershipStartsAt) }}">
                 </div>
                 <div>
                     <label for="approvalMembershipEndsAt" class="form-label small text-muted mb-1">Membership Ends At</label>
-                    <input id="approvalMembershipEndsAt" type="date" name="membership_ends_at" class="form-control form-control-sm">
+                    <input id="approvalMembershipEndsAt" type="date" name="approval_membership_ends_at" class="form-control form-control-sm" value="{{ old('approval_membership_ends_at', $defaultMembershipEndsAt) }}">
                 </div>
                 <button type="button" class="btn btn-success btn-sm" id="openApproveMembershipModal">
                     <i class="bi bi-check-circle me-1"></i>Approve Selected
                 </button>
             </div>
         </div>
-        <div class="form-text mt-2">Leave dates empty to set membership from today for 1 year.</div>
     </div>
 
     <form id="usersFiltersForm" method="GET" class="border rounded-3 p-3 mb-3 bg-white">
@@ -566,8 +570,9 @@
         const bulkApproveDatesForm = document.getElementById('bulkApproveMembershipDatesForm');
         const approveMembershipDatesModal = document.getElementById('approveMembershipDatesModal');
         const selectedCountEl = document.getElementById('selectedPeersCount');
-        const membershipStartDate = document.querySelector('[name="membership_starts_at"]');
-        const membershipEndDate = document.querySelector('[name="membership_ends_at"]');
+        const membershipStartDate = document.getElementById('approvalMembershipStartsAt');
+        const membershipEndDate = document.getElementById('approvalMembershipEndsAt');
+        let membershipEndDateTouched = false;
         const modalMembershipStartsAt = document.getElementById('modalMembershipStartsAt');
         const modalMembershipEndsAt = document.getElementById('modalMembershipEndsAt');
         const modalMembershipStartsAtText = document.getElementById('modalMembershipStartsAtText');
@@ -628,6 +633,16 @@
             return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                 .format(new Date(`${value}T00:00:00`));
         };
+
+        membershipEndDate?.addEventListener('input', () => {
+            membershipEndDateTouched = true;
+        });
+
+        membershipStartDate?.addEventListener('change', () => {
+            if (membershipStartDate.value && membershipEndDate && !membershipEndDateTouched) {
+                membershipEndDate.value = addOneYear(membershipStartDate.value);
+            }
+        });
 
         selectAll?.addEventListener('change', () => {
             peerCheckboxes().forEach(cb => cb.checked = selectAll.checked);
