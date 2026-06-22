@@ -452,6 +452,8 @@ class NotificationAdminController extends Controller
             'provider' => ['nullable', 'string', 'max:100'],
             'user_search' => ['nullable', 'string', 'max:255'],
             'campaign_id' => ['nullable', 'string', 'max:255'],
+            'type' => ['nullable', 'string', 'max:100'],
+            'error_reason' => ['nullable', 'string', 'max:255'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
         ]);
@@ -461,6 +463,7 @@ class NotificationAdminController extends Controller
             'total' => (clone $base)->count(),
             'sent' => (clone $base)->whereIn('status', ['sent', 'delivered', 'completed'])->count(),
             'failed' => (clone $base)->where('status', 'failed')->count(),
+            'skipped' => (clone $base)->where('status', 'skipped')->count(),
             'pending' => (clone $base)->whereIn('status', ['pending', 'queued', 'running'])->count(),
             'firebase' => (clone $base)->where(function (Builder $q): void { $q->where('provider', 'firebase')->orWhere('channel', 'push'); })->count(),
             'in_app' => Schema::hasTable('app_notifications') ? AppNotification::count() : 0,
@@ -471,6 +474,8 @@ class NotificationAdminController extends Controller
             ->when(filled($validated['channel'] ?? null), fn (Builder $q) => $q->where('channel', $validated['channel']))
             ->when(filled($validated['provider'] ?? null), fn (Builder $q) => $q->where('provider', $validated['provider']))
             ->when(filled($validated['campaign_id'] ?? null), fn (Builder $q) => $q->where(function (Builder $query) use ($validated): void { $query->where('campaign_id', $validated['campaign_id'])->orWhereHas('notification', fn (Builder $n) => $n->where('campaign_id', $validated['campaign_id'])); }))
+            ->when(filled($validated['type'] ?? null), fn (Builder $q) => $q->whereHas('notification', fn (Builder $n) => $n->where('type', $validated['type'])))
+            ->when(filled($validated['error_reason'] ?? null), fn (Builder $q) => $q->where('error_message', 'ilike', '%' . $validated['error_reason'] . '%'))
             ->when(filled($validated['user_search'] ?? null), function (Builder $q) use ($validated): void {
                 $needle = '%' . trim((string) $validated['user_search']) . '%';
                 $q->where(function (Builder $query) use ($validated, $needle): void {

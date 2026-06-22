@@ -89,9 +89,11 @@ class NotificationEngineController extends BaseApiController
                 'category' => $notification->category,
                 'title' => $notification->title,
                 'body' => $notification->body,
+                'message' => $notification->body,
                 'channel' => $notification->channel,
                 'priority' => $notification->priority,
                 'screen' => $notification->screen,
+                'tap_destination' => $notification->data['tap_destination'] ?? $notification->screen,
                 'reference_type' => $notification->reference_type,
                 'reference_id' => $notification->reference_id,
                 'data' => $notification->data ?? [],
@@ -119,7 +121,8 @@ class NotificationEngineController extends BaseApiController
 
     public function readAll(Request $request, NotificationService $service)
     {
-        return $this->success(['updated' => $service->markAllAsRead($request->user())], 'All notifications marked as read.');
+        $updated = $service->markAllAsRead($request->user());
+        return $this->success(['updated_count' => $updated, 'updated' => $updated], $updated > 0 ? 'All notifications marked as read.' : 'No unread notifications found.');
     }
 
     public function click(Request $request, string $id, NotificationService $service)
