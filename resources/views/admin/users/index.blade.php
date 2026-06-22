@@ -15,6 +15,10 @@
 @if(session('error'))
     <div class="alert alert-danger">{{ session('error') }}</div>
 @endif
+@if($errors->any())
+    <div class="alert alert-danger">{{ $errors->first() }}</div>
+@endif
+
 
 <div class="card p-3">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
@@ -44,14 +48,24 @@
     </div>
 
     <div class="border rounded-3 bg-light-subtle p-3 mb-3">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-            <div>
+        <div class="d-flex flex-column flex-xl-row justify-content-between gap-3">
+            <div class="flex-shrink-0">
                 <div class="fw-semibold text-dark">Membership Approval</div>
                 <div class="small text-muted">Select peers and approve their membership as Only Unity Peer.</div>
             </div>
-            <button type="button" class="btn btn-success btn-sm" id="approveSelectedPeersBtn">
-                <i class="bi bi-check-circle me-1"></i>Approve Selected
-            </button>
+            <div class="d-flex flex-column flex-md-row align-items-md-end gap-2 gap-md-3 flex-grow-1 justify-content-xl-end">
+                <div>
+                    <label for="approvalMembershipStartsAt" class="form-label small text-muted mb-1">Membership Starts At</label>
+                    <input id="approvalMembershipStartsAt" type="date" name="approval_membership_starts_at" class="form-control form-control-sm" value="{{ old('approval_membership_starts_at', '') }}">
+                </div>
+                <div>
+                    <label for="approvalMembershipEndsAt" class="form-label small text-muted mb-1">Membership Ends At</label>
+                    <input id="approvalMembershipEndsAt" type="date" name="approval_membership_ends_at" class="form-control form-control-sm" value="{{ old('approval_membership_ends_at', '') }}">
+                </div>
+                <button type="button" class="btn btn-success btn-sm" id="openApproveMembershipModal">
+                    <i class="bi bi-check-circle me-1"></i>Approve Selected
+                </button>
+            </div>
         </div>
     </div>
 
@@ -117,7 +131,7 @@
             </div>
             <div class="col-12 col-md-6 col-xl-2 d-flex gap-2">
                 <button type="submit" class="btn btn-sm btn-primary flex-fill">Apply</button>
-                <a class="btn btn-sm btn-outline-secondary flex-fill" href="{{ route('admin.users.index') }}">Reset</a>
+                <a class="btn btn-sm btn-outline-secondary flex-fill" id="resetFiltersBtn" href="{{ route('admin.users.index') }}">Reset</a>
             </div>
         </div>
     </form>
@@ -515,17 +529,19 @@
                         <div class="fw-semibold">Selected peers: <span id="selectedPeersCount">0</span></div>
                         <div class="small text-muted">Membership Upgrade: <strong>Only Unity Peer</strong></div>
                     </div>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label for="membershipStartDate" class="form-label">Membership Starts At</label>
-                            <input type="date" class="form-control" id="membershipStartDate" name="membership_starts_at">
+                    <div class="border rounded-3 p-3 bg-light-subtle mb-3">
+                        <div class="d-flex justify-content-between gap-3 mb-2">
+                            <span class="text-muted">Membership Starts At:</span>
+                            <strong class="text-end" id="modalMembershipStartsAtText">—</strong>
                         </div>
-                        <div class="col-md-6">
-                            <label for="membershipEndDate" class="form-label">Membership Ends At</label>
-                            <input type="date" class="form-control" id="membershipEndDate" name="membership_ends_at">
+                        <div class="d-flex justify-content-between gap-3">
+                            <span class="text-muted">Membership Ends At:</span>
+                            <strong class="text-end" id="modalMembershipEndsAtText">—</strong>
                         </div>
                     </div>
-                    <div class="form-text mt-2">Leave dates empty to set membership from today for 1 year.</div>
+                    <p class="mb-0">Are you sure you want to approve the selected peers?</p>
+                    <input type="hidden" name="membership_starts_at" id="modalMembershipStartsAt">
+                    <input type="hidden" name="membership_ends_at" id="modalMembershipEndsAt">
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -546,12 +562,17 @@
         const exportForm = document.getElementById('exportCsvForm');
         const joinedFilter = document.getElementById('joinedFilter');
         const joinedCustomRange = document.getElementById('joinedCustomRange');
-        const approveSelectedPeersBtn = document.getElementById('approveSelectedPeersBtn');
+        const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+        const approveSelectedPeersBtn = document.getElementById('openApproveMembershipModal');
         const bulkApproveDatesForm = document.getElementById('bulkApproveMembershipDatesForm');
         const approveMembershipDatesModal = document.getElementById('approveMembershipDatesModal');
         const selectedCountEl = document.getElementById('selectedPeersCount');
-        const membershipStartDate = document.getElementById('membershipStartDate');
-        const membershipEndDate = document.getElementById('membershipEndDate');
+        const membershipStartDate = document.getElementById('approvalMembershipStartsAt');
+        const membershipEndDate = document.getElementById('approvalMembershipEndsAt');
+        const modalMembershipStartsAt = document.getElementById('modalMembershipStartsAt');
+        const modalMembershipEndsAt = document.getElementById('modalMembershipEndsAt');
+        const modalMembershipStartsAtText = document.getElementById('modalMembershipStartsAtText');
+        const modalMembershipEndsAtText = document.getElementById('modalMembershipEndsAtText');
         const modal = approveMembershipDatesModal && window.bootstrap ? new bootstrap.Modal(approveMembershipDatesModal) : null;
         const peerCheckboxes = () => Array.from(document.querySelectorAll('.peer-checkbox'));
         const selectedPeerIds = () => peerCheckboxes().filter(cb => cb.checked).map(cb => cb.value).filter(Boolean);
@@ -597,12 +618,42 @@
             const query = params.toString();
             window.location = query ? `${window.location.pathname}?${query}` : window.location.pathname;
         };
-        const isoDate = (date) => date.toISOString().slice(0, 10);
-        const addOneYear = (value) => {
-            const date = value ? new Date(`${value}T00:00:00`) : new Date();
+        function formatDateValue(date) {
+            return date.toISOString().slice(0, 10);
+        }
+
+        function getTodayDateValue() {
+            const today = new Date();
+            return formatDateValue(today);
+        }
+
+        function addOneYear(dateValue) {
+            const date = new Date(`${dateValue}T00:00:00`);
             date.setFullYear(date.getFullYear() + 1);
-            return isoDate(date);
-        };
+            return formatDateValue(date);
+        }
+
+        function formatDisplayDate(dateValue) {
+            if (!dateValue) return '—';
+
+            const date = new Date(`${dateValue}T00:00:00`);
+            return date.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+            }).replace(/ /g, ' ');
+        }
+
+        resetFiltersBtn?.addEventListener('click', () => {
+            if (membershipStartDate) {
+                membershipStartDate.value = '';
+            }
+
+            if (membershipEndDate) {
+                membershipEndDate.value = '';
+            }
+
+        });
 
         selectAll?.addEventListener('change', () => {
             peerCheckboxes().forEach(cb => cb.checked = selectAll.checked);
@@ -617,6 +668,37 @@
                 alert('Please select at least one peer.');
                 return;
             }
+
+            let startsAt = membershipStartDate?.value || '';
+            let endsAt = membershipEndDate?.value || '';
+
+            if (!startsAt) {
+                startsAt = getTodayDateValue();
+            }
+
+            if (!endsAt) {
+                endsAt = addOneYear(startsAt);
+            }
+
+            if (endsAt < startsAt) {
+                alert('Membership Ends At must be same or after Membership Starts At.');
+                return;
+            }
+
+            if (!appendSelectedPeerInputs(bulkApproveDatesForm)) {
+                return;
+            }
+
+            if (modalMembershipStartsAt) modalMembershipStartsAt.value = startsAt;
+            if (modalMembershipEndsAt) modalMembershipEndsAt.value = endsAt;
+
+            if (modalMembershipStartsAtText) {
+                modalMembershipStartsAtText.textContent = formatDisplayDate(startsAt);
+            }
+            if (modalMembershipEndsAtText) {
+                modalMembershipEndsAtText.textContent = formatDisplayDate(endsAt);
+            }
+
             modal?.show();
         });
 
@@ -660,29 +742,17 @@
             exportForm.submit();
         });
 
-        membershipStartDate?.addEventListener('change', () => {
-            if (membershipStartDate.value && !membershipEndDate.value) {
-                membershipEndDate.value = addOneYear(membershipStartDate.value);
-            }
-        });
-
         bulkApproveDatesForm?.addEventListener('submit', (e) => {
             if (!appendSelectedPeerInputs(bulkApproveDatesForm)) {
                 e.preventDefault();
                 return;
             }
 
-            const today = isoDate(new Date());
-            const startDate = membershipStartDate?.value || today;
-            const endDate = membershipEndDate?.value;
-            if (endDate && endDate < startDate) {
+            const startsAt = modalMembershipStartsAt?.value || membershipStartDate?.value || '';
+            const endsAt = modalMembershipEndsAt?.value || membershipEndDate?.value || '';
+            if (startsAt && endsAt && endsAt < startsAt) {
                 e.preventDefault();
-                alert('Membership Ends At must be the same as or after Membership Starts At.');
-                return;
-            }
-            if (endDate && endDate < today) {
-                e.preventDefault();
-                alert('Membership Ends At must be today or later.');
+                alert('Membership Ends At must be same or after Membership Starts At.');
             }
         });
 

@@ -7,6 +7,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Throwable;
 
@@ -73,7 +74,9 @@ class FcmService
             }
 
             if ($this->isInvalidTokenResponse($firebaseResponse)) {
-                UserPushToken::where('token', $deviceToken)->update(['is_active' => false]);
+                if (Schema::hasColumn('user_push_tokens', 'is_active')) {
+                    UserPushToken::where('token', $deviceToken)->update(['is_active' => false]);
+                }
 
                 Log::warning('FCM token removed after invalid token response', [
                     'token_masked' => $this->maskToken($deviceToken),
