@@ -66,18 +66,6 @@ class NotificationService
     {
         $post->loadMissing('user', 'circle');
 
-        if (! $this->isPostVisibleForNotifications($post)) {
-            return [
-                'recipients_count' => 0,
-                'in_app_created' => 0,
-                'push_sent' => 0,
-                'push_failed' => 0,
-                'push_skipped' => 0,
-                'already_exists_count' => 0,
-                'reason' => 'Post is pending, notification will send after approval',
-            ];
-        }
-
         $existingCount = AppNotification::query()
             ->where('type', 'new_post')
             ->where('reference_type', 'post')
@@ -159,13 +147,6 @@ class NotificationService
             'already_exists_count' => $existingCount,
             'reason' => $notifications->isEmpty() ? 'Notification trigger missing' : 'Notification sent',
         ];
-    }
-
-    public function isPostVisibleForNotifications(Post $post): bool
-    {
-        $status = strtolower((string) ($post->moderation_status ?? ''));
-
-        return in_array($status, ['approved', 'published', 'visible'], true);
     }
 
     public function postNotificationRecipients(Post $post): Collection

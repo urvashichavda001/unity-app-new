@@ -8,8 +8,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Services\Notifications\NotificationService;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class Post extends Model
@@ -51,30 +49,6 @@ class Post extends Model
         static::creating(function (self $post): void {
             if (empty($post->id)) {
                 $post->id = Str::uuid()->toString();
-            }
-        });
-
-        static::updated(function (self $post): void {
-            if (! $post->wasChanged('moderation_status')) {
-                return;
-            }
-
-            $previousStatus = strtolower((string) $post->getOriginal('moderation_status'));
-            $currentStatus = strtolower((string) $post->moderation_status);
-
-            if ($previousStatus === $currentStatus || ! in_array($currentStatus, ['approved', 'published', 'visible'], true)) {
-                return;
-            }
-
-            try {
-                app(NotificationService::class)->sendPostPublishedNotification($post->fresh() ?: $post);
-            } catch (\Throwable $throwable) {
-                Log::warning('Post approval notification failed', [
-                    'post_id' => (string) $post->id,
-                    'previous_status' => $previousStatus,
-                    'current_status' => $currentStatus,
-                    'error' => $throwable->getMessage(),
-                ]);
             }
         });
     }

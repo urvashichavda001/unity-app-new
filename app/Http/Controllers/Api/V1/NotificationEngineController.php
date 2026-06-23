@@ -190,11 +190,7 @@ class NotificationEngineController extends BaseApiController
             'total_notifications' => $notifications->count(),
             'total_delivery_logs' => $deliveryLogs->count(),
             'post_found' => $debug['post_found'],
-            'post_status' => $debug['post_status'],
-            'moderation_status' => $debug['moderation_status'],
             'post_user_id' => $debug['post_user_id'],
-            'is_post_visible' => $debug['is_post_visible'],
-            'expected_notification_trigger' => $debug['expected_notification_trigger'],
             'reason' => $debug['reason'],
             'notifications' => $notifications->map(fn (AppNotification $notification): array => [
                 'id' => (string) $notification->id,
@@ -249,11 +245,7 @@ class NotificationEngineController extends BaseApiController
             'total_notifications' => $notifications->count(),
             'total_delivery_logs' => $deliveryLogs->count(),
             'post_found' => $debug['post_found'],
-            'post_status' => $debug['post_status'],
-            'moderation_status' => $debug['moderation_status'],
             'post_user_id' => $debug['post_user_id'],
-            'is_post_visible' => $debug['is_post_visible'],
-            'expected_notification_trigger' => $debug['expected_notification_trigger'],
             'reason' => $debug['reason'],
             'notifications' => $notifications->map(fn (AppNotification $notification): array => [
                 'id' => (string) $notification->id,
@@ -328,37 +320,23 @@ class NotificationEngineController extends BaseApiController
         if (! $post) {
             return [
                 'post_found' => false,
-                'post_status' => null,
-                'moderation_status' => null,
                 'post_user_id' => null,
-                'is_post_visible' => false,
-                'expected_notification_trigger' => 'none',
                 'reason' => 'Post not found',
             ];
         }
 
-        $status = strtolower((string) ($post->moderation_status ?? ''));
-        $isVisible = in_array($status, ['approved', 'published', 'visible'], true);
-        $existing = $notifications->isNotEmpty();
-        $recipientCount = app(NotificationService::class)->postNotificationRecipients($post)->count();
-
-        if ($existing) {
-            $reason = 'Notification already exists';
-        } elseif (! $isVisible) {
-            $reason = 'Post is pending, notification will send after approval';
-        } elseif ($recipientCount === 0) {
-            $reason = 'No eligible recipients found';
+        if ($notifications->isNotEmpty()) {
+            $reason = 'Notifications found for this post';
         } else {
-            $reason = 'Notification trigger missing';
+            $recipientCount = app(NotificationService::class)->postNotificationRecipients($post)->count();
+            $reason = $recipientCount === 0
+                ? 'No notifications found. Post notification trigger may not be connected or no eligible recipients found.'
+                : 'No notifications found. Post notification trigger may not be connected or no eligible recipients found.';
         }
 
         return [
             'post_found' => true,
-            'post_status' => $status,
-            'moderation_status' => $post->moderation_status,
             'post_user_id' => (string) $post->user_id,
-            'is_post_visible' => $isVisible,
-            'expected_notification_trigger' => $isVisible ? 'approval' : 'approval',
             'reason' => $reason,
         ];
     }
