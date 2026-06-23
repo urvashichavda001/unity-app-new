@@ -73,9 +73,39 @@ class FcmService
                 ];
             }
 
+            if ($this->isAuthenticationErrorResponse($firebaseResponse, $response->status())) {
+                Log::error('FCM HTTP v1 authentication/configuration error', [
+                    'token_masked' => $this->maskToken($deviceToken),
+                    'user_id' => $context['user_id'] ?? null,
+                    'device_id' => $context['device_id'] ?? null,
+                    'platform' => $context['platform'] ?? null,
+                    'notification_type' => $notificationType,
+                    'firebase_error' => $response->body(),
+                    'diagnostics' => $this->diagnostics(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'firebase_response' => $firebaseResponse,
+                    'error' => 'Firebase authentication error',
+                    'firebase_status' => Arr::get($firebaseResponse, 'error.status'),
+                    'firebase_error_code' => Arr::get($firebaseResponse, 'error.details.0.errorCode'),
+                ];
+            }
+
             if ($this->isInvalidTokenResponse($firebaseResponse)) {
+                $tokenUpdates = [];
                 if (Schema::hasColumn('user_push_tokens', 'is_active')) {
-                    UserPushToken::where('token', $deviceToken)->update(['is_active' => false]);
+                    $tokenUpdates['is_active'] = false;
+                }
+                if (Schema::hasColumn('user_push_tokens', 'status')) {
+                    $tokenUpdates['status'] = 'deactivated';
+                }
+                if (Schema::hasColumn('user_push_tokens', 'token_status')) {
+                    $tokenUpdates['token_status'] = 'deactivated';
+                }
+                if ($tokenUpdates !== []) {
+                    UserPushToken::where('token', $deviceToken)->update($tokenUpdates);
                 }
 
                 Log::warning('FCM token removed after invalid token response', [
@@ -109,6 +139,8 @@ class FcmService
                 'success' => false,
                 'firebase_response' => $firebaseResponse,
                 'error' => 'FCM send failed with HTTP status '.$response->status().'.',
+                'firebase_status' => Arr::get($firebaseResponse, 'error.status'),
+                'firebase_error_code' => Arr::get($firebaseResponse, 'error.details.0.errorCode'),
             ];
         } catch (Throwable $throwable) {
             report($throwable);
@@ -391,6 +423,24 @@ class FcmService
     private function maskToken(string $token): string
     {
         return substr($token, 0, 8).'****';
+    }
+
+    private function isAuthenticationErrorResponse(mixed $response, int $httpStatus): bool
+    {
+        if (! is_array($response)) {
+            return $httpStatus === 401 || $httpStatus === 403;
+        }
+
+        $status = strtoupper((string) Arr::get($response, 'error.status', ''));
+        $errorCode = strtoupper((string) Arr::get($response, 'error.details.0.errorCode', ''));
+        $message = strtolower((string) Arr::get($response, 'error.message', ''));
+
+        return in_array($httpStatus, [401, 403], true)
+            || in_array($status, ['UNAUTHENTICATED', 'PERMISSION_DENIED'], true)
+            || $errorCode === 'THIRD_PARTY_AUTH_ERROR'
+            || str_contains($message, 'third_party_auth_error')
+            || str_contains($message, 'permission')
+            || str_contains($message, 'credential');
     }
 
     private function isInvalidTokenResponse(mixed $response): bool

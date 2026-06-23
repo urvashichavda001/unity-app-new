@@ -20,6 +20,10 @@
     </div>
 
     <div class="notification-card p-3 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div class="small text-muted">Showing <strong>{{ number_format($logs->firstItem() ?? 0) }}-{{ number_format($logs->lastItem() ?? 0) }}</strong> of <strong>{{ number_format($filteredCount ?? $logs->total()) }}</strong> filtered delivery logs. Total attempts: <strong>{{ number_format($summary['total'] ?? 0) }}</strong>.</div>
+            <div class="small text-muted">Page {{ $logs->currentPage() }} of {{ $logs->lastPage() }}</div>
+        </div>
         <form class="row g-3 align-items-end" method="GET">
             <div class="col-6 col-lg-2"><label class="form-label small fw-semibold">Status</label><select class="form-select" name="status"><option value="">All</option>@foreach(['sent','delivered','failed','skipped','pending','read','clicked'] as $status)<option value="{{ $status }}" @selected(request('status')===$status)>{{ Str::headline($status) }}</option>@endforeach</select></div>
             <div class="col-6 col-lg-2"><label class="form-label small fw-semibold">Channel</label><select class="form-select" name="channel"><option value="">All</option>@foreach(['in_app','push','email'] as $channel)<option value="{{ $channel }}" @selected(request('channel')===$channel)>{{ notification_admin_channel_label($channel) }}</option>@endforeach</select></div>
@@ -29,6 +33,7 @@
             <div class="col-6 col-lg-2"><label class="form-label small fw-semibold">Campaign</label><select class="form-select" name="campaign_id"><option value="">All campaigns</option>@foreach($campaigns as $c)<option value="{{ $c->id }}" @selected(request('campaign_id')===$c->id)>{{ $c->name }}</option>@endforeach</select></div>
             <div class="col-6 col-lg-2"><label class="form-label small fw-semibold">From</label><input type="date" class="form-control" name="date_from" value="{{ request('date_from') }}"></div>
             <div class="col-6 col-lg-2"><label class="form-label small fw-semibold">To</label><input type="date" class="form-control" name="date_to" value="{{ request('date_to') }}"></div>
+            <div class="col-6 col-lg-2"><label class="form-label small fw-semibold">Per page</label><select class="form-select" name="per_page">@foreach([30,50,100,200] as $size)<option value="{{ $size }}" @selected((int) request('per_page', 30)===$size)>{{ $size }}</option>@endforeach</select></div>
             <div class="col-12 col-lg-auto d-flex gap-2"><a href="{{ route('admin.notifications.logs') }}" class="btn btn-outline-secondary flex-fill">Clear</a><button class="btn btn-primary flex-fill">Filter</button></div>
         </form>
     </div>
