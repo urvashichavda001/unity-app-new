@@ -189,8 +189,7 @@ class NotificationService
             ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'deleted_at'), fn ($query) => $query->whereNull('users.deleted_at'))
             ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'gdpr_deleted_at'), fn ($query) => $query->whereNull('users.gdpr_deleted_at'))
             ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('users.status')->orWhereRaw("LOWER(users.status::text) NOT IN ('inactive', 'suspended', 'blocked', 'banned', 'deleted', 'rejected')")))
-            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'membership_status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('users.membership_status')->orWhere('users.membership_status', '!=', 'suspended')))
-            ->whereDoesntHave('roles');
+            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'membership_status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('users.membership_status')->orWhere('users.membership_status', '!=', 'suspended')));
     }
 
     private function postPreview(Post $post): string

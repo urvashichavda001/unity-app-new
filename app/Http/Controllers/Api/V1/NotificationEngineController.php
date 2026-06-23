@@ -181,6 +181,7 @@ class NotificationEngineController extends BaseApiController
             : $deliveryLogs->forPage($page, $perPage)->get();
 
         $debug = $this->notificationCheckDebug($validated, $totalNotifications);
+        $missingDebug = $this->missingRecipientsDebug($validated);
 
         return $this->success([
             'reference_type' => $validated['reference_type'],
@@ -193,6 +194,8 @@ class NotificationEngineController extends BaseApiController
             'expected_recipient_count' => $debug['expected_recipient_count'],
             'total_notifications_in_db' => $totalNotifications,
             'total_delivery_logs_in_db' => $totalDeliveryLogs,
+            'missing_recipient_count' => $missingDebug['missing_recipient_count'],
+            'missing_recipients' => $missingDebug['missing_recipients'],
             'displayed_notifications_count' => $notifications->count(),
             'displayed_delivery_logs_count' => $deliveryLogs->count(),
             'is_paginated' => ! $showAll && ($totalNotifications > $perPage || $totalDeliveryLogs > $perPage),
@@ -235,6 +238,13 @@ class NotificationEngineController extends BaseApiController
         $allPushTokensCount = UserPushToken::where('user_id', $user->id)->whereNotNull('token')->where('token', '!=', '')->count();
         $activeTokens = app(FcmService::class)->activeTokensForUser($user->id);
         $activeTokenCount = $activeTokens->count();
+        $recipientDebug = $this->userRecipientDebug($validated, $user);
+        $excludedReason = $recipientDebug['excluded_reason'];
+        $fix = $recipientDebug['fix'];
+        if ($recipientDebug['is_expected_recipient'] && ! $notification && $this->userHasAdminRole($user)) {
+            $excludedReason = 'Previously excluded by admin role filter';
+            $fix = 'Remove admin role exclusion for active Unity peers';
+        }
 
         $reason = 'Notification and delivery state fetched';
         if (! $notification) {
@@ -257,6 +267,10 @@ class NotificationEngineController extends BaseApiController
             'reference_id' => $validated['reference_id'],
             'user_id' => (string) $user->id,
             'user_name' => $this->debugUserName($user),
+            'is_expected_recipient' => $recipientDebug['is_expected_recipient'],
+            'has_active_push_token' => $activeTokenCount > 0,
+            'excluded_reason' => $excludedReason,
+            'fix' => $fix,
             'user_push_tokens_count' => $allPushTokensCount,
             'user_has_active_token' => $activeTokenCount > 0,
             'active_push_tokens_count' => $activeTokenCount,
@@ -328,6 +342,18 @@ class NotificationEngineController extends BaseApiController
             'sample_failed_users' => $this->usersPreview($failedUserIds),
             'failed_users' => $this->usersPreview($failedUserIds),
         ], 'Post notification summary fetched successfully');
+    }
+
+    public function checkMissing(Request $request)
+    {
+        $validated = $request->validate([
+            'reference_type' => ['required', 'string', 'max:100'],
+            'reference_id' => ['required', 'string', 'max:255'],
+        ]);
+
+        $debug = $this->missingRecipientsDebug($validated, false);
+
+        return $this->success($debug, 'Missing notification recipients fetched successfully');
     }
 
     public function checkUser(string $userId)
@@ -432,6 +458,165 @@ class NotificationEngineController extends BaseApiController
         })
             ->orWhere('data->post_id', $validated['reference_id'])
             ->orWhere('data->reference_id', $validated['reference_id']);
+    }
+
+    private function missingRecipientsDebug(array $validated, bool $limit = true): array
+    {
+        if (($validated['reference_type'] ?? null) !== 'post') {
+            return [
+                'post_id' => null,
+                'expected_recipient_count' => 0,
+                'notification_created_count' => 0,
+                'missing_recipient_count' => 0,
+                'missing_recipients' => [],
+            ];
+        }
+
+        $post = Post::query()->withTrashed()->find($validated['reference_id']);
+        if (! $post) {
+            return [
+                'post_id' => $validated['reference_id'],
+                'expected_recipient_count' => 0,
+                'notification_created_count' => 0,
+                'missing_recipient_count' => 0,
+                'missing_recipients' => [],
+            ];
+        }
+
+        $expectedIds = app(NotificationService::class)
+            ->postNotificationRecipientQuery($post)
+            ->pluck('users.id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+        $notifiedIds = AppNotification::query()
+            ->where('type', 'new_post')
+            ->where('reference_type', 'post')
+            ->where('reference_id', (string) $post->id)
+            ->pluck('user_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+        $missingIds = $expectedIds->diff($notifiedIds)->values();
+
+        return [
+            'post_id' => (string) $post->id,
+            'expected_recipient_count' => $expectedIds->count(),
+            'notification_created_count' => $notifiedIds->count(),
+            'missing_recipient_count' => $missingIds->count(),
+            'missing_recipients' => $this->missingRecipientPayloads($missingIds, $post, $limit ? 50 : null),
+        ];
+    }
+
+    private function missingRecipientPayloads($userIds, Post $post, ?int $limit = 50): array
+    {
+        $ids = collect($userIds);
+        if ($limit !== null) {
+            $ids = $ids->take($limit);
+        }
+
+        return User::query()
+            ->with('roles')
+            ->whereIn('id', $ids)
+            ->get()
+            ->map(fn (User $user): array => $this->missingRecipientPayload($user, $post))
+            ->values()
+            ->all();
+    }
+
+    private function missingRecipientPayload(User $user, Post $post): array
+    {
+        $hasAdminRole = $this->userHasAdminRole($user);
+
+        return [
+            'user_id' => (string) $user->id,
+            'name' => $this->debugUserName($user),
+            'email' => $user->email,
+            'status' => $user->getAttribute('status'),
+            'membership_status' => $user->getAttribute('membership_status'),
+            'membership_label' => $this->membershipLabel($user),
+            'circle_id' => $post->circle_id ? (string) $post->circle_id : null,
+            'has_admin_role' => $hasAdminRole,
+            'has_active_push_token' => app(FcmService::class)->activeTokensForUser((string) $user->id)->isNotEmpty(),
+            'excluded_reason' => $hasAdminRole ? 'Previously excluded by admin role filter' : 'Expected recipient missing notification row',
+        ];
+    }
+
+    private function userRecipientDebug(array $validated, User $user): array
+    {
+        if (($validated['reference_type'] ?? null) !== 'post') {
+            return ['is_expected_recipient' => false, 'excluded_reason' => 'Reference is not a post', 'fix' => null];
+        }
+
+        $post = Post::query()->withTrashed()->find($validated['reference_id']);
+        if (! $post) {
+            return ['is_expected_recipient' => false, 'excluded_reason' => 'Post not found', 'fix' => null];
+        }
+
+        $isExpected = app(NotificationService::class)
+            ->postNotificationRecipientQuery($post)
+            ->where('users.id', $user->id)
+            ->exists();
+
+        if ($isExpected) {
+            return ['is_expected_recipient' => true, 'excluded_reason' => null, 'fix' => null];
+        }
+
+        $reason = $this->recipientExclusionReason($user, $post);
+
+        return [
+            'is_expected_recipient' => false,
+            'excluded_reason' => $reason,
+            'fix' => $reason === 'Excluded by admin role filter' ? 'Remove admin role exclusion for active Unity peers' : null,
+        ];
+    }
+
+    private function recipientExclusionReason(User $user, Post $post): string
+    {
+        if ((string) $user->id === (string) $post->user_id) {
+            return 'Post creator excluded';
+        }
+
+        if (Schema::hasColumn('users', 'deleted_at') && $user->getAttribute('deleted_at') !== null) {
+            return 'User deleted';
+        }
+
+        if (Schema::hasColumn('users', 'gdpr_deleted_at') && $user->getAttribute('gdpr_deleted_at') !== null) {
+            return 'User GDPR deleted';
+        }
+
+        $status = strtolower((string) $user->getAttribute('status'));
+        if (in_array($status, ['inactive', 'suspended', 'blocked', 'banned', 'deleted', 'rejected'], true)) {
+            return 'User status is not active';
+        }
+
+        if ((string) $user->getAttribute('membership_status') === 'suspended') {
+            return 'Membership suspended';
+        }
+
+        if (! empty($post->circle_id)) {
+            return 'Not an active member of the post circle';
+        }
+
+        return $this->userHasAdminRole($user) ? 'Excluded by admin role filter' : 'No matching recipient rule';
+    }
+
+    private function userHasAdminRole(User $user): bool
+    {
+        return $user->relationLoaded('roles')
+            ? $user->roles->isNotEmpty()
+            : $user->roles()->exists();
+    }
+
+    private function membershipLabel(User $user): ?string
+    {
+        foreach (['membership_label', 'membership_type', 'member_type', 'user_type'] as $column) {
+            if (Schema::hasColumn('users', $column) && filled($user->getAttribute($column))) {
+                return (string) $user->getAttribute($column);
+            }
+        }
+
+        return null;
     }
 
     private function activePushTokenQuery(string $userId)
