@@ -136,6 +136,7 @@ class NotificationEngineController extends BaseApiController
 
     public function check(Request $request)
     {
+        try {
         $validated = $request->validate([
             'reference_type' => ['required', 'string', 'max:100'],
             'reference_id' => ['required', 'string', 'max:255'],
@@ -217,6 +218,18 @@ class NotificationEngineController extends BaseApiController
                 'created_at' => $log->created_at,
             ])->values(),
         ], 'Notification check fetched successfully');
+            } catch (\Throwable $throwable) {
+            report($throwable);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to check notifications',
+                'data' => null,
+                'meta' => [
+                    'error' => config('app.debug') ? $throwable->getMessage() : 'Unable to check notifications right now.',
+                ],
+            ], 500);
+        }
     }
 
     public function checkPost(Request $request, string $postId)

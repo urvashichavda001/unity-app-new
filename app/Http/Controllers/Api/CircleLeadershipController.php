@@ -21,7 +21,7 @@ class CircleLeadershipController extends BaseApiController
             ->whereNull('left_at')
             ->where(function ($query): void {
                 $query->whereNull('status')
-                    ->orWhereIn(DB::raw('LOWER(circle_members.status::text)'), ['approved', 'active', 'member']);
+                    ->orWhereIn(DB::raw('LOWER(circle_members.status::text)'), CircleMember::activeStatuses());
             })
             ->whereHas('circle')
             ->orderBy('joined_at')

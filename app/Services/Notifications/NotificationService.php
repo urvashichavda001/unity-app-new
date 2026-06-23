@@ -181,13 +181,13 @@ class NotificationService
         $circleIds = CircleMember::query()
             ->where('user_id', $authorId)
             ->whereNull('deleted_at')
-            ->where(fn ($query) => $query->whereNull('status')->orWhereIn('status', ['active', 'approved', 'member']))
+            ->where(fn ($query) => $query->whereNull('status')->orWhereIn('status', CircleMember::activeStatuses()))
             ->pluck('circle_id');
 
         $circleUserIds = CircleMember::query()
             ->whereIn('circle_id', $circleIds)
             ->whereNull('deleted_at')
-            ->where(fn ($query) => $query->whereNull('status')->orWhereIn('status', ['active', 'approved', 'member']))
+            ->where(fn ($query) => $query->whereNull('status')->orWhereIn('status', CircleMember::activeStatuses()))
             ->pluck('user_id');
 
         $ids = $connectionIds
