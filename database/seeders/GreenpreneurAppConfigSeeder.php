@@ -102,7 +102,7 @@ class GreenpreneurAppConfigSeeder extends Seeder
             ['rate_app', 'Rate App', null, null, 'rate_app', null, true, 8],
             ['share_app', 'Share App', null, null, 'share_app', null, true, 9],
             ['settings', 'Settings', null, null, 'settings', null, true, 10],
-            ['feedback', 'Feedback', null, null, 'feedback', 'feedback', true, 11],
+            ['feedback', 'Help & Support', 'help_support', null, 'feedback', 'feedback', true, 11],
             ['logout', 'Logout', null, null, 'logout', null, true, 12],
         ]);
 
