@@ -785,7 +785,10 @@ Route::prefix('v1')->group(function () {
         // Notification debug checks
         Route::get('/admin/notifications/check', [NotificationEngineController::class, 'check']);
         Route::get('/admin/notifications/check/post/{postId}', [NotificationEngineController::class, 'checkPost'])->whereUuid('postId');
+        Route::get('/admin/notifications/check-user', [NotificationEngineController::class, 'checkUserForReference']);
+        Route::get('/admin/notifications/check-missing', [NotificationEngineController::class, 'checkMissing']);
         Route::get('/admin/notifications/check/user/{userId}', [NotificationEngineController::class, 'checkUser'])->whereUuid('userId');
+        Route::get('/admin/notifications/posts/{post}/summary', [NotificationEngineController::class, 'postSummary'])->whereUuid('post');
         Route::post('/admin/notifications/posts/{post}/send-test', [NotificationEngineController::class, 'sendPostTest'])->whereUuid('post');
 
         // Notifications

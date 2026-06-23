@@ -442,7 +442,8 @@ class NotificationAdminController extends Controller
             return view('admin.notifications.logs', [
                 'logs' => $this->emptyPaginator($request),
                 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect(),
-                'summary' => ['total' => 0, 'sent' => 0, 'failed' => 0, 'pending' => 0, 'firebase' => 0, 'in_app' => 0],
+                'summary' => ['total' => 0, 'sent' => 0, 'failed' => 0, 'skipped' => 0, 'pending' => 0, 'firebase' => 0, 'in_app' => 0],
+                'filteredCount' => 0,
             ]);
         }
 
@@ -456,6 +457,7 @@ class NotificationAdminController extends Controller
             'error_reason' => ['nullable', 'string', 'max:255'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
+            'per_page' => ['nullable', 'integer', 'min:10', 'max:200'],
         ]);
 
         $base = NotificationDeliveryLog::query();
@@ -488,11 +490,14 @@ class NotificationAdminController extends Controller
             })
             ->when(filled($validated['date_from'] ?? null), fn (Builder $q) => $q->whereDate('created_at', '>=', $validated['date_from']))
             ->when(filled($validated['date_to'] ?? null), fn (Builder $q) => $q->whereDate('created_at', '<=', $validated['date_to']))
-            ->latest()
-            ->paginate(30)
+            ->latest();
+
+        $filteredCount = (clone $logs)->count();
+        $logs = $logs
+            ->paginate(min(max((int) ($validated['per_page'] ?? 30), 10), 200))
             ->withQueryString();
 
-        return view('admin.notifications.logs', ['logs' => $logs, 'summary' => $summary, 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect()]);
+        return view('admin.notifications.logs', ['logs' => $logs, 'summary' => $summary, 'filteredCount' => $filteredCount, 'campaigns' => Schema::hasTable('notification_campaigns') ? NotificationCampaign::orderBy('name')->get() : collect()]);
     }
 
     public function pushTokens(Request $request): View

@@ -11,6 +11,7 @@ use App\Models\CircleMember;
 use App\Models\Notifications\NotificationSuppressionLog;
 use App\Models\Post;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -96,100 +97,99 @@ class NotificationService
             ];
         }
 
-        $recipients = $this->postNotificationRecipients($post);
-        if ($recipients->isEmpty()) {
-            return [
-                'recipients_count' => 0,
-                'in_app_created' => 0,
-                'push_sent' => 0,
-                'push_failed' => 0,
-                'push_skipped' => 0,
-                'already_exists_count' => $existingCount,
-                'reason' => 'No eligible recipients found',
-            ];
-        }
-
         $authorName = $this->displayName($author);
         $body = $this->postPreview($post) ?: 'A new post has been published';
-        $dedupeKey = 'new_post:' . $post->id . ($force ? ':force:' . now()->timestamp : '');
-
-        $notifications = $this->sendToUsers(
-            $recipients,
-            'new_post',
-            'New post by ' . $authorName,
-            $body,
-            [
-                'post_id' => (string) $post->id,
-                'actor_id' => (string) $post->user_id,
-                'screen' => 'post_detail',
-                'tap_destination' => 'post_detail',
-                'reference_type' => 'post',
-                'reference_id' => (string) $post->id,
-            ],
-            [
-                'actor_id' => (string) $post->user_id,
-                'channel' => 'push',
-                'reference_type' => 'post',
-                'reference_id' => (string) $post->id,
-                'dedupe_key' => $dedupeKey,
-            ]
-        );
-
-        $logs = NotificationDeliveryLog::query()->whereIn('notification_id', $notifications->pluck('id'))->get();
-
-        return [
-            'recipients_count' => $recipients->count(),
-            'in_app_created' => $notifications->count(),
-            'push_sent' => $logs->where('channel', 'push')->whereIn('status', ['sent', 'delivered'])->count(),
-            'push_failed' => $logs->where('channel', 'push')->where('status', 'failed')->count(),
-            'push_skipped' => $logs->where('channel', 'push')->where('status', 'skipped')->count(),
+        $dedupeKeyPrefix = 'new_post:' . $post->id . ($force ? ':force:' . now()->timestamp : '');
+        $summary = [
+            'recipients_count' => 0,
+            'in_app_created' => 0,
+            'push_sent' => 0,
+            'push_failed' => 0,
+            'push_skipped' => 0,
             'already_exists_count' => $existingCount,
-            'reason' => $notifications->isEmpty() ? 'Notification trigger missing' : 'Notification sent',
+            'reason' => 'No eligible recipients found',
         ];
+
+        $this->postNotificationRecipientQuery($post)
+            ->select('users.*')
+            ->chunkById(100, function ($users) use ($post, $authorName, $body, $dedupeKeyPrefix, &$summary): void {
+                foreach ($users as $user) {
+                    $summary['recipients_count']++;
+
+                    $notification = $this->sendToUser(
+                        $user,
+                        'new_post',
+                        'New post by ' . $authorName,
+                        $body,
+                        [
+                            'post_id' => (string) $post->id,
+                            'actor_id' => (string) $post->user_id,
+                            'screen' => 'post_detail',
+                            'tap_destination' => 'post_detail',
+                            'reference_type' => 'post',
+                            'reference_id' => (string) $post->id,
+                        ],
+                        [
+                            'actor_id' => (string) $post->user_id,
+                            'channel' => 'push',
+                            'reference_type' => 'post',
+                            'reference_id' => (string) $post->id,
+                            'dedupe_key' => $dedupeKeyPrefix . ':' . $user->id,
+                            'bypass_daily_limit' => true,
+                        ]
+                    );
+
+                    if ($notification) {
+                        $summary['in_app_created']++;
+                    }
+                }
+            }, 'users.id', 'id');
+
+        $logs = NotificationDeliveryLog::query()
+            ->whereHas('notification', fn ($query) => $query
+                ->where('type', 'new_post')
+                ->where('reference_type', 'post')
+                ->where('reference_id', (string) $post->id))
+            ->get();
+
+        $summary['push_sent'] = $logs->where('channel', 'push')->whereIn('status', ['sent', 'delivered'])->count();
+        $summary['push_failed'] = $logs->where('channel', 'push')->where('status', 'failed')->count();
+        $summary['push_skipped'] = $logs->where('channel', 'push')->where('status', 'skipped')->count();
+        $summary['reason'] = $summary['in_app_created'] > 0 ? 'Notification sent' : $summary['reason'];
+
+        return $summary;
     }
 
     public function postNotificationRecipients(Post $post): Collection
     {
+        return $this->postNotificationRecipientQuery($post)->get();
+    }
+
+    public function postNotificationRecipientQuery(Post $post): Builder
+    {
         $authorId = (string) $post->user_id;
+        $query = $this->activePeerUsersQuery()->where('users.id', '!=', $authorId);
 
         if (! empty($post->circle_id)) {
-            $ids = CircleMember::query()
+            $memberIds = CircleMember::query()
                 ->where('circle_id', $post->circle_id)
                 ->whereNull('deleted_at')
-                ->where(fn ($query) => $query->whereNull('status')->orWhereIn('status', CircleMember::activeStatuses()))
-                ->pluck('user_id')
-                ->filter()
-                ->unique()
-                ->reject(fn ($id) => (string) $id === $authorId)
-                ->values();
+                ->where(fn ($memberQuery) => $memberQuery->whereNull('status')->orWhereIn('status', CircleMember::activeStatuses()))
+                ->select('user_id');
 
-            return $this->activePeerUsersByIds($ids);
+            $query->whereIn('users.id', $memberIds);
         }
 
-        return $this->activePeerUsersQuery()
-            ->where('id', '!=', $authorId)
-            ->get();
+        return $query->distinct('users.id')->orderBy('users.id');
     }
 
-    private function activePeerUsersByIds(Collection $ids): Collection
-    {
-        if ($ids->isEmpty()) {
-            return collect();
-        }
-
-        return $this->activePeerUsersQuery()
-            ->whereIn('id', $ids)
-            ->get();
-    }
-
-    private function activePeerUsersQuery(): \Illuminate\Database\Eloquent\Builder
+    private function activePeerUsersQuery(): Builder
     {
         return User::query()
-            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'deleted_at'), fn ($query) => $query->whereNull('deleted_at'))
-            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'gdpr_deleted_at'), fn ($query) => $query->whereNull('gdpr_deleted_at'))
-            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('status')->orWhereRaw("LOWER(status::text) NOT IN ('inactive', 'suspended', 'blocked', 'banned', 'deleted', 'rejected')")))
-            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'membership_status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('membership_status')->orWhere('membership_status', '!=', 'suspended')))
-            ->whereDoesntHave('roles');
+            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'deleted_at'), fn ($query) => $query->whereNull('users.deleted_at'))
+            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'gdpr_deleted_at'), fn ($query) => $query->whereNull('users.gdpr_deleted_at'))
+            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('users.status')->orWhereRaw("LOWER(users.status::text) NOT IN ('inactive', 'suspended', 'blocked', 'banned', 'deleted', 'rejected')")))
+            ->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'membership_status'), fn ($query) => $query->where(fn ($userQuery) => $userQuery->whereNull('users.membership_status')->orWhere('users.membership_status', '!=', 'suspended')));
     }
 
     private function postPreview(Post $post): string
@@ -265,6 +265,7 @@ class NotificationService
     public function shouldSendToUser(User $user, string $type, ?string $dedupeKey, ?NotificationCampaign $campaign): bool
     {
         if ($campaign && ! $campaign->is_active) return false;
+        if ($type === 'new_post') return true;
         $p = NotificationPreference::firstOrCreate(['user_id' => $user->id]);
         if (! $p->push_enabled && ! $p->email_enabled) return false;
         if ($campaign && ! $p->campaign_enabled) return false;
