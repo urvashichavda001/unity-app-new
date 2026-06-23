@@ -782,6 +782,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/chats/{id}/typing', [ChatController::class, 'typing']);
 
 
+        // Notification debug checks
+        Route::get('/admin/notifications/check', [NotificationEngineController::class, 'check']);
+        Route::get('/admin/notifications/check/post/{postId}', [NotificationEngineController::class, 'checkPost'])->whereUuid('postId');
+        Route::get('/admin/notifications/check/user/{userId}', [NotificationEngineController::class, 'checkUser'])->whereUuid('userId');
+        Route::post('/admin/notifications/posts/{post}/send-test', [NotificationEngineController::class, 'sendPostTest'])->whereUuid('post');
+
         // Notifications
         Route::post('/notifications/push-token', [NotificationEngineController::class, 'pushToken']);
         Route::get('/notifications', [NotificationEngineController::class, 'index']);

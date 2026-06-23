@@ -313,7 +313,7 @@ class LeadershipGroupChatService
             ->whereNull('left_at')
             ->where(function ($query): void {
                 $query->whereNull('status')
-                    ->orWhereIn('status', ['active', 'approved']);
+                    ->orWhereIn('status', CircleMember::activeStatuses());
             })
             ->orderByRaw("CASE role
                 WHEN 'chair' THEN 1

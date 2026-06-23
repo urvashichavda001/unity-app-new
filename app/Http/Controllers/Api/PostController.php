@@ -8,8 +8,6 @@ use App\Http\Resources\PostResource;
 use App\Http\Resources\PostCommentResource;
 use App\Models\ActivityCreative;
 use App\Models\Circle;
-use App\Models\CircleMember;
-use App\Models\Connection;
 use App\Models\File;
 use App\Models\FileModel;
 use App\Models\P2pMeeting;
@@ -20,6 +18,7 @@ use App\Models\User;
 use App\Services\AdFeedService;
 use App\Services\Notifications\NotifyUserService;
 use App\Services\Notifications\NotificationDispatchService;
+use App\Services\Notifications\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -496,7 +495,7 @@ class PostController extends BaseApiController
         return [];
     }
 
-    public function store(StorePostRequest $request, NotificationDispatchService $notifications)
+    public function store(StorePostRequest $request, NotificationDispatchService $notifications, NotificationService $notificationService)
     {
         $user = Auth::user();
 
@@ -544,7 +543,7 @@ class PostController extends BaseApiController
             'is_deleted'        => false,
         ]);
 
-        $this->dispatchNewPostNotifications($notifications, $post, $user);
+        $this->dispatchNewPostNotifications($notificationService, $post);
         $this->dispatchMentionNotifications($notifications, $post, $user, $post->content_text, null);
 
         return response()->json([
@@ -630,7 +629,7 @@ class PostController extends BaseApiController
         return $this->success(null, 'Post deleted successfully');
     }
 
-    public function like(Request $request, string $id, NotifyUserService $notifyUserService, NotificationDispatchService $notifications)
+    public function like(Request $request, string $id, NotifyUserService $notifyUserService, NotificationService $notifications)
     {
         $authUser = $request->user();
 
@@ -651,14 +650,28 @@ class PostController extends BaseApiController
         if ($like->wasRecentlyCreated && (string) $post->user_id !== (string) $authUser->id) {
             try {
                 if ($postOwner = User::find($post->user_id)) {
-                    $notifications->sendCampaignNotification(
-                        'post_like_received',
+                    $likerName = $this->displayName($authUser);
+                    $notifications->sendToUser(
                         $postOwner,
-                        ['person' => $this->displayName($authUser), 'post_preview_content' => $this->postPreview($post)],
-                        ['screen' => 'post_details', 'post_id' => (string) $post->id, 'liker_id' => (string) $authUser->id, 'type' => 'post_like'],
-                        $authUser,
-                        $post,
-                        ['type' => 'post_like', 'reference_type' => 'post', 'reference_id' => (string) $post->id, 'dedupe_key' => 'post_like:' . $post->id . ':' . $authUser->id]
+                        'post_like',
+                        $likerName . ' liked your post',
+                        $likerName . ' liked your post',
+                        [
+                            'post_id' => (string) $post->id,
+                            'like_id' => (string) $like->id,
+                            'actor_id' => (string) $authUser->id,
+                            'screen' => 'post_detail',
+                            'tap_destination' => 'post_detail',
+                            'reference_type' => 'post',
+                            'reference_id' => (string) $post->id,
+                        ],
+                        [
+                            'actor_id' => (string) $authUser->id,
+                            'channel' => 'push',
+                            'reference_type' => 'post',
+                            'reference_id' => (string) $post->id,
+                            'dedupe_key' => 'post_like:' . $post->id . ':' . $authUser->id,
+                        ]
                     );
                 }
             } catch (Throwable $e) {
@@ -693,7 +706,7 @@ class PostController extends BaseApiController
         return $this->success(['like_count' => $likeCount], 'Post unliked');
     }
 
-    public function storeComment(StorePostCommentRequest $request, string $id, NotifyUserService $notifyUserService, NotificationDispatchService $notifications)
+    public function storeComment(StorePostCommentRequest $request, string $id, NotifyUserService $notifyUserService, NotificationService $notifications, NotificationDispatchService $mentionNotifications)
     {
         $authUser = $request->user();
 
@@ -718,14 +731,29 @@ class PostController extends BaseApiController
         if ((string) $post->user_id !== (string) $authUser->id) {
             try {
                 if ($postOwner = User::find($post->user_id)) {
-                    $notifications->sendCampaignNotification(
-                        'post_comment_received',
+                    $commenterName = $this->displayName($authUser);
+                    $preview = Str::limit(trim((string) $comment->content), 120) ?: ($commenterName . ' commented on your post');
+                    $notifications->sendToUser(
                         $postOwner,
-                        ['person' => $this->displayName($authUser), 'comment_preview_content' => Str::limit($comment->content, 120), 'post_preview_content' => $this->postPreview($post)],
-                        ['screen' => 'post_details', 'post_id' => (string) $post->id, 'comment_id' => (string) $comment->id, 'commenter_id' => (string) $authUser->id, 'type' => 'post_comment'],
-                        $authUser,
-                        $comment,
-                        ['type' => 'post_comment', 'reference_type' => 'post_comment', 'reference_id' => (string) $comment->id, 'dedupe_key' => 'post_comment:' . $comment->id]
+                        'post_comment',
+                        $commenterName . ' commented on your post',
+                        $preview,
+                        [
+                            'post_id' => (string) $post->id,
+                            'comment_id' => (string) $comment->id,
+                            'actor_id' => (string) $authUser->id,
+                            'screen' => 'post_detail',
+                            'tap_destination' => 'post_detail',
+                            'reference_type' => 'post',
+                            'reference_id' => (string) $post->id,
+                        ],
+                        [
+                            'actor_id' => (string) $authUser->id,
+                            'channel' => 'push',
+                            'reference_type' => 'post',
+                            'reference_id' => (string) $post->id,
+                            'dedupe_key' => 'post_comment:' . $comment->id,
+                        ]
                     );
                 }
             } catch (Throwable $e) {
@@ -733,7 +761,7 @@ class PostController extends BaseApiController
             }
         }
 
-        $this->dispatchMentionNotifications($notifications, $post, $authUser, $comment->content, $comment);
+        $this->dispatchMentionNotifications($mentionNotifications, $post, $authUser, $comment->content, $comment);
 
         $comment->load('user');
 
@@ -772,25 +800,10 @@ class PostController extends BaseApiController
         return $this->success($data);
     }
 
-    private function dispatchNewPostNotifications(NotificationDispatchService $notifications, Post $post, User $author): void
+    private function dispatchNewPostNotifications(NotificationService $notifications, Post $post): void
     {
         try {
-            $recipients = $this->newPostRecipients($post, $author);
-            if ($recipients->isEmpty()) {
-                return;
-            }
-            $media = collect($post->media ?? [])->first();
-            $preview = $this->postPreview($post);
-            $bodyPreview = $media ? ($this->displayName($author) . ' shared a new ' . (($media['type'] ?? '') === 'video' ? 'video.' : 'photo.')) : $preview;
-            $notifications->sendCampaignNotification(
-                'new_post_activity_circle',
-                $recipients,
-                ['person' => $this->displayName($author), 'post_preview_content' => $bodyPreview, 'circle_name' => optional($post->circle)->name ?? 'your circle'],
-                ['screen' => 'post_details', 'post_id' => (string) $post->id, 'author_id' => (string) $author->id, 'type' => 'new_post'],
-                $author,
-                $post,
-                ['type' => 'new_post', 'reference_type' => 'post', 'reference_id' => (string) $post->id, 'dedupe_key' => 'new_post:' . $post->id]
-            );
+            $notifications->sendPostPublishedNotification($post);
         } catch (Throwable $e) {
             Log::warning('New post notification failed', ['post_id' => (string) $post->id, 'error' => $e->getMessage()]);
         }
@@ -815,25 +828,6 @@ class PostController extends BaseApiController
         } catch (Throwable $e) {
             Log::warning('Mention notification failed', ['post_id' => (string) $post->id, 'error' => $e->getMessage()]);
         }
-    }
-
-    private function newPostRecipients(Post $post, User $author): \Illuminate\Support\Collection
-    {
-        $connectionIds = Connection::query()
-            ->where('is_approved', true)
-            ->where(fn ($q) => $q->where('requester_id', $author->id)->orWhere('addressee_id', $author->id))
-            ->get()
-            ->flatMap(fn (Connection $connection) => [(string) $connection->requester_id, (string) $connection->addressee_id]);
-
-        $circleIds = CircleMember::query()->where('user_id', $author->id)->whereNull('deleted_at')->where(function ($q) { $q->whereNull('status')->orWhereIn('status', ['active', 'approved', 'member']); })->pluck('circle_id');
-        $circleUserIds = CircleMember::query()->whereIn('circle_id', $circleIds)->whereNull('deleted_at')->where(function ($q) { $q->whereNull('status')->orWhereIn('status', ['active', 'approved', 'member']); })->pluck('user_id');
-
-        $ids = $connectionIds->merge($circleUserIds)->filter()->unique()->reject(fn ($id) => (string) $id === (string) $author->id)->values();
-        if ($ids->isEmpty()) {
-            return collect();
-        }
-
-        return User::whereIn('id', $ids)->when(\Illuminate\Support\Facades\Schema::hasColumn('users', 'status'), fn ($q) => $q->where(function ($query) { $query->whereNull('status')->orWhere('status', 'active'); }))->get();
     }
 
     private function mentionedUsers(string $text): \Illuminate\Support\Collection

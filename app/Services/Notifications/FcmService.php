@@ -38,13 +38,14 @@ class FcmService
 
         if (! ($result['success'] ?? false) && $this->isInvalidTokenError((string) ($result['error'] ?? ''))) {
             $this->deactivateInvalidToken($token);
+            $result['error'] = $this->friendlyError((string) ($result['error'] ?? 'Invalid Firebase token'));
         }
 
         if ($log) {
             $log->update([
                 'status' => ($result['success'] ?? false) ? 'sent' : 'failed',
                 'response_payload' => $result,
-                'error_message' => $result['error'] ?? null,
+                'error_message' => ($result['success'] ?? false) ? null : $this->friendlyError((string) ($result['error'] ?? 'Unknown Firebase error')),
                 'provider_message_id' => $result['message_id'] ?? null,
                 'delivered_at' => ($result['success'] ?? false) ? now() : null,
             ]);
@@ -67,12 +68,12 @@ class FcmService
                     'provider' => 'firebase',
                     'status' => 'skipped',
                     'request_payload' => ['title' => $title, 'body' => $body, 'data' => $data],
-                    'error_message' => 'No active push token found.',
+                    'error_message' => 'No active push token',
                     'attempted_at' => now(),
                 ]);
             }
 
-            return ['success' => false, 'error' => 'No active push token found.', 'results' => []];
+            return ['success' => false, 'error' => 'No active push token', 'results' => []];
         }
 
         $results = [];
@@ -88,9 +89,28 @@ class FcmService
         UserPushToken::where('token', $token)->update(['is_active' => false]);
     }
 
+    private function friendlyError(string $error): string
+    {
+        $lower = strtolower($error);
+
+        if ($this->isInvalidTokenError($error)) {
+            return 'Invalid Firebase token';
+        }
+
+        if (str_contains($lower, 'auth') || str_contains($lower, 'credential') || str_contains($lower, 'permission')) {
+            return 'Firebase authentication/config error';
+        }
+
+        if (str_contains($lower, 'quota') || str_contains($lower, 'rate') || str_contains($lower, 'too many')) {
+            return 'Firebase quota/rate limit';
+        }
+
+        return $error !== '' ? $error : 'Unknown Firebase error';
+    }
+
     private function isInvalidTokenError(string $error): bool
     {
         $error = strtolower($error);
-        return str_contains($error, 'invalid') || str_contains($error, 'unregistered') || str_contains($error, 'not registered');
+        return str_contains($error, 'invalid') || str_contains($error, 'unregistered') || str_contains($error, 'not registered') || str_contains($error, 'registration-token-not-registered');
     }
 }

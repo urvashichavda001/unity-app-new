@@ -92,6 +92,11 @@ class CircleMember extends Model
         return self::ROLE_OPTIONS;
     }
 
+    public static function activeStatuses(): array
+    {
+        return ['approved'];
+    }
+
     protected static function booted(): void
     {
         static::creating(function (CircleMember $member): void {

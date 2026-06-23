@@ -36,6 +36,7 @@ class AppNotification extends Model
             'type' => (string) $this->type,
             'category' => (string) ($this->category ?? ''),
             'screen' => (string) ($this->screen ?? 'home'),
+            'tap_destination' => (string) (($this->data['tap_destination'] ?? null) ?: ($this->screen ?? 'home')),
             'reference_type' => (string) $this->reference_type,
             'reference_id' => (string) $this->reference_id,
             'campaign_id' => (string) $this->campaign_id,
