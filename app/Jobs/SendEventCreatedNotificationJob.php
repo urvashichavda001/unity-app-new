@@ -35,19 +35,26 @@ class SendEventCreatedNotificationJob implements ShouldQueue
 
         Log::info("SendEventCreatedNotificationJob started for event: " . $event->id);
 
-        // Create the event notification log record in 'processing' status
-        $logRecord = EventNotificationLog::create([
-            'event_id' => $event->id,
-            'notification_type' => 'event_created',
-            'status' => 'processing',
-            'total_users' => 0,
-            'in_app_notifications_created' => 0,
-            'active_push_tokens' => 0,
-            'push_sent_successfully' => 0,
-            'push_failed' => 0,
-            'failed_details' => [],
-            'started_at' => now(),
-        ]);
+        $logRecord = null;
+        if (Schema::hasTable('event_notification_logs')) {
+            try {
+                // Create the event notification log record in 'processing' status
+                $logRecord = EventNotificationLog::create([
+                    'event_id' => $event->id,
+                    'notification_type' => 'event_created',
+                    'status' => 'processing',
+                    'total_users' => 0,
+                    'in_app_notifications_created' => 0,
+                    'active_push_tokens' => 0,
+                    'push_sent_successfully' => 0,
+                    'push_failed' => 0,
+                    'failed_details' => [],
+                    'started_at' => now(),
+                ]);
+            } catch (Throwable $e) {
+                Log::warning("Failed to create EventNotificationLog: " . $e->getMessage());
+            }
+        }
 
         try {
             $userQuery = User::query()
@@ -108,71 +115,102 @@ class SendEventCreatedNotificationJob implements ShouldQueue
 
                     try {
                         // Check duplicate in-app notification in app_notifications table
-                        $exists = AppNotification::where('user_id', $user->id)
+                        $notification = AppNotification::where('user_id', $user->id)
                             ->whereIn('type', ['event', 'event_created'])
                             ->where(function ($q) use ($event) {
                                 $q->whereJsonContains('data->event_id', (string) $event->id)
                                   ->orWhere('reference_id', (string) $event->id);
                             })
-                            ->exists();
+                            ->first();
 
-                        if ($exists) {
-                            continue;
+                        if ($notification) {
+                            // Check if push log already exists for this notification to avoid duplicate push
+                            $pushLogExists = NotificationDeliveryLog::where('notification_id', $notification->id)
+                                ->where('channel', 'push')
+                                ->exists();
+                            if ($pushLogExists) {
+                                continue;
+                            }
+                        } else {
+                            // Create in-app AppNotification
+                            $notification = AppNotification::create([
+                                'user_id' => $user->id,
+                                'type' => 'event',
+                                'category' => 'event',
+                                'title' => $title,
+                                'body' => $body,
+                                'channel' => 'push',
+                                'priority' => 'high',
+                                'reference_type' => 'event',
+                                'reference_id' => $event->id,
+                                'screen' => 'event_detail',
+                                'data' => $notificationData,
+                                'status' => 'pending',
+                            ]);
+
+                            $totalInAppCreated++;
                         }
-
-                        // Create in-app AppNotification
-                        $notification = AppNotification::create([
-                            'user_id' => $user->id,
-                            'type' => 'event',
-                            'category' => 'event',
-                            'title' => $title,
-                            'body' => $body,
-                            'channel' => 'push',
-                            'priority' => 'high',
-                            'reference_type' => 'event',
-                            'reference_id' => $event->id,
-                            'screen' => 'event_detail',
-                            'data' => $notificationData,
-                            'status' => 'pending',
-                        ]);
-
-                        $totalInAppCreated++;
 
                         // For legacy notifications support
                         try {
                             if (Schema::hasTable('notifications')) {
-                                \App\Models\Notification::create([
-                                    'user_id' => $user->id,
-                                    'type' => 'activity_update',
-                                    'payload' => $notificationData,
-                                    'is_read' => false,
-                                    'created_at' => now(),
-                                    'read_at' => null,
-                                    'title' => $title,
-                                    'message' => $body,
-                                    'source_type' => 'event',
-                                    'source_id' => $event->id,
-                                ]);
+                                $legacyExists = \App\Models\Notification::query()
+                                    ->where('user_id', $user->id)
+                                    ->where('source_type', 'event')
+                                    ->where('source_id', $event->id)
+                                    ->exists();
+                                
+                                if (!$legacyExists) {
+                                    \App\Models\Notification::create([
+                                        'user_id' => $user->id,
+                                        'type' => 'activity_update',
+                                        'payload' => $notificationData,
+                                        'is_read' => false,
+                                        'created_at' => now(),
+                                        'read_at' => null,
+                                        'title' => $title,
+                                        'message' => $body,
+                                        'source_type' => 'event',
+                                        'source_id' => $event->id,
+                                    ]);
+                                }
                             }
                         } catch (Throwable $e) {
                             Log::error("Failed to create legacy notification for user {$user->id}", ['error' => $e->getMessage()]);
                         }
 
                         // Create NotificationDeliveryLog for in_app
-                        NotificationDeliveryLog::create([
-                            'notification_id' => $notification->id,
-                            'user_id' => $user->id,
-                            'channel' => 'in_app',
-                            'provider' => 'database',
-                            'status' => 'sent',
-                            'request_payload' => $notification->dataPayload(),
-                            'response_payload' => ['notification_id' => (string) $notification->id],
-                            'attempted_at' => now(),
-                            'delivered_at' => now(),
-                        ]);
+                        $inAppLogExists = NotificationDeliveryLog::where('notification_id', $notification->id)
+                            ->where('channel', 'in_app')
+                            ->exists();
+
+                        if (!$inAppLogExists) {
+                            NotificationDeliveryLog::create([
+                                'notification_id' => $notification->id,
+                                'user_id' => $user->id,
+                                'channel' => 'in_app',
+                                'provider' => 'database',
+                                'status' => 'sent',
+                                'request_payload' => $notification->dataPayload(),
+                                'response_payload' => ['notification_id' => (string) $notification->id],
+                                'attempted_at' => now(),
+                                'delivered_at' => now(),
+                            ]);
+                        }
 
                         // Send FCM push notifications
                         $tokens = $fcmService->activeTokensForUser($user->id);
+
+                        Log::info('Event notification push debug', [
+                            'event_id' => $event->id,
+                            'total_users' => $users->count(),
+                            'active_push_tokens' => $tokens->count(),
+                        ]);
+
+                        Log::info('Firebase token count', [
+                            'count' => $tokens->count()
+                        ]);
+
                         if ($tokens->isNotEmpty()) {
                             $totalPushTokensFound += $tokens->count();
 
@@ -244,16 +282,22 @@ class SendEventCreatedNotificationJob implements ShouldQueue
             });
 
             // Update the log record in 'completed' status
-            $logRecord->update([
-                'status' => 'completed',
-                'total_users' => $totalUsersTargeted,
-                'in_app_notifications_created' => $totalInAppCreated,
-                'active_push_tokens' => $totalPushTokensFound,
-                'push_sent_successfully' => $totalPushSentSuccess,
-                'push_failed' => $totalPushFailed,
-                'failed_details' => $failedDetails,
-                'completed_at' => now(),
-            ]);
+            if ($logRecord) {
+                try {
+                    $logRecord->update([
+                        'status' => 'completed',
+                        'total_users' => $totalUsersTargeted,
+                        'in_app_notifications_created' => $totalInAppCreated,
+                        'active_push_tokens' => $totalPushTokensFound,
+                        'push_sent_successfully' => $totalPushSentSuccess,
+                        'push_failed' => $totalPushFailed,
+                        'failed_details' => $failedDetails,
+                        'completed_at' => now(),
+                    ]);
+                } catch (Throwable $e) {
+                    Log::warning("Failed to update EventNotificationLog to completed: " . $e->getMessage());
+                }
+            }
 
             $mainFailureReason = null;
             if (!empty($failedDetails)) {
@@ -280,11 +324,17 @@ class SendEventCreatedNotificationJob implements ShouldQueue
                 'error' => $throwable->getMessage()
             ]);
 
-            $logRecord->update([
-                'status' => 'failed',
-                'failed_details' => [['error' => $throwable->getMessage()]],
-                'completed_at' => now(),
-            ]);
+            if ($logRecord) {
+                try {
+                    $logRecord->update([
+                        'status' => 'failed',
+                        'failed_details' => [['error' => $throwable->getMessage()]],
+                        'completed_at' => now(),
+                    ]);
+                } catch (Throwable $e) {
+                    Log::warning("Failed to update EventNotificationLog to failed: " . $e->getMessage());
+                }
+            }
 
             throw $throwable;
         }

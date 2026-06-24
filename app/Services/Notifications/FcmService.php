@@ -144,7 +144,7 @@ class FcmService
     public function activeTokensForUser(string $userId): Collection
     {
         $query = UserPushToken::query()
-            ->where('user_id', $userId)
+            ->where(UserPushToken::getUserIdColumn(), $userId)
             ->whereNotNull('token')
             ->where('token', '!=', '');
 

@@ -2327,7 +2327,7 @@ class UsersController extends Controller
                 return;
             }
 
-            $pushTokenQuery = UserPushToken::query()->where('user_id', $user->id);
+            $pushTokenQuery = UserPushToken::query()->where(UserPushToken::getUserIdColumn(), $user->id);
 
             if (Schema::hasColumn('user_push_tokens', 'is_active')) {
                 $pushTokenQuery->where('is_active', true);
