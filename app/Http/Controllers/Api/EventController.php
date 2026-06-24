@@ -1343,6 +1343,8 @@ class EventController extends BaseApiController
         $event->save();
         $event->load(['circle', 'createdByUser', 'rsvps.user']);
 
+        \App\Jobs\SendEventCreatedNotificationJob::dispatch($event->id);
+
         return $this->success(new EventResource($event), 'Event created successfully', 201);
     }
 

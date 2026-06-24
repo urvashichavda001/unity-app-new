@@ -45,7 +45,7 @@ class EventService
 
     public function create(array $data, User $actor): Event
     {
-        return DB::transaction(function () use ($data, $actor): Event {
+        $event = DB::transaction(function () use ($data, $actor): Event {
             $circleIds = $this->extractCircleIds($data);
             $data = $this->filterEventColumns($this->normalize($data, $actor));
             $event = Event::query()->create($data);
@@ -54,6 +54,10 @@ class EventService
 
             return $event->load(['circle', 'circles', 'occurrences']);
         });
+
+        \App\Jobs\SendEventCreatedNotificationJob::dispatch($event->id);
+
+        return $event;
     }
 
     public function update(Event $event, array $data): Event

@@ -104,6 +104,12 @@ class FcmService
                 if (Schema::hasColumn('user_push_tokens', 'token_status')) {
                     $tokenUpdates['token_status'] = 'deactivated';
                 }
+                if (Schema::hasColumn('user_push_tokens', 'failed_at')) {
+                    $tokenUpdates['failed_at'] = now();
+                }
+                if (Schema::hasColumn('user_push_tokens', 'failure_reason')) {
+                    $tokenUpdates['failure_reason'] = $message ?: 'Invalid Firebase token';
+                }
                 if ($tokenUpdates !== []) {
                     UserPushToken::where('token', $deviceToken)->update($tokenUpdates);
                 }
@@ -454,6 +460,11 @@ class FcmService
 
         return in_array($errorCode, ['UNREGISTERED', 'INVALID_ARGUMENT'], true)
             || str_contains($message, 'registration token is not a valid fcm registration token')
-            || str_contains($message, 'requested entity was not found');
+            || str_contains($message, 'requested entity was not found')
+            || str_contains($message, 'invalid')
+            || str_contains($message, 'unregistered')
+            || str_contains($message, 'not registered')
+            || str_contains($message, 'not-registered')
+            || str_contains($message, 'invalid-argument');
     }
 }

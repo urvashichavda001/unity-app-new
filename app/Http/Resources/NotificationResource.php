@@ -21,6 +21,7 @@ class NotificationResource extends JsonResource
             'is_read' => (bool) $this->is_read,
             'created_at' => $this->created_at,
             'read_at' => $this->read_at,
+            'data' => $this->payload ?? [],
         ];
     }
 }

@@ -105,6 +105,7 @@ use App\Http\Controllers\Api\V1\Profile\MyPostsController;
 use App\Http\Controllers\Api\V1\PushTokenController;
 use App\Http\Controllers\Api\V1\NotificationEngineController;
 use App\Http\Controllers\Api\V1\Admin\NotificationCampaignController;
+use App\Http\Controllers\Api\V1\Admin\AdminEventNotificationStatusController;
 use App\Http\Controllers\Api\V1\RazorpayWebhookController;
 use App\Http\Controllers\Api\V1\ScanAppAuthController;
 use App\Http\Controllers\Api\V1\ScanAppEventController;
@@ -621,6 +622,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/reports/join-requests', [AdminOpsController::class, 'reportsJoinRequests']);
             Route::get('/reports/export', [AdminOpsController::class, 'reportsExport']);
             Route::post('/life-impact/manual', [ImpactAdminController::class, 'storeManual']);
+            Route::get('/events/{event}/notification-status', [AdminEventNotificationStatusController::class, 'show'])->whereUuid('event');
         });
 
         // Circle Chat

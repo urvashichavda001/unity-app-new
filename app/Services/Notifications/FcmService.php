@@ -78,7 +78,7 @@ class FcmService
         ]);
 
         if (! ($result['success'] ?? false) && $this->isInvalidTokenError((string) ($result['error'] ?? ''))) {
-            $this->deactivateInvalidToken($tokenValue);
+            $this->deactivateInvalidToken($tokenValue, (string) ($result['error'] ?? ''));
             $result['error'] = $this->friendlyError((string) ($result['error'] ?? 'Invalid Firebase token'));
         }
 
@@ -183,7 +183,7 @@ class FcmService
             ->values();
     }
 
-    public function deactivateInvalidToken(string $token): void
+    public function deactivateInvalidToken(string $token, ?string $reason = null): void
     {
         $updates = [];
 
@@ -197,6 +197,14 @@ class FcmService
 
         if (Schema::hasColumn('user_push_tokens', 'token_status')) {
             $updates['token_status'] = 'deactivated';
+        }
+
+        if (Schema::hasColumn('user_push_tokens', 'failed_at')) {
+            $updates['failed_at'] = now();
+        }
+
+        if (Schema::hasColumn('user_push_tokens', 'failure_reason')) {
+            $updates['failure_reason'] = $reason ?: 'Invalid Firebase token';
         }
 
         if ($updates !== []) {
@@ -230,6 +238,11 @@ class FcmService
             return false;
         }
 
-        return str_contains($error, 'invalid') || str_contains($error, 'unregistered') || str_contains($error, 'not registered') || str_contains($error, 'registration-token-not-registered');
+        return str_contains($error, 'invalid')
+            || str_contains($error, 'unregistered')
+            || str_contains($error, 'not registered')
+            || str_contains($error, 'registration-token-not-registered')
+            || str_contains($error, 'not found')
+            || str_contains($error, 'invalid-argument');
     }
 }
