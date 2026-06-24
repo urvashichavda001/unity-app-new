@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
+use App\Services\Membership\MembershipWelcomeEmailService;
 
 class MembershipUpgradeService
 {
@@ -24,7 +25,7 @@ class MembershipUpgradeService
      */
     public function markAsOnlyUnityPeerAfterPayment(User $user, array|Model|null $paymentOrPlanData = null): User
     {
-        return DB::transaction(function () use ($user, $paymentOrPlanData): User {
+        $updatedUser = DB::transaction(function () use ($user, $paymentOrPlanData): User {
             $lockedUser = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
             $data = $this->normalizeData($paymentOrPlanData);
             $payment = $paymentOrPlanData instanceof Payment
@@ -89,6 +90,17 @@ class MembershipUpgradeService
 
             return $lockedUser->fresh();
         });
+
+        try {
+            app(MembershipWelcomeEmailService::class)->sendIfEligible($updatedUser);
+        } catch (Throwable $throwable) {
+            Log::warning('membership.payment_welcome_email_trigger_failed', [
+                'user_id' => (string) $updatedUser->id,
+                'message' => $throwable->getMessage(),
+            ]);
+        }
+
+        return $updatedUser;
     }
 
     public function membershipResponseData(User $user, string $paymentStatus = 'paid'): array
