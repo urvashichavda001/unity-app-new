@@ -41,7 +41,8 @@ class MembershipApprovedMail extends Mailable
 
     public function build()
     {
-        return $this->subject('Your PeersGlobal Membership Has Been Approved')
+        return $this->from('pravin@peersunity.com', 'Peers Global')
+            ->subject('Your PeersGlobal Membership Has Been Approved')
             ->view('emails.membership-approved')
             ->with([
                 'user' => $this->user,

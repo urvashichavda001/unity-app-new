@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\MembershipApprovedMail;
+use App\Mail\MembershipUpdatedMail;
 use App\Models\AdminUser;
 use App\Models\Circle;
 use App\Models\CircleCategory;
@@ -425,6 +426,8 @@ class UsersController extends Controller
         }
 
         $user = User::query()->findOrFail($userId);
+        $oldMembershipStatus = (string) ($user->membership_status ?? '');
+        $oldMembershipExpiry = $this->normalizeMembershipDateValue($user->membership_ends_at ?? $user->membership_expiry ?? null);
         $originalCoinsBalance = (int) ($user->coins_balance ?? 0);
         $submittedCoinsBalance = (int) $request->input('coins_balance', $originalCoinsBalance);
         $coinsBalanceChanged = $submittedCoinsBalance !== $originalCoinsBalance;
@@ -660,10 +663,6 @@ class UsersController extends Controller
         }
 
         $updatable = Arr::except($validated, $updatableExclusions);
-        if ($user->membership_status !== $validated['membership_status']) {
-            $updatable['membership_ends_at'] = null;
-            $updatable['membership_expiry'] = null;
-        }
         $activeCircleMemberStatus = $this->activeCircleMemberStatus();
         $selectedCircleId = $validated['active_circle_id'] ?? ($validated['circle_id'] ?? null);
         $validated['active_circle_id'] = $selectedCircleId;
@@ -999,6 +998,14 @@ class UsersController extends Controller
                 ->withErrors(['roles' => 'Unable to update user roles right now. Please try again or contact support.']);
         }
 
+        $freshUser = $user->fresh();
+        $newMembershipStatus = (string) ($freshUser->membership_status ?? '');
+        $newMembershipExpiry = $this->normalizeMembershipDateValue($freshUser->membership_ends_at ?? $freshUser->membership_expiry ?? null);
+
+        if ($oldMembershipStatus !== $newMembershipStatus || $oldMembershipExpiry !== $newMembershipExpiry) {
+            $this->sendMembershipUpdatedFlow($freshUser, $oldMembershipStatus, $newMembershipStatus, $oldMembershipExpiry, $newMembershipExpiry);
+        }
+
         $statusMessage = $request->has('add_circle_membership')
             ? 'Circle membership added successfully.'
             : 'User updated successfully.';
@@ -1006,6 +1013,99 @@ class UsersController extends Controller
         return redirect()
             ->route('admin.users.edit', $user->id)
             ->with('success', $statusMessage);
+    }
+
+
+    private function normalizeMembershipDateValue(mixed $value): ?string
+    {
+        if (blank($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->toDateTimeString();
+        } catch (Throwable) {
+            return (string) $value;
+        }
+    }
+
+    private function formatMembershipDateValue(?string $value, bool $withTime = false): string
+    {
+        if (blank($value)) {
+            return '—';
+        }
+
+        try {
+            return Carbon::parse($value)->format($withTime ? 'd-m-Y h:i A' : 'd-m-Y');
+        } catch (Throwable) {
+            return (string) $value;
+        }
+    }
+
+    private function sendMembershipUpdatedFlow(User $user, string $oldStatus, string $newStatus, ?string $oldExpiry, ?string $newExpiry): void
+    {
+        $peerName = $user->display_name ?: trim((string) (($user->first_name ?? '') . ' ' . ($user->last_name ?? ''))) ?: 'Peer';
+        $oldStatusLabel = $this->membershipLabel($oldStatus) ?: '—';
+        $newStatusLabel = $this->membershipLabel($newStatus) ?: '—';
+        $oldExpiryLabel = $this->formatMembershipDateValue($oldExpiry);
+        $newExpiryLabel = $this->formatMembershipDateValue($newExpiry);
+        $statusChanged = $oldStatus !== $newStatus;
+        $expiryChanged = $oldExpiry !== $newExpiry;
+
+        $details = [
+            'peer_name' => $peerName,
+            'email' => $user->email ?: '—',
+            'old_membership_status' => $oldStatusLabel,
+            'new_membership_status' => $newStatusLabel,
+            'old_membership_expiry' => $oldExpiryLabel,
+            'new_membership_expiry' => $newExpiryLabel,
+            'updated_at' => now()->format('d-m-Y h:i A'),
+        ];
+
+        if (filled($user->email)) {
+            try {
+                Mail::to($user->email)->send(new MembershipUpdatedMail($user, $details));
+            } catch (Throwable $throwable) {
+                Log::error('admin.users.membership_updated_email_failed', ['user_id' => (string) $user->id, 'error' => $throwable->getMessage()]);
+            }
+        }
+
+        if ($statusChanged && $expiryChanged) {
+            $body = "Your membership status has been updated to {$newStatusLabel}. Expiry date: {$newExpiryLabel}.";
+        } elseif ($statusChanged) {
+            $body = "Your membership status has been updated to {$newStatusLabel}.";
+        } else {
+            $body = "Your membership expiry date has been updated to {$newExpiryLabel}.";
+        }
+
+        $data = [
+            'type' => 'membership_updated',
+            'membership_status' => $newStatus,
+            'membership_expiry' => $newExpiry,
+            'user_id' => (string) $user->id,
+            'screen' => 'membership',
+        ];
+
+        try {
+            AppNotification::create([
+                'user_id' => $user->id,
+                'type' => 'membership_updated',
+                'category' => 'membership',
+                'title' => 'Membership Updated',
+                'body' => $body,
+                'channel' => 'in_app',
+                'priority' => 'high',
+                'screen' => 'membership',
+                'data' => $data,
+                'dedupe_key' => 'membership_updated:' . $user->id . ':' . now()->format('YmdHis'),
+                'status' => 'sent',
+                'sent_at' => now(),
+            ]);
+        } catch (Throwable $throwable) {
+            Log::error('admin.users.membership_updated_notification_failed', ['user_id' => (string) $user->id, 'error' => $throwable->getMessage()]);
+        }
+
+        $this->sendMembershipApprovalPush($user, 'Membership Updated', $body, $data);
     }
 
     private function findAdminUserForPeer(User $user): ?AdminUser
@@ -1156,7 +1256,7 @@ class UsersController extends Controller
         $user = User::query()->findOrFail($userId);
 
         try {
-            $result = $this->membershipWelcomeEmailService->sendIfEligible($user);
+            $result = $this->membershipWelcomeEmailService->sendIfEligible($user, true);
             $reason = (string) ($result['reason'] ?? '');
 
             Log::info('admin.users.membership_welcome_send_result', [
@@ -2237,6 +2337,9 @@ class UsersController extends Controller
                     'error' => $throwable->getMessage(),
                 ]);
             }
+
+
+            $this->membershipWelcomeEmailService->sendIfEligible($user);
         }
     }
 
