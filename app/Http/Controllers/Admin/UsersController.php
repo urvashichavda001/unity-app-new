@@ -983,7 +983,7 @@ class UsersController extends Controller
         $user = User::query()->findOrFail($userId);
 
         try {
-            $result = $this->membershipWelcomeEmailService->sendIfEligible($user);
+            $result = $this->membershipWelcomeEmailService->sendIfEligible($user, true);
             $reason = (string) ($result['reason'] ?? '');
 
             Log::info('admin.users.membership_welcome_send_result', [

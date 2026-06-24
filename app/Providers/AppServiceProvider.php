@@ -21,5 +21,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
+
+        config([
+            'mail.mailers.pravin' => [
+                'transport' => 'smtp',
+                'host' => env('MAIL_HOST_PRAVIN', 'smtppro.zoho.in'),
+                'port' => env('MAIL_PORT_PRAVIN', 587),
+                'encryption' => env('MAIL_ENCRYPTION_PRAVIN', 'tls'),
+                'username' => env('MAIL_USERNAME_PRAVIN', 'pravin@peersglobal.com'),
+                'password' => env('MAIL_PASSWORD_PRAVIN'),
+                'timeout' => null,
+            ]
+        ]);
     }
 }

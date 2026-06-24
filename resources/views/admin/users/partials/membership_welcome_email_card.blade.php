@@ -7,7 +7,7 @@
     $welcomePlanCode = $user->welcome_membership_email_plan_code ?: '—';
     $welcomeError = $user->welcome_membership_email_error ?: '—';
 
-    $showSendButton = ($showSendButton ?? false) && ! $welcomeSent;
+    $showSendButton = ($showSendButton ?? false);
     $sendButtonClass = $sendButtonClass ?? 'btn btn-outline-primary btn-sm';
     $sendButtonLabel = $sendButtonLabel ?? 'Send Welcome Mail';
 @endphp
@@ -45,9 +45,7 @@
                 <div class="text-break">{{ $welcomeError }}</div>
             </div>
             <div class="col-12 d-flex justify-content-end">
-                @if ($welcomeSent)
-                    <button type="button" class="btn btn-success btn-sm" disabled>Already Sent</button>
-                @elseif ($showSendButton)
+                @if ($showSendButton)
                     @if (! empty($sendFormId ?? null))
                         <button
                             type="submit"

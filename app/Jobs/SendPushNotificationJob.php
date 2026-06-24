@@ -70,17 +70,9 @@ class SendPushNotificationJob implements ShouldQueue
                         ],
                     );
 
-                    Log::info('Push sent successfully');
+                    Log::info("FCM Success: Notification sent successfully to user ID {$this->user->id}.");
                 } catch (Throwable $e) {
-                    Log::error('Push send failed', [
-                        'error' => $e->getMessage(),
-                        'token_prefix' => substr((string) $token->token, 0, 20) . '...',
-                        'user_id' => (string) $this->user->id,
-                        'platform' => $token->platform,
-                        'device_type' => $token->platform,
-                        'notification_type' => $this->data['notification_type'] ?? null,
-                    ]);
-
+                    Log::error("FCM Failure: Failed to send to user ID {$this->user->id}. Error: {$e->getMessage()}.");
                     report($e);
                 }
             }

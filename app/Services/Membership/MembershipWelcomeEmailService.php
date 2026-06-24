@@ -17,7 +17,7 @@ class MembershipWelcomeEmailService
     {
     }
 
-    public function sendIfEligible(User $user): array
+    public function sendIfEligible(User $user, bool $force = false): array
     {
         $freshUser = User::query()->find($user->id);
 
@@ -44,7 +44,8 @@ class MembershipWelcomeEmailService
             return ['sent' => false, 'reason' => 'disabled'];
         }
 
-        if (filled($freshUser->welcome_membership_email_sent_at)) {
+        $lastPayment = $freshUser->last_payment_at;
+        if (! $force && filled($freshUser->welcome_membership_email_sent_at) && ($lastPayment === null || $freshUser->welcome_membership_email_sent_at->greaterThanOrEqualTo($lastPayment))) {
             Log::info('membership.welcome_email.skipped', [
                 'user_id' => (string) $freshUser->id,
                 'reason' => 'already_sent',
@@ -81,7 +82,7 @@ class MembershipWelcomeEmailService
 
             $freshUser->forceFill([
                 'welcome_membership_email_sent_at' => now(),
-                'welcome_membership_email_status' => 'sent',
+                'welcome_membership_email_status' => 'Sent',
                 'welcome_membership_email_error' => null,
                 'welcome_membership_email_plan_code' => $freshUser->zoho_plan_code,
             ])->save();
@@ -104,7 +105,12 @@ class MembershipWelcomeEmailService
 
             Log::info('membership.welcome_email.sent', [
                 'user_id' => (string) $freshUser->id,
-                'attachments_count' => count($attachments),
+                'user_email' => (string) $freshUser->email,
+                'display_name' => (string) $freshUser->display_name,
+                'payment_date' => $freshUser->last_payment_at ? $freshUser->last_payment_at->toDateTimeString() : null,
+                'email_status' => 'Sent',
+                'sent_at' => $freshUser->welcome_membership_email_sent_at ? $freshUser->welcome_membership_email_sent_at->toDateTimeString() : null,
+                'error_message' => null,
             ]);
 
             return ['sent' => true, 'reason' => 'sent'];
@@ -135,7 +141,12 @@ class MembershipWelcomeEmailService
 
             Log::warning('membership.welcome_email.failed', [
                 'user_id' => (string) $freshUser->id,
-                'message' => $throwable->getMessage(),
+                'user_email' => (string) $freshUser->email,
+                'display_name' => (string) $freshUser->display_name,
+                'payment_date' => $freshUser->last_payment_at ? $freshUser->last_payment_at->toDateTimeString() : null,
+                'email_status' => 'failed',
+                'sent_at' => null,
+                'error_message' => $throwable->getMessage(),
             ]);
 
             return ['sent' => false, 'reason' => 'failed'];
@@ -144,18 +155,16 @@ class MembershipWelcomeEmailService
 
     private function isEligiblePaidMembershipUser(User $user): bool
     {
-        if (in_array((string) $user->effective_membership_status, [User::STATUS_FREE_TRIAL, User::STATUS_FREE], true)) {
+        if (blank($user->last_payment_at)) {
             return false;
         }
 
-        if (! $user->isPaidMember()) {
+        try {
+            \Illuminate\Support\Carbon::parse($user->last_payment_at);
+            return true;
+        } catch (\Throwable $e) {
             return false;
         }
-
-        return filled($user->zoho_subscription_id)
-            || filled($user->zoho_plan_code)
-            || filled($user->membership_starts_at)
-            || filled($user->membership_ends_at);
     }
 
     private function resolveAttachments(): array

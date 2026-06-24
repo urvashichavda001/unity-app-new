@@ -11,6 +11,9 @@ use App\Console\Commands\TestZohoConvertInvoice;
 use App\Console\Commands\TestZohoCustomerPaymentWebhook;
 use App\Console\Commands\TestZohoPaidWebhook;
 use App\Console\Commands\SendAppUpdateReminderNotifications;
+use App\Console\Commands\SendMembershipExpiryReminders;
+use App\Console\Commands\SendUpcomingMembershipExpiryReminders;
+use App\Console\Commands\SendCircleMembershipExpiryReminders;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
@@ -26,6 +29,9 @@ class Kernel extends ConsoleKernel
         RetryZohoWebhooks::class,
         RetryIgnoredZohoWebhooks::class,
         TestZohoPaidWebhook::class,
+        SendMembershipExpiryReminders::class,
+        SendUpcomingMembershipExpiryReminders::class,
+        SendCircleMembershipExpiryReminders::class,
     ];
 
     protected function schedule(Schedule $schedule): void
@@ -35,5 +41,8 @@ class Kernel extends ConsoleKernel
         $schedule->command('users:expire-trial')->hourly();
         $schedule->command('connections:send-pending-reminders')->dailyAt('09:00');
         $schedule->command('members:mark-offline-stale')->everyMinute();
+        $schedule->command('memberships:send-expiry-reminders')->dailyAt('10:00');
+        $schedule->command('memberships:send-upcoming-expiry-reminders')->dailyAt('10:00');
+        $schedule->command('memberships:send-circle-expiry-reminders')->dailyAt('10:00');
     }
 }
