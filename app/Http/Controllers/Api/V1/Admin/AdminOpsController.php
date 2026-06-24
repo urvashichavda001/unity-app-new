@@ -69,7 +69,7 @@ class AdminOpsController extends BaseApiController
 
     // Events
     public function events(Request $request): JsonResponse { return $this->success(Event::query()->latest('start_at')->paginate(20)); }
-    public function eventStore(Request $request): JsonResponse { $v=$request->validate(['title'=>'required|string|max:255','description'=>'nullable|string','circle_id'=>'nullable|uuid']); $event = Event::create($v); \App\Jobs\SendEventCreatedNotificationJob::dispatch($event->id); return $this->success($event); }
+    public function eventStore(Request $request): JsonResponse { $v=$request->validate(['title'=>'required|string|max:255','description'=>'nullable|string','circle_id'=>'nullable|uuid']); $event = Event::create($v); \App\Jobs\SendEventCreatedNotificationJob::dispatch($event->id)->afterResponse(); return $this->success($event); }
     public function eventShow(string $id): JsonResponse { return $this->success(Event::findOrFail($id)); }
     public function eventUpdate(Request $request, string $id): JsonResponse { $e=Event::findOrFail($id); $e->fill($request->only(['title','description','start_at','end_at','status']))->save(); return $this->success($e); }
     public function eventDelete(string $id): JsonResponse { Event::where('id',$id)->delete(); return $this->success(['deleted'=>true]); }

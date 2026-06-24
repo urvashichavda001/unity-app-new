@@ -334,7 +334,7 @@ class NotificationAdminController extends Controller
         $inactiveTokens = collect();
 
         if (Schema::hasTable('user_push_tokens')) {
-            $query = UserPushToken::where('user_id', $user);
+            $query = UserPushToken::where(UserPushToken::getUserIdColumn(), $user);
             if (Schema::hasColumn('user_push_tokens', 'is_active')) {
                 $activeTokens = (clone $query)->where('is_active', true)->get();
                 $inactiveTokens = (clone $query)->where('is_active', false)->get();
@@ -744,7 +744,7 @@ class NotificationAdminController extends Controller
             return 0;
         }
 
-        return UserPushToken::where('user_id', $user->id)->where('is_active', true)->count();
+        return UserPushToken::where(UserPushToken::getUserIdColumn(), $user->id)->where('is_active', true)->count();
     }
 
     private function userSelectText(User $user): string

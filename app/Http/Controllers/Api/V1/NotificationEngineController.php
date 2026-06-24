@@ -25,6 +25,19 @@ class NotificationEngineController extends BaseApiController
             'app_version' => ['nullable', 'string'],
         ]);
 
+        // Delete token if it belongs to a different user to prevent transfer issues
+        UserPushToken::where('token', $validated['token'])
+            ->where(UserPushToken::getUserIdColumn(), '!=', $request->user()->id)
+            ->delete();
+
+        // Clean up duplicates for the same user on the same device
+        if (filled($validated['device_id'] ?? null)) {
+            UserPushToken::where('device_id', $validated['device_id'])
+                ->where(UserPushToken::getUserIdColumn(), $request->user()->id)
+                ->where('token', '!=', $validated['token'])
+                ->delete();
+        }
+
         $attributes = [
             'user_id' => $request->user()->id,
             'platform' => $validated['platform'] ?? null,
@@ -38,10 +51,24 @@ class NotificationEngineController extends BaseApiController
             $attributes['last_seen_at'] = now();
         }
 
+        // Always activate/reset states when registered explicitly by the client device
+        if (Schema::hasColumn('user_push_tokens', 'status')) {
+            $attributes['status'] = 'active';
+        }
+        if (Schema::hasColumn('user_push_tokens', 'token_status')) {
+            $attributes['token_status'] = 'active';
+        }
+        if (Schema::hasColumn('user_push_tokens', 'failed_at')) {
+            $attributes['failed_at'] = null;
+        }
+        if (Schema::hasColumn('user_push_tokens', 'failure_reason')) {
+            $attributes['failure_reason'] = null;
+        }
+
         $pushToken = UserPushToken::where('token', $validated['token'])->first();
 
         if (! $pushToken && ! empty($validated['device_id'])) {
-            $pushToken = UserPushToken::where('user_id', $request->user()->id)
+            $pushToken = UserPushToken::where(UserPushToken::getUserIdColumn(), $request->user()->id)
                 ->where('device_id', $validated['device_id'])
                 ->first();
         }
@@ -235,7 +262,7 @@ class NotificationEngineController extends BaseApiController
             : collect();
         $pushLogs = $logs->where('channel', 'push')->values();
         $pushLog = $pushLogs->first();
-        $allPushTokensCount = UserPushToken::where('user_id', $user->id)->whereNotNull('token')->where('token', '!=', '')->count();
+        $allPushTokensCount = UserPushToken::where(UserPushToken::getUserIdColumn(), $user->id)->whereNotNull('token')->where('token', '!=', '')->count();
         $activeTokens = app(FcmService::class)->activeTokensForUser($user->id);
         $activeTokenCount = $activeTokens->count();
         $recipientDebug = $this->userRecipientDebug($validated, $user);

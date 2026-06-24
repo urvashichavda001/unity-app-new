@@ -25,8 +25,15 @@ class PushTokenController extends BaseApiController
             $token = (string) ($validated['fcm_token'] ?? $validated['token']);
 
             UserPushToken::where('token', $token)
-                ->where('user_id', '!=', $user->id)
+                ->where(UserPushToken::getUserIdColumn(), '!=', $user->id)
                 ->delete();
+
+            if (filled($validated['device_id'] ?? null)) {
+                UserPushToken::where('device_id', $validated['device_id'])
+                    ->where(UserPushToken::getUserIdColumn(), $user->id)
+                    ->where('token', '!=', $token)
+                    ->delete();
+            }
 
             $updates = [
                 'platform' => $validated['platform'],
@@ -41,12 +48,29 @@ class PushTokenController extends BaseApiController
                 $updates['app_version'] = $validated['app_version'];
             }
 
+            // Always activate/reset states when registered explicitly by the client device
+            if (\Illuminate\Support\Facades\Schema::hasColumn('user_push_tokens', 'is_active')) {
+                $updates['is_active'] = true;
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('user_push_tokens', 'status')) {
+                $updates['status'] = 'active';
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('user_push_tokens', 'token_status')) {
+                $updates['token_status'] = 'active';
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('user_push_tokens', 'failed_at')) {
+                $updates['failed_at'] = null;
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('user_push_tokens', 'failure_reason')) {
+                $updates['failure_reason'] = null;
+            }
+
             $pushToken = UserPushToken::updateOrCreate(
                 [
                     'token' => $token,
                 ],
                 array_merge($updates, [
-                    'user_id' => $user->id,
+                    UserPushToken::getUserIdColumn() => $user->id,
                 ])
             );
 
@@ -76,7 +100,7 @@ class PushTokenController extends BaseApiController
         try {
             $token = (string) ($validated['fcm_token'] ?? $validated['token']);
 
-            $deleted = UserPushToken::where('user_id', $request->user()->id)
+            $deleted = UserPushToken::where(UserPushToken::getUserIdColumn(), $request->user()->id)
                 ->where('token', $token)
                 ->delete();
 
