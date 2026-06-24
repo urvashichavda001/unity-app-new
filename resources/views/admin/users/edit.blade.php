@@ -38,13 +38,6 @@
     </div>
 @endif
 
-
-@if (! ($isReadOnly ?? false))
-    <form id="membershipWelcomeEmailForm" method="POST" action="{{ route('admin.users.membership-welcome-email.send', $user->id) }}">
-        @csrf
-    </form>
-@endif
-
 @if ($hasAssignedAdminRole)
     <form id="removeAdminRoleForm" method="POST" action="{{ route('admin.users.roles.remove', $user->id) }}">
         @csrf
@@ -755,14 +748,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div class="col-12">
-            @include('admin.users.partials.membership_welcome_email_card', [
-                'user' => $user,
-                'showSendButton' => ! ($isReadOnly ?? false),
-                'sendFormId' => 'membershipWelcomeEmailForm',
-            ])
         </div>
     </div>
 
