@@ -72,6 +72,7 @@ use App\Http\Controllers\Api\V1\Admin\EventAdminController;
 use App\Http\Controllers\Api\V1\Admin\ImpactAdminController;
 use App\Http\Controllers\Api\V1\Admin\IndustryManagementController;
 use App\Http\Controllers\Api\V1\Admin\LeadershipController;
+use App\Http\Controllers\Api\V1\Admin\AdminEventSendNotificationsController;
 use App\Http\Controllers\Api\V1\Admin\UserManagementController;
 use App\Http\Controllers\Api\V1\AppVersionController;
 use App\Http\Controllers\Api\V1\AppConfigController;
@@ -623,6 +624,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/reports/export', [AdminOpsController::class, 'reportsExport']);
             Route::post('/life-impact/manual', [ImpactAdminController::class, 'storeManual']);
             Route::get('/events/{event}/notification-status', [AdminEventNotificationStatusController::class, 'show'])->whereUuid('event');
+            // Send notifications synchronously (no queue needed — use this on production when queue worker is not running)
+            Route::post('/events/{event}/send-notifications', [AdminEventSendNotificationsController::class, 'send'])->whereUuid('event');
+            // Re-dispatch the notification job (use this when queue worker IS running)
+            Route::post('/events/{event}/dispatch-notification-job', [AdminEventSendNotificationsController::class, 'dispatch'])->whereUuid('event');
         });
 
         // Circle Chat

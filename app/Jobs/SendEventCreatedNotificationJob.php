@@ -87,6 +87,7 @@ class SendEventCreatedNotificationJob implements ShouldQueue
                 'event_title' => (string) $event->title,
                 'event_date' => $event->start_at ? $event->start_at->toDateString() : '',
                 'event_banner' => $bannerUrl,
+                'image_url' => $bannerUrl,  // Used by FCM service to set notification image
                 'screen' => 'event_detail',
                 'tap_destination' => 'event_detail',
                 'reference_type' => 'event',
@@ -125,11 +126,18 @@ class SendEventCreatedNotificationJob implements ShouldQueue
 
                         if ($notification) {
                             // Check if push log already exists for this notification to avoid duplicate push
-                            $pushLogExists = NotificationDeliveryLog::where('notification_id', $notification->id)
-                                ->where('channel', 'push')
-                                ->exists();
-                            if ($pushLogExists) {
-                                continue;
+                            // Wrapped in try/catch in case notification_delivery_logs table doesn't exist yet
+                            try {
+                                $pushLogExists = NotificationDeliveryLog::where('notification_id', $notification->id)
+                                    ->where('channel', 'push')
+                                    ->whereIn('status', ['sent', 'failed', 'pending'])
+                                    ->exists();
+                                if ($pushLogExists) {
+                                    continue;
+                                }
+                            } catch (Throwable $e) {
+                                Log::warning("Could not check push log for notification {$notification->id}: " . $e->getMessage());
+                                // Continue to attempt push even if log check fails
                             }
                         } else {
                             // Create in-app AppNotification
@@ -217,7 +225,7 @@ class SendEventCreatedNotificationJob implements ShouldQueue
                             $userPushSuccess = false;
                             foreach ($tokens as $token) {
                                 try {
-                                    $result = $fcmService->sendToToken($token, $title, $body, $notification->dataPayload(), $notification);
+                                    $result = $fcmService->sendToToken($token, $title, $body, $notification->dataPayload(), $notification, $bannerUrl);
                                     if ($result['success'] ?? false) {
                                         $totalPushSentSuccess++;
                                         $userPushSuccess = true;

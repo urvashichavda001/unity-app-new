@@ -17,10 +17,19 @@ class FcmService
     {
     }
 
-    public function sendToToken(UserPushToken|string $token, string $title, string $body, array $data, ?AppNotification $notification = null): array
+    public function sendToToken(UserPushToken|string $token, string $title, string $body, array $data, ?AppNotification $notification = null, ?string $imageUrl = null): array
     {
         $pushToken = $token instanceof UserPushToken ? $token : null;
         $tokenValue = $pushToken?->token ?: (string) $token;
+
+        // Resolve image URL from data payload if not explicitly provided
+        if ($imageUrl === null) {
+            $imageUrl = $data['image_url'] ?? $data['event_banner'] ?? null;
+            if (!is_string($imageUrl) || trim($imageUrl) === '') {
+                $imageUrl = null;
+            }
+        }
+
         $tokenRequestPayload = [
             'token_id' => $pushToken ? (string) $pushToken->id : null,
             'token_preview' => Str::limit($tokenValue, 18, '...'),
@@ -75,7 +84,7 @@ class FcmService
             'push_token_id' => $pushToken?->id,
             'device_id' => $pushToken?->device_id,
             'platform' => $pushToken?->platform,
-        ]);
+        ], $imageUrl);
 
         if (! ($result['success'] ?? false) && $this->isInvalidTokenError((string) ($result['error'] ?? ''))) {
             $this->deactivateInvalidToken($tokenValue, (string) ($result['error'] ?? ''));

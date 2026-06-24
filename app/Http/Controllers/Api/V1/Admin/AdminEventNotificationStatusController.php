@@ -47,9 +47,35 @@ class AdminEventNotificationStatusController extends BaseApiController
 
                 $inAppCreated = AppNotification::where($notificationQuery)->count();
 
-                $activePushTokens = NotificationDeliveryLog::whereHas('notification', $notificationQuery)
-                    ->where('channel', 'push')
-                    ->count();
+                // Count actual active push tokens for users who have in-app notifications for this event
+                $activePushTokens = 0;
+                if (Schema::hasTable('user_push_tokens')) {
+                    $userIdsWithNotifications = AppNotification::where($notificationQuery)
+                        ->pluck('user_id')
+                        ->unique()
+                        ->values()
+                        ->toArray();
+
+                    if (!empty($userIdsWithNotifications)) {
+                        $tokenQuery = \App\Models\UserPushToken::whereIn(
+                            \App\Models\UserPushToken::getUserIdColumn(),
+                            $userIdsWithNotifications
+                        )->whereNotNull('token')->where('token', '!=', '');
+
+                        if (Schema::hasColumn('user_push_tokens', 'is_active')) {
+                            $tokenQuery->where('is_active', true);
+                        }
+
+                        if (Schema::hasColumn('user_push_tokens', 'platform')) {
+                            $tokenQuery->where(function ($q) {
+                                $q->whereNull('platform')
+                                  ->orWhereRaw("LOWER(platform::text) IN ('android', 'ios')");
+                            });
+                        }
+
+                        $activePushTokens = $tokenQuery->count();
+                    }
+                }
 
                 $pushSentSuccess = NotificationDeliveryLog::whereHas('notification', $notificationQuery)
                     ->where('channel', 'push')
@@ -149,9 +175,35 @@ class AdminEventNotificationStatusController extends BaseApiController
 
                 $inAppCreated = AppNotification::where($notificationQuery)->count();
 
-                $activePushTokens = NotificationDeliveryLog::whereHas('notification', $notificationQuery)
-                    ->where('channel', 'push')
-                    ->count();
+                // Count actual active push tokens for users who have in-app notifications for this event
+                $activePushTokens = 0;
+                if (Schema::hasTable('user_push_tokens')) {
+                    $userIdsWithNotifications = AppNotification::where($notificationQuery)
+                        ->pluck('user_id')
+                        ->unique()
+                        ->values()
+                        ->toArray();
+
+                    if (!empty($userIdsWithNotifications)) {
+                        $tokenQuery = \App\Models\UserPushToken::whereIn(
+                            \App\Models\UserPushToken::getUserIdColumn(),
+                            $userIdsWithNotifications
+                        )->whereNotNull('token')->where('token', '!=', '');
+
+                        if (Schema::hasColumn('user_push_tokens', 'is_active')) {
+                            $tokenQuery->where('is_active', true);
+                        }
+
+                        if (Schema::hasColumn('user_push_tokens', 'platform')) {
+                            $tokenQuery->where(function ($q) {
+                                $q->whereNull('platform')
+                                  ->orWhereRaw("LOWER(platform::text) IN ('android', 'ios')");
+                            });
+                        }
+
+                        $activePushTokens = $tokenQuery->count();
+                    }
+                }
 
                 $pushSentSuccess = NotificationDeliveryLog::whereHas('notification', $notificationQuery)
                     ->where('channel', 'push')
@@ -206,8 +258,10 @@ class AdminEventNotificationStatusController extends BaseApiController
         }
 
         if (array_key_exists('active_push_tokens', $data) && ($data['active_push_tokens'] === 0 || $data['active_push_tokens'] === null)) {
-            $data['status'] = 'completed';
-            $data['reason'] = 'No active Firebase tokens found';
+            $pushSent = (int) ($data['push_sent_successfully'] ?? 0);
+            if ($pushSent === 0) {
+                $data['reason'] = 'No active Firebase tokens found for any notified user';
+            }
         }
 
         return $this->success($data, 'Event notification status fetched successfully.');
