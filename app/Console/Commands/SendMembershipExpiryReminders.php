@@ -42,7 +42,7 @@ class SendMembershipExpiryReminders extends Command
 
         // Fetch all users whose membership has expired (membership_ends_at is in the past, i.e., less than now)
         $expiredUsers = User::query()
-            ->where('membership_status', User::STATUS_FREE)
+            ->whereIn('membership_status', [User::STATUS_FREE, 'free_peer'])
             ->whereNotNull('membership_ends_at')
             ->where('membership_ends_at', '<', now())
             ->get();
@@ -69,9 +69,7 @@ class SendMembershipExpiryReminders extends Command
             $emailError = null;
 
             try {
-                // Queue email with a progressive delay to avoid rate limiting
-                $delay = now()->addSeconds($sentCount * 2);
-                Mail::to($user->email)->later($delay, $mailable);
+                Mail::to($user->email)->sendNow($mailable);
                 $emailSent = true;
             } catch (Throwable $exception) {
                 $emailError = $exception;

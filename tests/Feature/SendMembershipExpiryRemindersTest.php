@@ -130,13 +130,13 @@ class SendMembershipExpiryRemindersTest extends TestCase
 
         Artisan::call('memberships:send-expiry-reminders');
 
-        // Assert mail was queued to expired free user
-        Mail::assertQueued(MembershipExpiryReminderMail::class, function ($mail) use ($expiredUser) {
+        // Assert mail was sent to expired free user
+        Mail::assertSent(MembershipExpiryReminderMail::class, function ($mail) use ($expiredUser) {
             return $mail->hasTo($expiredUser->email) && $mail->user->id === $expiredUser->id;
         });
 
-        // Assert mail was not queued to active, null, or non-free expired users
-        Mail::assertNotQueued(MembershipExpiryReminderMail::class, function ($mail) use ($activeUser, $nullUser, $nonFreeExpiredUser) {
+        // Assert mail was not sent to active, null, or non-free expired users
+        Mail::assertNotSent(MembershipExpiryReminderMail::class, function ($mail) use ($activeUser, $nullUser, $nonFreeExpiredUser) {
             return $mail->hasTo($activeUser->email) || $mail->hasTo($nullUser->email) || $mail->hasTo($nonFreeExpiredUser->email);
         });
 
@@ -189,8 +189,8 @@ class SendMembershipExpiryRemindersTest extends TestCase
 
         Artisan::call('memberships:send-expiry-reminders');
 
-        // Assert the mail was queued exactly once
-        Mail::assertQueued(MembershipExpiryReminderMail::class, 1);
+        // Assert the mail was sent exactly once
+        Mail::assertSent(MembershipExpiryReminderMail::class, 1);
 
         // Assert the notification was created exactly once
         $this->assertSame(
@@ -563,22 +563,22 @@ class SendMembershipExpiryRemindersTest extends TestCase
 
         $events = collect($schedule->events());
 
-        // Assert memberships:send-expiry-reminders is scheduled daily at 11:25 AM (25 11 * * *) in Asia/Kolkata timezone
+        // Assert memberships:send-expiry-reminders is scheduled daily at 10:00 AM (0 10 * * *) in Asia/Kolkata timezone
         $expiryEvent = $events->first(fn ($event) => str_contains((string) $event->command, 'memberships:send-expiry-reminders'));
         $this->assertNotNull($expiryEvent);
-        $this->assertSame('25 11 * * *', $expiryEvent->expression);
+        $this->assertSame('0 10 * * *', $expiryEvent->expression);
         $this->assertSame('Asia/Kolkata', $expiryEvent->timezone);
 
-        // Assert memberships:send-upcoming-expiry-reminders is scheduled daily at 11:25 AM (25 11 * * *) in Asia/Kolkata timezone
+        // Assert memberships:send-upcoming-expiry-reminders is scheduled daily at 10:00 AM (0 10 * * *) in Asia/Kolkata timezone
         $upcomingEvent = $events->first(fn ($event) => str_contains((string) $event->command, 'memberships:send-upcoming-expiry-reminders'));
         $this->assertNotNull($upcomingEvent);
-        $this->assertSame('25 11 * * *', $upcomingEvent->expression);
+        $this->assertSame('0 10 * * *', $upcomingEvent->expression);
         $this->assertSame('Asia/Kolkata', $upcomingEvent->timezone);
 
-        // Assert memberships:send-circle-expiry-reminders is scheduled daily at 11:25 AM (25 11 * * *) in Asia/Kolkata timezone
+        // Assert memberships:send-circle-expiry-reminders is scheduled daily at 10:00 AM (0 10 * * *) in Asia/Kolkata timezone
         $circleEvent = $events->first(fn ($event) => str_contains((string) $event->command, 'memberships:send-circle-expiry-reminders'));
         $this->assertNotNull($circleEvent);
-        $this->assertSame('25 11 * * *', $circleEvent->expression);
+        $this->assertSame('0 10 * * *', $circleEvent->expression);
         $this->assertSame('Asia/Kolkata', $circleEvent->timezone);
     }
 }
