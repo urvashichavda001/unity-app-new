@@ -143,6 +143,40 @@ class GeoLocationController extends BaseApiController
         ], 'Nearby peers fetched successfully.');
     }
 
+    public function getPeersCountWithin500km(Request $request): JsonResponse
+    {
+        $authUser = $request->user();
+
+        $myLocation = UserGeoLocation::query()
+            ->where('user_id', (string) $authUser->id)
+            ->first();
+
+        if (! $myLocation) {
+            return $this->error(
+                'Please update your location first.',
+                422,
+                ['location' => ['Please update your location first.']]
+            );
+        }
+
+        $distanceExpression = $this->distanceExpression();
+        $distanceBindings = [
+            $myLocation->latitude,
+            $myLocation->longitude,
+            $myLocation->latitude,
+        ];
+
+        $count = UserGeoLocation::query()
+            ->where('is_visible', true)
+            ->where('user_id', '!=', (string) $authUser->id)
+            ->whereRaw($distanceExpression . ' <= ?', [...$distanceBindings, 500])
+            ->count();
+
+        return $this->success([
+            'count' => $count,
+        ], 'Peers count fetched successfully within 500km radius.');
+    }
+
     private function distanceExpression(): string
     {
         return '6371 * acos(LEAST(1, GREATEST(-1, '

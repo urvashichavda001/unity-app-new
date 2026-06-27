@@ -336,6 +336,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/geo/update-location', [GeoLocationController::class, 'updateLocation']);
         Route::patch('/geo/visibility', [GeoLocationController::class, 'updateVisibility']);
         Route::get('/geo/nearby-peers', [GeoLocationController::class, 'nearbyPeers']);
+        Route::get('/geo/peers-count-500km', [GeoLocationController::class, 'getPeersCountWithin500km']);
 
         Route::get('/blocked-peers', [PeerBlockController::class, 'index']);
         Route::post('/peers/{user}/block', [PeerBlockController::class, 'store'])->whereUuid('user');
