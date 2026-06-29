@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\MemberWithCircleController;
 use App\Http\Controllers\Api\MasterPositionController;
 use App\Http\Controllers\Api\MyCircleController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\NotificationFeatureController;
 use App\Http\Controllers\Api\OnlineStatusController;
 use App\Http\Controllers\Api\P2pMeetingController;
 use App\Http\Controllers\Api\PostController;
@@ -302,6 +303,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/events/{event}/occurrences/{occurrence}/register', [EventController::class, 'register'])
             ->whereUuid('event')
             ->whereUuid('occurrence');
+
+        Route::get('/activities/daily-summary', [NotificationFeatureController::class, 'dailySummary']);
+        Route::get('/insights/industry', [NotificationFeatureController::class, 'industryInsight']);
+        Route::get('/rewards/store/items', [NotificationFeatureController::class, 'rewardItems']);
+        Route::get('/newsletter/latest', [NotificationFeatureController::class, 'latestNewsletter']);
+        Route::get('/circle-categories', [NotificationFeatureController::class, 'circleCategories']);
+        Route::get('/life-impact/cycles/active', [NotificationFeatureController::class, 'activeLifeImpactCycle']);
     });
 
     Route::middleware(['web', 'admin.auth'])->prefix('admin')->group(function () {
