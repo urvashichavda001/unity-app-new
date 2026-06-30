@@ -590,4 +590,49 @@ class MemberController extends BaseApiController
 
         return $this->success(ConnectionResource::collection($connections));
     }
+
+    public function summary(Request $request): JsonResponse
+    {
+        try {
+            $members = User::query()
+                ->select([
+                    'profile_photo_url',
+                    'display_name',
+                    'life_impacted_count',
+                    'city',
+                    'business_type',
+                    'company_name',
+                    'designation',
+                ])
+                ->paginate(15);
+
+            $formattedItems = collect($members->items())->map(function ($user) {
+                return [
+                    'profile_photo_url'   => $user->profile_photo_url,
+                    'display_name'        => $user->display_name,
+                    'life_impacted_count' => $user->life_impacted_count,
+                    'life_impected_count' => $user->life_impacted_count,
+                    'city'                => $user->city,
+                    'business_type'       => $user->business_type,
+                    'company_name'        => $user->company_name,
+                    'Company_name'        => $user->company_name,
+                    'designation'         => $user->designation,
+                ];
+            });
+
+            return $this->success([
+                'items' => $formattedItems,
+                'pagination' => [
+                    'total'        => $members->total(),
+                    'current_page' => $members->currentPage(),
+                    'last_page'    => $members->lastPage(),
+                    'per_page'     => $members->perPage(),
+                    'next_page_url'=> $members->nextPageUrl(),
+                    'prev_page_url'=> $members->previousPageUrl(),
+                ]
+            ], 'Members summary retrieved successfully.');
+        } catch (\Exception $e) {
+            return $this->error('Failed to retrieve members summary: ' . $e->getMessage(), 500);
+        }
+    }
 }

@@ -359,6 +359,7 @@ Route::prefix('v1')->group(function () {
 
         Route::apiResource('members', MemberController::class)
             ->only(['index', 'show']);
+        Route::get('/members-summary', [MemberController::class, 'summary']);
         Route::post('/members/online-heartbeat', [OnlineStatusController::class, 'heartbeat']);
         Route::post('/members/update-online-status', [OnlineStatusController::class, 'updateStatus']);
         Route::post('/members/online-offline', [OnlineStatusController::class, 'offline']);
